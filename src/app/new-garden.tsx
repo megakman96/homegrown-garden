@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, ScrollView,
   useWindowDimensions, Alert, ActivityIndicator, Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,26 +20,34 @@ import {
   SUN_CYCLE, activeCount,
   type TileState, type GardenLayout,
 } from '@/lib/garden-layout';
+import {
+  searchCity, getBrowserLocation, saveLocation,
+  type GeoResult, type Location,
+} from '@/lib/weather';
 
-type Step = 'name' | 'size' | 'shape' | 'sun';
-const STEPS: Step[] = ['name', 'size', 'shape', 'sun'];
+type Step = 'name' | 'location' | 'size' | 'shape' | 'sun';
+const STEPS: Step[] = ['name', 'location', 'size', 'shape', 'sun'];
+
 const STEP_TITLES: Record<Step, string> = {
-  name:  'Name your garden',
-  size:  'How big is it?',
-  shape: 'Draw your garden',
-  sun:   'Set the sunlight',
+  name:     'Name your garden',
+  location: 'Where is your garden?',
+  size:     'How big is it?',
+  shape:    'Draw your garden',
+  sun:      'Set the sunlight',
 };
 const STEP_SUBS: Record<Step, string> = {
-  name:  'Give your garden a name you\'ll remember.',
-  size:  'Set the grid dimensions. You can adjust this later.',
-  shape: 'Tap tiles to include them in your garden.',
-  sun:   'Tap each tile to set its sunlight.',
+  name:     "Give your garden a name you'll remember.",
+  location: 'Used for weather-aware watering advice. Required.',
+  size:     'Set the grid dimensions. You can adjust this later.',
+  shape:    'Tap tiles to include them in your garden.',
+  sun:      'Tap each tile to set its sunlight level.',
 };
 const STEP_EMOJIS: Record<Step, string> = {
-  name:  '🌱',
-  size:  '📐',
-  shape: '🗺️',
-  sun:   '☀️',
+  name:     '🌱',
+  location: '📍',
+  size:     '📐',
+  shape:    '🗺️',
+  sun:      '☀️',
 };
 
 const MIN_SIZE = 3;
@@ -57,7 +66,14 @@ export default function NewGardenScreen() {
   const [layout, setLayout] = useState<GardenLayout>(() => makeLayout(6, 8));
   const [saving, setSaving] = useState(false);
 
-  // Animation between steps
+  // Location step state
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [cityQuery, setCityQuery] = useState('');
+  const [cityResults, setCityResults] = useState<GeoResult[]>([]);
+  const [citySearching, setCitySearching] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
   const slideX = useSharedValue(0);
   const opacity = useSharedValue(1);
 
@@ -112,6 +128,42 @@ export default function NewGardenScreen() {
     });
   }
 
+  const searchCities = useCallback(async (query: string) => {
+    setCityQuery(query);
+    if (query.length < 2) { setCityResults([]); return; }
+    setCitySearching(true);
+    const results = await searchCity(query);
+    setCityResults(results);
+    setCitySearching(false);
+  }, []);
+
+  function selectCity(r: GeoResult) {
+    const loc: Location = {
+      latitude: r.latitude,
+      longitude: r.longitude,
+      name: r.admin1 ? `${r.name}, ${r.admin1}` : `${r.name}, ${r.country}`,
+    };
+    setSelectedLocation(loc);
+    setCityQuery('');
+    setCityResults([]);
+    setGpsError(null);
+  }
+
+  async function useMyLocation() {
+    setGpsError(null);
+    setGpsLoading(true);
+    try {
+      const loc = await getBrowserLocation();
+      setSelectedLocation(loc);
+      setCityQuery('');
+      setCityResults([]);
+    } catch {
+      setGpsError('Location access denied. Search for your city below.');
+    } finally {
+      setGpsLoading(false);
+    }
+  }
+
   async function save() {
     if (!user) return;
     setSaving(true);
@@ -123,7 +175,11 @@ export default function NewGardenScreen() {
         cols,
         sun_exposure: 'full_sun',
         layout: JSON.stringify(layout),
+        location_json: selectedLocation ? JSON.stringify(selectedLocation) : null,
       });
+      if (selectedLocation) {
+        await saveLocation(selectedLocation);
+      }
       router.replace('/(tabs)/garden');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save garden');
@@ -132,15 +188,15 @@ export default function NewGardenScreen() {
     }
   }
 
-  // Tile size: fill available width
   const gridPadding = 32;
   const maxGridWidth = Math.min(width - gridPadding * 2, 520);
   const tileSize = Math.max(22, Math.min(46, Math.floor((maxGridWidth - cols * 3) / cols)));
   const activeTiles = activeCount(layout);
 
+  const canContinue = step !== 'location' || selectedLocation !== null;
+
   return (
     <View style={styles.container}>
-      {/* Header */}
       <LinearGradient colors={[G.forest, G.hunter]} style={styles.header}>
         <PressableScale onPress={() => router.back()} style={styles.backBtn} haptic={false}>
           <Text style={styles.backText}>✕</Text>
@@ -167,7 +223,6 @@ export default function NewGardenScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View style={[styles.stepContent, contentStyle]}>
-          {/* Step emoji + title */}
           <Text style={styles.stepEmoji}>{STEP_EMOJIS[step]}</Text>
           <Text style={styles.stepTitle}>{STEP_TITLES[step]}</Text>
           <Text style={styles.stepSub}>{STEP_SUBS[step]}</Text>
@@ -184,8 +239,85 @@ export default function NewGardenScreen() {
                 autoFocus
                 maxLength={40}
                 returnKeyType="next"
-                onSubmitEditing={() => transitionTo('size')}
+                onSubmitEditing={() => transitionTo('location')}
               />
+            </View>
+          )}
+
+          {/* ── Step: location ── */}
+          {step === 'location' && (
+            <View style={styles.locationStep}>
+              {selectedLocation ? (
+                /* Confirmed location */
+                <View style={styles.locationConfirmed}>
+                  <View style={styles.locationConfirmedInner}>
+                    <Text style={styles.locationPin}>📍</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.locationName}>{selectedLocation.name ?? 'Selected location'}</Text>
+                      <Text style={styles.locationCoords}>
+                        {selectedLocation.latitude.toFixed(3)}, {selectedLocation.longitude.toFixed(3)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setSelectedLocation(null)} style={styles.changeLoc}>
+                      <Text style={styles.changeLocText}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  {/* GPS */}
+                  <TouchableOpacity
+                    style={styles.gpsBtn}
+                    onPress={useMyLocation}
+                    disabled={gpsLoading}
+                  >
+                    {gpsLoading
+                      ? <ActivityIndicator color={G.hunter} style={{ marginRight: 8 }} />
+                      : <Text style={styles.gpsBtnIcon}>📡</Text>
+                    }
+                    <Text style={styles.gpsBtnText}>
+                      {gpsLoading ? 'Locating...' : 'Use my current location'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {gpsError && <Text style={styles.gpsError}>{gpsError}</Text>}
+
+                  <View style={styles.dividerRow}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>or search</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  <TextInput
+                    style={styles.cityInput}
+                    placeholder="Search city (e.g. Austin, London)"
+                    placeholderTextColor={G.stone}
+                    value={cityQuery}
+                    onChangeText={searchCities}
+                  />
+
+                  {citySearching && (
+                    <ActivityIndicator color={G.hunter} style={{ marginVertical: 8 }} />
+                  )}
+
+                  {cityResults.length > 0 && (
+                    <View style={styles.cityResults}>
+                      {cityResults.map((r, i) => (
+                        <TouchableOpacity
+                          key={i}
+                          style={[styles.cityRow, i < cityResults.length - 1 && styles.cityRowBorder]}
+                          onPress={() => selectCity(r)}
+                        >
+                          <Text style={styles.cityName}>{r.name}</Text>
+                          <Text style={styles.cityRegion}>
+                            {r.admin1 ? `${r.admin1}, ` : ''}{r.country}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
             </View>
           )}
 
@@ -196,7 +328,6 @@ export default function NewGardenScreen() {
                 onChange={d => handleSizeChange('rows', d)} />
               <SizeStepper label="Columns" value={cols} min={MIN_SIZE} max={MAX_COLS}
                 onChange={d => handleSizeChange('cols', d)} />
-              {/* Mini preview */}
               <Text style={styles.previewLabel}>Preview</Text>
               <View style={styles.previewGrid}>
                 {Array.from({ length: rows }, (_, r) => (
@@ -218,12 +349,7 @@ export default function NewGardenScreen() {
                 <LegendItem color={TILE_COLORS.inactive} label="Path / unused" />
                 <LegendItem color={TILE_COLORS.full_sun} label="Garden tile" />
               </View>
-              <TileGrid
-                layout={layout}
-                tileSize={tileSize}
-                onTap={toggleTile}
-                showSun={false}
-              />
+              <TileGrid layout={layout} tileSize={tileSize} onTap={toggleTile} showSun={false} />
               <Text style={styles.tileCount}>
                 {activeTiles} of {rows * cols} tiles selected
               </Text>
@@ -239,13 +365,8 @@ export default function NewGardenScreen() {
                     emoji={TILE_EMOJIS[s]} />
                 ))}
               </View>
-              <Text style={styles.sunHint}>Tap a tile to cycle sunlight</Text>
-              <TileGrid
-                layout={layout}
-                tileSize={tileSize}
-                onTap={cycleSun}
-                showSun
-              />
+              <Text style={styles.sunHint}>Tap a tile to cycle through Full Sun → Partial Sun → Shade</Text>
+              <TileGrid layout={layout} tileSize={tileSize} onTap={cycleSun} showSun />
             </View>
           )}
         </Animated.View>
@@ -264,22 +385,34 @@ export default function NewGardenScreen() {
           {step !== 'sun' ? (
             <PressableScale
               onPress={() => {
-                if (step === 'name' && !name.trim()) {
-                  setName('My Garden');
-                }
+                if (step === 'name' && !name.trim()) setName('My Garden');
+                if (!canContinue) return;
                 transitionTo(STEPS[stepIndex + 1]);
               }}
-              style={styles.nextBtn}
+              style={[styles.nextBtn, !canContinue && styles.nextBtnDisabled]}
+              disabled={!canContinue}
             >
-              <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtnGradient}>
+              <LinearGradient
+                colors={canContinue ? [G.sage, G.hunter] : [G.stone, G.slate]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.nextBtnGradient}
+              >
                 <Text style={styles.nextBtnText}>
                   {step === 'shape' && activeTiles === 0 ? 'Skip →' : 'Continue →'}
                 </Text>
               </LinearGradient>
             </PressableScale>
           ) : (
-            <PressableScale onPress={save} style={[styles.nextBtn, saving && { opacity: 0.7 }]} disabled={saving}>
-              <LinearGradient colors={[G.sage, G.forest]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtnGradient}>
+            <PressableScale
+              onPress={save}
+              style={[styles.nextBtn, saving && { opacity: 0.7 }]}
+              disabled={saving}
+            >
+              <LinearGradient
+                colors={[G.sage, G.forest]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.nextBtnGradient}
+              >
                 {saving
                   ? <ActivityIndicator color={G.cloud} />
                   : <Text style={styles.nextBtnText}>🌱  Create Garden</Text>
@@ -326,7 +459,6 @@ function TileGrid({ layout, tileSize, onTap, showSun }: {
           <View key={r} style={{ flexDirection: 'row' }}>
             {row.map((tile, c) => {
               const isActive = tile !== 'inactive';
-              const bg = TILE_COLORS[tile];
               return (
                 <PressableScale
                   key={c}
@@ -334,7 +466,7 @@ function TileGrid({ layout, tileSize, onTap, showSun }: {
                   scaleDown={0.88}
                   style={[
                     styles.tile,
-                    { width: tileSize, height: tileSize, backgroundColor: bg },
+                    { width: tileSize, height: tileSize, backgroundColor: TILE_COLORS[tile] },
                     isActive && styles.tileActive,
                   ]}
                 >
@@ -372,64 +504,96 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 56 : 24,
     paddingBottom: 16, paddingHorizontal: 20,
   },
-  backBtn:      { width: 36, height: 36, borderRadius: R.full, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
-  backText:     { color: G.cloud, fontSize: 16, fontWeight: '600' },
-  headerTitle:  { color: G.cloud, fontSize: 17, fontWeight: '700' },
-  stepRow:      { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 20, paddingHorizontal: 40 },
-  stepDotWrap:  { flexDirection: 'row', alignItems: 'center' },
-  stepDot:      { width: 10, height: 10, borderRadius: R.full, backgroundColor: G.mist },
-  stepDotActive:{ backgroundColor: G.sage },
-  stepLine:     { width: 32, height: 2, backgroundColor: G.mist, marginHorizontal: 4 },
+  backBtn:       { width: 36, height: 36, borderRadius: R.full, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
+  backText:      { color: G.cloud, fontSize: 16, fontWeight: '600' },
+  headerTitle:   { color: G.cloud, fontSize: 17, fontWeight: '700' },
+  stepRow:       { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 20, paddingHorizontal: 40 },
+  stepDotWrap:   { flexDirection: 'row', alignItems: 'center' },
+  stepDot:       { width: 10, height: 10, borderRadius: R.full, backgroundColor: G.mist },
+  stepDotActive: { backgroundColor: G.sage },
+  stepLine:      { width: 24, height: 2, backgroundColor: G.mist, marginHorizontal: 4 },
   stepLineActive:{ backgroundColor: G.sage },
-  scroll:       { paddingHorizontal: 24, paddingBottom: 48 },
-  stepContent:  { alignItems: 'center', paddingTop: 8 },
-  stepEmoji:    { fontSize: 48, marginBottom: 12 },
-  stepTitle:    { fontSize: 22, fontWeight: '800', color: G.forest, textAlign: 'center', marginBottom: 6 },
-  stepSub:      { fontSize: 14, color: G.stone, textAlign: 'center', marginBottom: 28, lineHeight: 20 },
+  scroll:        { paddingHorizontal: 24, paddingBottom: 48 },
+  stepContent:   { alignItems: 'center', paddingTop: 8 },
+  stepEmoji:     { fontSize: 48, marginBottom: 12 },
+  stepTitle:     { fontSize: 22, fontWeight: '800', color: G.forest, textAlign: 'center', marginBottom: 6 },
+  stepSub:       { fontSize: 14, color: G.stone, textAlign: 'center', marginBottom: 28, lineHeight: 20 },
 
   // Name step
-  nameStep:     { width: '100%', maxWidth: 420 },
+  nameStep:  { width: '100%', maxWidth: 420 },
   nameInput: {
     backgroundColor: G.cloud, borderRadius: R.lg, paddingHorizontal: 18, paddingVertical: 16,
     fontSize: 17, color: G.ink, borderWidth: 2, borderColor: G.mist,
-    textAlign: 'center', fontWeight: '600',
-    ...Shadow.soft,
+    textAlign: 'center', fontWeight: '600', ...Shadow.soft,
   },
+
+  // Location step
+  locationStep: { width: '100%', maxWidth: 440 },
+  locationConfirmed: {
+    backgroundColor: G.cloud, borderRadius: R.lg, overflow: 'hidden', ...Shadow.soft,
+  },
+  locationConfirmedInner: {
+    flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12,
+    borderLeftWidth: 4, borderLeftColor: G.sage,
+  },
+  locationPin:    { fontSize: 24 },
+  locationName:   { fontSize: 15, fontWeight: '700', color: G.forest },
+  locationCoords: { fontSize: 11, color: G.stone, marginTop: 2 },
+  changeLoc:      { paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, backgroundColor: G.dew },
+  changeLocText:  { fontSize: 12, color: G.hunter, fontWeight: '600' },
+  gpsBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: G.dew, borderRadius: R.lg, paddingVertical: 14, paddingHorizontal: 20,
+    gap: 8, marginBottom: 8, borderWidth: 1.5, borderColor: G.mist,
+  },
+  gpsBtnIcon: { fontSize: 18 },
+  gpsBtnText: { color: G.hunter, fontWeight: '700', fontSize: 15 },
+  gpsError:   { color: G.danger, fontSize: 13, textAlign: 'center', marginBottom: 10, lineHeight: 18 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
+  dividerLine:{ flex: 1, height: 1, backgroundColor: G.mist },
+  dividerText:{ fontSize: 12, color: G.stone },
+  cityInput: {
+    backgroundColor: G.cloud, borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 13,
+    fontSize: 15, color: G.ink, borderWidth: 1.5, borderColor: G.mist, marginBottom: 8,
+  },
+  cityResults:   { backgroundColor: G.cloud, borderRadius: R.md, overflow: 'hidden', ...Shadow.soft },
+  cityRow:       { padding: 14 },
+  cityRowBorder: { borderBottomWidth: 1, borderBottomColor: G.foam },
+  cityName:      { fontSize: 15, fontWeight: '600', color: G.forest },
+  cityRegion:    { fontSize: 12, color: G.stone, marginTop: 2 },
 
   // Size step
-  sizeStep:     { width: '100%', maxWidth: 380, alignItems: 'center' },
-  stepper:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 16, backgroundColor: G.cloud, borderRadius: R.lg, padding: 16, ...Shadow.soft },
-  stepperLabel: { fontSize: 15, fontWeight: '700', color: G.forest },
+  sizeStep:      { width: '100%', maxWidth: 380, alignItems: 'center' },
+  stepper:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 16, backgroundColor: G.cloud, borderRadius: R.lg, padding: 16, ...Shadow.soft },
+  stepperLabel:  { fontSize: 15, fontWeight: '700', color: G.forest },
   stepperControls:{ flexDirection: 'row', alignItems: 'center', gap: 16 },
-  stepBtn:      { width: 36, height: 36, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
-  stepBtnDisabled: { opacity: 0.35 },
-  stepBtnText:  { fontSize: 22, fontWeight: '700', color: G.hunter, lineHeight: 24 },
-  stepperValue: { fontSize: 20, fontWeight: '800', color: G.forest, minWidth: 30, textAlign: 'center' },
-  previewLabel: { fontSize: 12, fontWeight: '700', color: G.stone, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 8, marginBottom: 8 },
-  previewGrid:  { borderRadius: R.sm, overflow: 'hidden', gap: 2 },
-  previewRow:   { flexDirection: 'row', gap: 2 },
-  previewTile:  { width: 12, height: 12, backgroundColor: G.mist, borderRadius: 2 },
-  previewCount: { fontSize: 12, color: G.stone, marginTop: 8 },
+  stepBtn:       { width: 36, height: 36, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
+  stepBtnDisabled:{ opacity: 0.35 },
+  stepBtnText:   { fontSize: 22, fontWeight: '700', color: G.hunter, lineHeight: 24 },
+  stepperValue:  { fontSize: 20, fontWeight: '800', color: G.forest, minWidth: 30, textAlign: 'center' },
+  previewLabel:  { fontSize: 12, fontWeight: '700', color: G.stone, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 8, marginBottom: 8 },
+  previewGrid:   { borderRadius: R.sm, overflow: 'hidden', gap: 2 },
+  previewRow:    { flexDirection: 'row', gap: 2 },
+  previewTile:   { width: 12, height: 12, backgroundColor: G.mist, borderRadius: 2 },
+  previewCount:  { fontSize: 12, color: G.stone, marginTop: 8 },
 
   // Grid steps
-  gridStep:     { width: '100%', alignItems: 'center' },
-  legend:       { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 16 },
-  legendItem:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendSwatch: { width: 20, height: 20, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
-  legendLabel:  { fontSize: 12, color: G.slate, fontWeight: '500' },
-  tile: {
-    margin: 2, borderRadius: 4,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  tileActive:   { ...Shadow.soft },
-  tileCount:    { fontSize: 13, color: G.stone, marginTop: 14, fontWeight: '600' },
-  sunHint:      { fontSize: 12, color: G.stone, marginBottom: 12, fontStyle: 'italic' },
+  gridStep:      { width: '100%', alignItems: 'center' },
+  legend:        { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 16 },
+  legendItem:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendSwatch:  { width: 20, height: 20, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
+  legendLabel:   { fontSize: 12, color: G.slate, fontWeight: '500' },
+  tile:          { margin: 2, borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
+  tileActive:    { ...Shadow.soft },
+  tileCount:     { fontSize: 13, color: G.stone, marginTop: 14, fontWeight: '600' },
+  sunHint:       { fontSize: 12, color: G.stone, marginBottom: 12, fontStyle: 'italic', textAlign: 'center' },
 
   // CTA
-  ctaRow:       { flexDirection: 'row', gap: 12, marginTop: 32, justifyContent: 'center' },
-  backStepBtn:  { backgroundColor: G.cloud, borderRadius: R.lg, paddingVertical: 14, paddingHorizontal: 20, borderWidth: 1.5, borderColor: G.mist, ...Shadow.soft },
-  backStepText: { color: G.stone, fontWeight: '700', fontSize: 15 },
-  nextBtn:      { flex: 1, maxWidth: 280, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  ctaRow:          { flexDirection: 'row', gap: 12, marginTop: 32, justifyContent: 'center' },
+  backStepBtn:     { backgroundColor: G.cloud, borderRadius: R.lg, paddingVertical: 14, paddingHorizontal: 20, borderWidth: 1.5, borderColor: G.mist, ...Shadow.soft },
+  backStepText:    { color: G.stone, fontWeight: '700', fontSize: 15 },
+  nextBtn:         { flex: 1, maxWidth: 280, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  nextBtnDisabled: { opacity: 0.5 },
   nextBtnGradient: { paddingVertical: 15, alignItems: 'center' },
-  nextBtnText:  { color: G.cloud, fontWeight: '800', fontSize: 16 },
+  nextBtnText:     { color: G.cloud, fontWeight: '800', fontSize: 16 },
 });
