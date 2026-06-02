@@ -33,6 +33,7 @@ fi
 echo "📦 Building Expo web..."
 cd "$(dirname "$0")/.."
 npx expo export --platform web
+node scripts/inject-pwa.js
 
 echo "📤 Deploying to LXC $LXC_ID..."
 # Stage on Proxmox host then copy into container

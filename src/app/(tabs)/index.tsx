@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
@@ -45,50 +46,10 @@ export default function DashboardScreen() {
     .slice(0, 3);
 
   const firstName = user?.email?.split('@')[0] ?? 'Gardener';
+  const { isDesktop } = useBreakpoint();
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Hero banner */}
-      <FadeInView delay={0} from="fade">
-        <LinearGradient
-          colors={[G.forest, G.hunter]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}
-        >
-          <Text style={styles.heroEmoji}>🌤️</Text>
-          <Text style={styles.heroGreeting}>{greeting()}, {firstName}!</Text>
-          <Text style={styles.heroSub}>Here's what your garden needs today</Text>
-          <View style={styles.heroLeaves}>
-            <Text style={styles.heroLeaf}>🌿</Text>
-            <Text style={styles.heroLeaf}>🍃</Text>
-          </View>
-        </LinearGradient>
-      </FadeInView>
-
-      {/* Stats row */}
-      <View style={styles.statsRow}>
-        <FadeInView delay={80} style={styles.statFlex}>
-          <StatCard label="Plants" value={plants.length} emoji="🌱" color={G.sage} delay={80} />
-        </FadeInView>
-        <FadeInView delay={140} style={styles.statFlex}>
-          <StatCard label="Thirsty" value={needsWater.length} emoji="💧" color={needsWater.length > 0 ? G.bloom : G.sage} delay={140} />
-        </FadeInView>
-        <FadeInView delay={200} style={styles.statFlex}>
-          <StatCard
-            label="Harvested"
-            value={plants.filter((p) => p.health_status === 'harvested').length}
-            emoji="🧺"
-            color={G.sage}
-            delay={200}
-          />
-        </FadeInView>
-      </View>
-
+  const alertSection = (
+    <>
       {needsWater.length > 0 && (
         <FadeInView delay={260} style={styles.section}>
           <Text style={styles.sectionTitle}>💧 Needs Water</Text>
@@ -97,15 +58,12 @@ export default function DashboardScreen() {
               <PressableScale onPress={() => router.push(`/plant/${p.id}`)} style={styles.alertCard}>
                 <View style={[styles.alertAccent, { backgroundColor: G.sage }]} />
                 <Text style={styles.alertName}>{p.name}</Text>
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>Water now</Text>
-                </View>
+                <View style={styles.badge}><Text style={styles.badgeText}>Water now</Text></View>
               </PressableScale>
             </FadeInView>
           ))}
         </FadeInView>
       )}
-
       {upcomingHarvests.length > 0 && (
         <FadeInView delay={340} style={styles.section}>
           <Text style={styles.sectionTitle}>🧺 Upcoming Harvests</Text>
@@ -122,24 +80,69 @@ export default function DashboardScreen() {
           ))}
         </FadeInView>
       )}
-
       {!loading && plants.length === 0 && (
         <FadeInView delay={300} style={styles.empty} from="scale">
           <Text style={styles.emptyEmoji}>🌾</Text>
           <Text style={styles.emptyTitle}>Your garden awaits</Text>
           <Text style={styles.emptyText}>Add your first plant and start growing something amazing.</Text>
           <PressableScale onPress={() => router.push('/(tabs)/plants')} style={styles.emptyBtn}>
-            <LinearGradient
-              colors={[G.sage, G.hunter]}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={styles.emptyBtnGradient}
-            >
+            <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyBtnGradient}>
               <Text style={styles.emptyBtnText}>🌱  Add your first plant</Text>
             </LinearGradient>
           </PressableScale>
         </FadeInView>
       )}
+    </>
+  );
 
+  if (isDesktop) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.desktopContent} showsVerticalScrollIndicator={false}>
+        <FadeInView delay={0} from="fade">
+          <LinearGradient colors={[G.forest, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.desktopHero}>
+            <Text style={styles.heroEmoji}>🌤️</Text>
+            <Text style={styles.heroGreeting}>{greeting()}, {firstName}!</Text>
+            <Text style={styles.heroSub}>Here's what your garden needs today</Text>
+            <View style={styles.heroLeaves}>
+              <Text style={styles.heroLeaf}>🌿</Text>
+              <Text style={styles.heroLeaf}>🍃</Text>
+            </View>
+          </LinearGradient>
+        </FadeInView>
+        <View style={styles.desktopBody}>
+          {/* Left column: stats */}
+          <View style={styles.desktopLeft}>
+            <FadeInView delay={80}><StatCard label="Plants" value={plants.length} emoji="🌱" color={G.sage} delay={80} /></FadeInView>
+            <FadeInView delay={140}><StatCard label="Thirsty" value={needsWater.length} emoji="💧" color={needsWater.length > 0 ? G.bloom : G.sage} delay={140} /></FadeInView>
+            <FadeInView delay={200}><StatCard label="Harvested" value={plants.filter(p => p.health_status === 'harvested').length} emoji="🧺" color={G.sage} delay={200} /></FadeInView>
+          </View>
+          {/* Right column: alerts */}
+          <View style={styles.desktopRight}>{alertSection}</View>
+        </View>
+        <View style={{ height: 32 }} />
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <FadeInView delay={0} from="fade">
+        <LinearGradient colors={[G.forest, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+          <Text style={styles.heroEmoji}>🌤️</Text>
+          <Text style={styles.heroGreeting}>{greeting()}, {firstName}!</Text>
+          <Text style={styles.heroSub}>Here's what your garden needs today</Text>
+          <View style={styles.heroLeaves}>
+            <Text style={styles.heroLeaf}>🌿</Text>
+            <Text style={styles.heroLeaf}>🍃</Text>
+          </View>
+        </LinearGradient>
+      </FadeInView>
+      <View style={styles.statsRow}>
+        <FadeInView delay={80} style={styles.statFlex}><StatCard label="Plants" value={plants.length} emoji="🌱" color={G.sage} delay={80} /></FadeInView>
+        <FadeInView delay={140} style={styles.statFlex}><StatCard label="Thirsty" value={needsWater.length} emoji="💧" color={needsWater.length > 0 ? G.bloom : G.sage} delay={140} /></FadeInView>
+        <FadeInView delay={200} style={styles.statFlex}><StatCard label="Harvested" value={plants.filter(p => p.health_status === 'harvested').length} emoji="🧺" color={G.sage} delay={200} /></FadeInView>
+      </View>
+      {alertSection}
       <View style={{ height: 32 }} />
     </ScrollView>
   );
@@ -163,6 +166,11 @@ function StatCard({ label, value, emoji, color, delay }: { label: string; value:
 const styles = StyleSheet.create({
   container:    { flex: 1, backgroundColor: G.foam },
   content:      { paddingBottom: 40 },
+  desktopContent: { paddingBottom: 40, maxWidth: 1200, width: '100%', alignSelf: 'center' },
+  desktopHero:  { margin: 24, borderRadius: R.xl, padding: 32, overflow: 'hidden', ...Shadow.card },
+  desktopBody:  { flexDirection: 'row', paddingHorizontal: 24, gap: 24, alignItems: 'flex-start' },
+  desktopLeft:  { width: 200, gap: 12 },
+  desktopRight: { flex: 1 },
   hero: {
     margin: 16,
     marginTop: Platform.OS === 'ios' ? 8 : 16,
