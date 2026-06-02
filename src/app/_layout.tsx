@@ -38,6 +38,7 @@ export default function RootLayout() {
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="plant/[id]" options={{ headerShown: true, title: 'Plant Detail' }} />
+          <Stack.Screen name="new-garden" />
         </Stack>
       </AuthGuard>
     </ThemeProvider>

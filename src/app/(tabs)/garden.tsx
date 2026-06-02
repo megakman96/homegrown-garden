@@ -4,8 +4,13 @@ import {
   Modal, TextInput, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
+import { PressableScale } from '@/components/ui/PressableScale';
+import { FadeInView } from '@/components/ui/FadeInView';
+import { G, Shadow, R } from '@/constants/theme';
+import { layoutFromGarden, TILE_COLORS } from '@/lib/garden-layout';
 import type { Garden, Plant } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
 import {
@@ -179,7 +184,7 @@ export default function GardenScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-        <TouchableOpacity style={styles.gardenChip} onPress={() => setShowNewGarden(true)}>
+        <TouchableOpacity style={styles.gardenChip} onPress={() => router.push('/new-garden')}>
           <Text style={styles.gardenChipText}>+ New</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -198,35 +203,41 @@ export default function GardenScreen() {
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View>
-              {Array.from({ length: selectedGarden.rows }).map((_, row) => (
-                <View key={row} style={styles.gridRow}>
-                  {Array.from({ length: selectedGarden.cols }).map((_, col) => {
-                    const plant = getPlantAt(row, col);
-                    return (
-                      <TouchableOpacity
-                        key={col}
-                        style={[
-                          styles.cell,
-                          plant
-                            ? { backgroundColor: HEALTH_COLORS[plant.health_status] }
-                            : styles.emptyCell,
-                        ]}
-                        onPress={() => handleCellTap(row, col)}
-                      >
-                        {plant && (
-                          <>
-                            <Text style={styles.cellText} numberOfLines={1}>{plant.name.slice(0, 5)}</Text>
-                            {plant.sun_requirement && (
-                              <Text style={styles.cellSun}>{SUN_EMOJIS[plant.sun_requirement as SunRequirement]}</Text>
-                            )}
-                          </>
-                        )}
-                        {!plant && <Text style={styles.cellPlus}>+</Text>}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ))}
+              {Array.from({ length: selectedGarden.rows }).map((_, row) => {
+                const tileLayout = layoutFromGarden(selectedGarden);
+                return (
+                  <View key={row} style={styles.gridRow}>
+                    {Array.from({ length: selectedGarden.cols }).map((_, col) => {
+                      const plant = getPlantAt(row, col);
+                      const tileState = tileLayout[row]?.[col] ?? 'inactive';
+                      const isInactive = tileState === 'inactive';
+                      const tileBg = plant
+                        ? HEALTH_COLORS[plant.health_status]
+                        : isInactive
+                          ? '#d0d8d4'
+                          : TILE_COLORS[tileState];
+                      return (
+                        <TouchableOpacity
+                          key={col}
+                          style={[styles.cell, { backgroundColor: tileBg }, isInactive && styles.inactiveCell]}
+                          onPress={() => !isInactive && handleCellTap(row, col)}
+                          disabled={isInactive}
+                        >
+                          {plant && (
+                            <>
+                              <Text style={styles.cellText} numberOfLines={1}>{plant.name.slice(0, 5)}</Text>
+                              {plant.sun_requirement && (
+                                <Text style={styles.cellSun}>{SUN_EMOJIS[plant.sun_requirement as SunRequirement]}</Text>
+                              )}
+                            </>
+                          )}
+                          {!plant && !isInactive && <Text style={styles.cellPlus}>+</Text>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              })}
             </View>
           </ScrollView>
 
@@ -242,13 +253,16 @@ export default function GardenScreen() {
           <Text style={styles.hint}>Tap an empty cell to plant · Tap a plant to view details</Text>
         </ScrollView>
       ) : (
-        <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>🏡</Text>
-          <Text style={styles.emptyText}>No gardens yet</Text>
-          <TouchableOpacity style={styles.button} onPress={() => setShowNewGarden(true)}>
-            <Text style={styles.buttonText}>Create a garden</Text>
-          </TouchableOpacity>
-        </View>
+        <FadeInView style={styles.empty} from="scale">
+          <Text style={styles.emptyEmoji}>🌻</Text>
+          <Text style={styles.emptyTitle}>No garden yet</Text>
+          <Text style={styles.emptySub}>Let's set one up — it only takes a minute.</Text>
+          <PressableScale onPress={() => router.push('/new-garden')} style={styles.emptyBtn}>
+            <LinearGradient colors={[G.sage, G.forest]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyBtnGradient}>
+              <Text style={styles.emptyBtnText}>🌱  Create my first garden</Text>
+            </LinearGradient>
+          </PressableScale>
+        </FadeInView>
       )}
 
       {/* New Garden Modal */}
@@ -456,7 +470,13 @@ export default function GardenScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f7ee' },
+  container: { flex: 1, backgroundColor: G.foam },
+  emptyTitle:  { fontSize: 22, fontWeight: '800', color: G.forest, marginBottom: 8, marginTop: 8 },
+  emptySub:    { fontSize: 15, color: G.stone, textAlign: 'center', marginBottom: 28, lineHeight: 22 },
+  emptyBtn:    { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  emptyBtnGradient: { paddingVertical: 15, paddingHorizontal: 28 },
+  emptyBtnText: { color: G.cloud, fontWeight: '700', fontSize: 16 },
+  inactiveCell: { opacity: 0.45 },
   gardenPicker: { flexGrow: 0, paddingHorizontal: 16, paddingVertical: 12 },
   gardenChip: {
     borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8,
