@@ -41,11 +41,7 @@ function DesktopTabsWrapper() {
       <View style={styles.desktopContent}>
         <Tabs
           tabBar={() => null}
-          screenOptions={{
-            headerStyle: { backgroundColor: G.foam, ...Shadow.soft },
-            headerTintColor: G.forest,
-            headerTitleStyle: { fontWeight: '700', fontSize: 18 },
-          }}
+          screenOptions={{ headerShown: false }}
         >
           {TABS.map(tab => (
             <Tabs.Screen key={tab.name} name={tab.name} options={{ title: tab.label }} />

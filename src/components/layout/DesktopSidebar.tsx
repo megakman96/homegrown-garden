@@ -1,8 +1,7 @@
 import { View, Text, StyleSheet, Image, Pressable } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
-import { G, Shadow, Spring, R } from '@/constants/theme';
+import { G, Spring, R } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 
 const TABS = [
@@ -15,61 +14,71 @@ const TABS = [
 
 function NavItem({ tab, active }: { tab: typeof TABS[0]; active: boolean }) {
   const router = useRouter();
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const bg = useSharedValue(0);
+  const animStyle = useAnimatedStyle(() => ({
+    backgroundColor: `rgba(255,255,255,${bg.value * 0.1})`,
+  }));
 
   return (
     <Pressable
-      onPressIn={() => { scale.value = withSpring(0.97, Spring.snappy); }}
-      onPressOut={() => { scale.value = withSpring(1, Spring.gentle); }}
+      onPressIn={() => { bg.value = withSpring(1.2, Spring.snappy); }}
+      onPressOut={() => { bg.value = withSpring(active ? 1 : 0, Spring.gentle); }}
       onPress={() => router.push(tab.route as any)}
     >
       <Animated.View style={[styles.navItem, active && styles.navItemActive, animStyle]}>
-        <Text style={styles.navEmoji}>{tab.emoji}</Text>
+        <Text style={[styles.navEmoji, active && styles.navEmojiActive]}>{tab.emoji}</Text>
         <Text style={[styles.navLabel, active && styles.navLabelActive]}>{tab.label}</Text>
-        {active && <View style={styles.activeBar} />}
+        {active && <View style={styles.activePip} />}
       </Animated.View>
     </Pressable>
   );
 }
 
 export function DesktopSidebar() {
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const { user, signOut } = useAuth();
-
   const activeSegment = segments[1] ?? 'index';
 
   return (
     <View style={styles.sidebar}>
-      {/* Logo */}
-      <View style={styles.logoRow}>
+      {/* Brand */}
+      <View style={styles.brand}>
         <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
-        <Text style={styles.logoText}>HomeGrown</Text>
+        <View>
+          <Text style={styles.brandName}>HomeGrown</Text>
+          <Text style={styles.brandTag}>Garden Tracker</Text>
+        </View>
       </View>
+
+      <Text style={styles.sectionLabel}>MENU</Text>
 
       {/* Nav */}
       <View style={styles.nav}>
         {TABS.map(tab => {
           const tabKey = tab.name.replace('(tabs)/', '');
-          const isActive = activeSegment === tabKey || (activeSegment === '(tabs)' && tabKey === 'index');
+          const isActive =
+            activeSegment === tabKey ||
+            (tabKey === 'index' && (activeSegment === '(tabs)' || activeSegment === undefined));
           return <NavItem key={tab.name} tab={tab} active={isActive} />;
         })}
       </View>
 
-      {/* Spacer */}
       <View style={{ flex: 1 }} />
 
       {/* User */}
       {user && (
-        <View style={styles.userRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user.email[0].toUpperCase()}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
+        <View style={styles.userSection}>
+          <View style={styles.userRow}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{user.email[0].toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
+              <Text style={styles.userRole}>Gardener</Text>
+            </View>
           </View>
           <Pressable onPress={signOut} style={styles.signOutBtn}>
-            <Text style={styles.signOutText}>↩</Text>
+            <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
         </View>
       )}
@@ -79,71 +88,85 @@ export function DesktopSidebar() {
 
 const styles = StyleSheet.create({
   sidebar: {
-    width: 220,
+    width: 256,
     backgroundColor: G.forest,
-    paddingTop: 24,
+    paddingTop: 28,
     paddingBottom: 24,
-    paddingHorizontal: 12,
-    ...Shadow.float,
+    paddingHorizontal: 16,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.06)',
   },
-  logoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 8,
-    marginBottom: 32,
-  },
-  logo: { width: 36, height: 36, borderRadius: R.full },
-  logoText: { color: G.foam, fontWeight: '800', fontSize: 18, letterSpacing: -0.3 },
-  nav: { gap: 4 },
-  navItem: {
+  brand: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: R.md,
-    position: 'relative',
+    paddingHorizontal: 6,
+    marginBottom: 28,
   },
-  navItemActive: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  navEmoji: { fontSize: 20 },
-  navLabel: { color: G.seafoam, fontSize: 15, fontWeight: '500' },
-  navLabelActive: { color: G.cloud, fontWeight: '700' },
-  activeBar: {
-    position: 'absolute',
-    left: 0,
-    top: 8,
-    bottom: 8,
-    width: 3,
-    borderRadius: R.full,
-    backgroundColor: G.sage,
+  logo: { width: 40, height: 40, borderRadius: R.sm },
+  brandName: { color: G.foam, fontWeight: '800', fontSize: 17, letterSpacing: -0.3 },
+  brandTag: { color: G.seafoam, fontSize: 11, marginTop: 1 },
+  sectionLabel: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    paddingHorizontal: 10,
+    marginBottom: 6,
   },
-  userRow: {
+  nav: { gap: 2 },
+  navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 8,
-    paddingTop: 16,
+    gap: 11,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: R.sm,
+    position: 'relative',
+  },
+  navItemActive: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  navEmoji: { fontSize: 17, opacity: 0.65 },
+  navEmojiActive: { opacity: 1 },
+  navLabel: { color: G.seafoam, fontSize: 14, fontWeight: '500' },
+  navLabelActive: { color: G.cloud, fontWeight: '700' },
+  activePip: {
+    position: 'absolute',
+    left: 0,
+    top: '25%',
+    bottom: '25%',
+    width: 3,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+    backgroundColor: G.sage,
+  },
+  userSection: {
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.1)',
+    paddingTop: 16,
+    gap: 10,
   },
+  userRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: R.full,
-    backgroundColor: G.sage,
+    backgroundColor: G.fern,
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
-  avatarText: { color: G.cloud, fontWeight: '700', fontSize: 14 },
-  userEmail: { color: G.seafoam, fontSize: 12 },
+  avatarText: { color: G.cloud, fontWeight: '700', fontSize: 15 },
+  userEmail: { color: G.foam, fontSize: 12, fontWeight: '600' },
+  userRole: { color: G.seafoam, fontSize: 11, marginTop: 1 },
   signOutBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: R.full,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: R.sm,
+    paddingVertical: 9,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  signOutText: { color: G.mist, fontSize: 14 },
+  signOutText: { color: G.mist, fontSize: 13, fontWeight: '500' },
 });

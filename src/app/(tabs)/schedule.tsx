@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import type { Plant } from '@/lib/types';
 import {
   fetchWeather, getBrowserLocation, calculateWateringAdvice, formatDateShort,
@@ -23,6 +24,7 @@ interface PlantWithAdvice {
 
 export default function ScheduleScreen() {
   const { user } = useAuth();
+  const { isDesktop } = useBreakpoint();
   const router = useRouter();
   const [plants, setPlants] = useState<Plant[]>([]);
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -182,65 +184,47 @@ export default function ScheduleScreen() {
   const overdue = items.filter((i) => i.overdue);
   const upcoming = items.filter((i) => !i.overdue);
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      {/* Weather Widget */}
-      <WeatherWidget
-        weather={weather}
-        loading={weatherLoading}
-        error={weatherError}
-        onSetLocation={() => setShowLocationModal(true)}
-        onChangeLocation={changeLocation}
-      />
-
-      {/* Location picker modal */}
-      <Modal visible={showLocationModal} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>📍 Set Your Location</Text>
-            <Text style={styles.modalSub}>Used for rain forecasts and watering advice</Text>
-
-            <TouchableOpacity style={styles.gpsButton} onPress={useMyLocation} disabled={gpsLoading}>
-              <Text style={styles.gpsButtonText}>
-                {gpsLoading ? 'Locating...' : '📡 Use my current location'}
-              </Text>
-            </TouchableOpacity>
-            {gpsError && <Text style={styles.gpsError}>{gpsError}</Text>}
-
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or search</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Search city (e.g. London, Austin)"
-              value={cityQuery}
-              onChangeText={searchCities}
-              autoFocus
-            />
-
-            {citySearching && <ActivityIndicator color="#2d6a4f" style={{ marginVertical: 8 }} />}
-
-            {cityResults.map((r, i) => (
-              <TouchableOpacity key={i} style={styles.cityRow} onPress={() => selectCity(r)}>
-                <Text style={styles.cityName}>{r.name}</Text>
-                <Text style={styles.cityRegion}>{r.admin1 ? `${r.admin1}, ` : ''}{r.country}</Text>
-              </TouchableOpacity>
-            ))}
-
-            <TouchableOpacity onPress={() => { setShowLocationModal(false); setGpsError(null); }} style={styles.skipButton}>
-              <Text style={styles.skipButtonText}>Skip for now</Text>
-            </TouchableOpacity>
+  const locationModal = (
+    <Modal visible={showLocationModal} transparent animationType="slide">
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modal}>
+          <Text style={styles.modalTitle}>📍 Set Your Location</Text>
+          <Text style={styles.modalSub}>Used for rain forecasts and watering advice</Text>
+          <TouchableOpacity style={styles.gpsButton} onPress={useMyLocation} disabled={gpsLoading}>
+            <Text style={styles.gpsButtonText}>
+              {gpsLoading ? 'Locating...' : '📡 Use my current location'}
+            </Text>
+          </TouchableOpacity>
+          {gpsError && <Text style={styles.gpsError}>{gpsError}</Text>}
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or search</Text>
+            <View style={styles.dividerLine} />
           </View>
+          <TextInput
+            style={styles.input}
+            placeholder="Search city (e.g. London, Austin)"
+            value={cityQuery}
+            onChangeText={searchCities}
+            autoFocus
+          />
+          {citySearching && <ActivityIndicator color="#2d6a4f" style={{ marginVertical: 8 }} />}
+          {cityResults.map((r, i) => (
+            <TouchableOpacity key={i} style={styles.cityRow} onPress={() => selectCity(r)}>
+              <Text style={styles.cityName}>{r.name}</Text>
+              <Text style={styles.cityRegion}>{r.admin1 ? `${r.admin1}, ` : ''}{r.country}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity onPress={() => { setShowLocationModal(false); setGpsError(null); }} style={styles.skipButton}>
+            <Text style={styles.skipButtonText}>Skip for now</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </View>
+    </Modal>
+  );
 
+  const scheduleList = (
+    <>
       {overdue.length > 0 && (
         <Section title={`🔴 Overdue (${overdue.length})`}>
           {overdue.map((item, i) => (
@@ -248,7 +232,6 @@ export default function ScheduleScreen() {
           ))}
         </Section>
       )}
-
       {upcoming.length > 0 && (
         <Section title="📋 Upcoming">
           {upcoming.map((item, i) => (
@@ -256,7 +239,6 @@ export default function ScheduleScreen() {
           ))}
         </Section>
       )}
-
       {items.length === 0 && !weatherLoading && (
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>📅</Text>
@@ -264,6 +246,54 @@ export default function ScheduleScreen() {
           <Text style={styles.emptyHint}>Set watering intervals and harvest dates on your plants to see them here</Text>
         </View>
       )}
+    </>
+  );
+
+  if (isDesktop) {
+    return (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.desktopContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {locationModal}
+        <View style={styles.desktopPageHeader}>
+          <Text style={styles.desktopPageTitle}>📅 Schedule</Text>
+          <Text style={styles.desktopPageSub}>Watering & harvest timeline for your plants</Text>
+        </View>
+        <View style={styles.desktopBody}>
+          <View style={styles.desktopWeatherCol}>
+            <WeatherWidget
+              weather={weather}
+              loading={weatherLoading}
+              error={weatherError}
+              onSetLocation={() => setShowLocationModal(true)}
+              onChangeLocation={changeLocation}
+            />
+          </View>
+          <View style={styles.desktopScheduleCol}>
+            {scheduleList}
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
+      <WeatherWidget
+        weather={weather}
+        loading={weatherLoading}
+        error={weatherError}
+        onSetLocation={() => setShowLocationModal(true)}
+        onChangeLocation={changeLocation}
+      />
+      {locationModal}
+      {scheduleList}
     </ScrollView>
   );
 }
@@ -430,6 +460,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f7ee' },
   content: { padding: 16, paddingBottom: 40 },
+  desktopContent: { maxWidth: 1200, width: '100%', alignSelf: 'center', paddingBottom: 48 },
+  desktopPageHeader: { paddingHorizontal: 32, paddingTop: 32, paddingBottom: 20 },
+  desktopPageTitle: { fontSize: 28, fontWeight: '800', color: '#1b4332', letterSpacing: -0.5 },
+  desktopPageSub: { fontSize: 14, color: '#52796f', marginTop: 4 },
+  desktopBody: { flexDirection: 'row', gap: 24, paddingHorizontal: 32, alignItems: 'flex-start' },
+  desktopWeatherCol: { width: 360, flexShrink: 0 },
+  desktopScheduleCol: { flex: 1 },
 
   // Weather widget
   weatherCard: {

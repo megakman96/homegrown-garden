@@ -1,4 +1,4 @@
-const CACHE = 'homegrown-v1';
+const CACHE = 'homegrown-v2';
 
 const PRECACHE = ['/'];
 
@@ -18,9 +18,23 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const url = event.request.url;
-  // Never intercept Supabase API calls
-  if (url.includes('supabase.co') || event.request.method !== 'GET') return;
+  if (url.includes('supabase.co') || url.includes('trycloudflare.com') || event.request.method !== 'GET') return;
 
+  // HTML: network-first so new deploys are always picked up
+  if (event.request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        if (response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE).then(c => c.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Static assets (hashed filenames): cache-first
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;

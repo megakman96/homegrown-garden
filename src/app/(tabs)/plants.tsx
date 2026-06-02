@@ -8,6 +8,7 @@ import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
@@ -27,6 +28,7 @@ const HEALTH_LABELS: Record<HealthStatus, string> = {
 
 export default function PlantsScreen() {
   const { user } = useAuth();
+  const { isDesktop } = useBreakpoint();
   const router = useRouter();
   const [plants, setPlants] = useState<Plant[]>([]);
   const [gardens, setGardens] = useState<Garden[]>([]);
@@ -105,6 +107,185 @@ export default function PlantsScreen() {
     }
   }
 
+  const addModal = (
+    <Modal visible={showAdd} transparent animationType="slide">
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modal}>
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.modalTitle}>🌱 Add Plant</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Plant name (e.g. Tomato) *"
+              placeholderTextColor={G.stone}
+              value={form.name}
+              onChangeText={onNameChange}
+              autoFocus
+            />
+            {suggestions.length > 0 && (
+              <View style={styles.suggestions}>
+                {suggestions.slice(0, 4).map(({ key, entry }) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={styles.suggestionRow}
+                    onPress={() => selectSuggestion(key, entry)}
+                  >
+                    <Text style={styles.suggestionName}>{entry.name}</Text>
+                    <Text style={styles.suggestionMeta}>
+                      {SUN_EMOJIS[entry.sunRequirement]} · 💧 every {entry.waterIntervalDays}d · {entry.category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <TextInput
+              style={styles.input}
+              placeholder="Variety (optional)"
+              placeholderTextColor={G.stone}
+              value={form.variety}
+              onChangeText={(v) => setForm((f) => ({ ...f, variety: v }))}
+            />
+            <Text style={styles.fieldLabel}>Sun requirement</Text>
+            <View style={styles.sunRow}>
+              {(['full_sun', 'partial_sun', 'shade'] as SunRequirement[]).map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.sunChip, form.sunRequirement === s && styles.sunChipActive]}
+                  onPress={() => setForm((f) => ({ ...f, sunRequirement: s }))}
+                >
+                  <Text style={[styles.sunChipText, form.sunRequirement === s && styles.sunChipTextActive]}>
+                    {SUN_EMOJIS[s]} {s.replace('_', ' ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.waterRow}>
+              <Text style={styles.fieldLabel}>Water every</Text>
+              <View style={styles.waterStepper}>
+                <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.max(1, f.waterIntervalDays - 1) }))}>
+                  <Text style={styles.stepBtnText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.stepValue}>{form.waterIntervalDays} days</Text>
+                <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.min(30, f.waterIntervalDays + 1) }))}>
+                  <Text style={styles.stepBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            {gardens.length > 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
+                {gardens.map((g) => (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={[styles.gardenChip, form.gardenId === g.id && styles.gardenChipActive]}
+                    onPress={() => setForm((f) => ({ ...f, gardenId: g.id }))}
+                  >
+                    <Text style={[styles.gardenChipText, form.gardenId === g.id && styles.gardenChipTextActive]}>
+                      {g.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </ScrollView>
+          <View style={styles.modalButtons}>
+            <TouchableOpacity onPress={() => { setSuggestions([]); setShowAdd(false); }} disabled={adding}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <PressableScale
+              style={[styles.addBtn, adding && { opacity: 0.6 }]}
+              onPress={addPlant}
+              disabled={adding}
+            >
+              <LinearGradient
+                colors={[G.sage, G.hunter]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.addBtnGradient}
+              >
+                {adding
+                  ? <ActivityIndicator color={G.cloud} size="small" />
+                  : <Text style={styles.addBtnText}>Add Plant</Text>
+                }
+              </LinearGradient>
+            </PressableScale>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const plantCards = plants.map((plant, i) => (
+    <FadeInView key={plant.id} delay={i * 40} from="bottom" style={isDesktop ? styles.desktopCardWrap : undefined}>
+      <PressableScale
+        style={isDesktop ? styles.desktopCard : styles.card}
+        onPress={() => router.push(`/plant/${plant.id}`)}
+      >
+        <View style={[styles.cardAccent, { backgroundColor: HEALTH_COLORS[plant.health_status] }]} />
+        <View style={isDesktop ? styles.desktopCardInner : styles.cardRow}>
+          <PlantAvatar name={plant.name} size={isDesktop ? 44 : 52} />
+          <View style={styles.cardContent}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.plantName} numberOfLines={1}>{plant.name}</Text>
+              <View style={styles.cardBadges}>
+                {plant.sun_requirement && (
+                  <Text style={styles.sunBadge}>{SUN_EMOJIS[plant.sun_requirement as SunRequirement]}</Text>
+                )}
+              </View>
+            </View>
+            {plant.variety && <Text style={styles.variety} numberOfLines={1}>{plant.variety}</Text>}
+            <View style={styles.cardMeta}>
+              <Text style={styles.healthLabel}>{HEALTH_LABELS[plant.health_status]}</Text>
+              {plant.expected_harvest_date && (
+                <Text style={styles.metaText}>
+                  🧺 {new Date(plant.expected_harvest_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                </Text>
+              )}
+              {plant.total_yield_grams > 0 && (
+                <Text style={styles.metaText}>⚖️ {plant.total_yield_grams}g</Text>
+              )}
+            </View>
+          </View>
+        </View>
+      </PressableScale>
+    </FadeInView>
+  ));
+
+  if (isDesktop) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.desktopTopBar}>
+          <View>
+            <Text style={styles.desktopPageTitle}>🌿 Plants</Text>
+            <Text style={styles.desktopPageSub}>{plants.length} plant{plants.length !== 1 ? 's' : ''} in your collection</Text>
+          </View>
+          <PressableScale onPress={() => setShowAdd(true)} style={styles.desktopAddBtn}>
+            <LinearGradient
+              colors={[G.sage, G.hunter]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={styles.desktopAddBtnGradient}
+            >
+              <Text style={styles.desktopAddBtnText}>+ Add Plant</Text>
+            </LinearGradient>
+          </PressableScale>
+        </View>
+        <ScrollView contentContainerStyle={styles.desktopGrid} showsVerticalScrollIndicator={false}>
+          {plants.length === 0 ? (
+            <FadeInView style={styles.empty} from="scale">
+              <Text style={styles.emptyEmoji}>🌱</Text>
+              <Text style={styles.emptyTitle}>No plants yet</Text>
+              <Text style={styles.emptyText}>Click "Add Plant" to start your garden journal.</Text>
+            </FadeInView>
+          ) : plantCards}
+        </ScrollView>
+        {addModal}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <PressableScale onPress={() => setShowAdd(true)} style={styles.addButton}>
@@ -124,154 +305,9 @@ export default function PlantsScreen() {
             <Text style={styles.emptyTitle}>No plants yet</Text>
             <Text style={styles.emptyText}>Tap "Add Plant" to start your garden journal.</Text>
           </FadeInView>
-        ) : (
-          plants.map((plant, i) => (
-            <FadeInView key={plant.id} delay={i * 40} from="bottom">
-              <PressableScale
-                style={styles.card}
-                onPress={() => router.push(`/plant/${plant.id}`)}
-              >
-                <View style={[styles.cardAccent, { backgroundColor: HEALTH_COLORS[plant.health_status] }]} />
-                <View style={styles.cardRow}>
-                  <PlantAvatar name={plant.name} size={52} />
-                  <View style={styles.cardContent}>
-                    <View style={styles.cardHeader}>
-                      <Text style={styles.plantName}>{plant.name}</Text>
-                      <View style={styles.cardBadges}>
-                        {plant.sun_requirement && (
-                          <Text style={styles.sunBadge}>{SUN_EMOJIS[plant.sun_requirement as SunRequirement]}</Text>
-                        )}
-                      </View>
-                    </View>
-                    {plant.variety && <Text style={styles.variety}>{plant.variety}</Text>}
-                    <View style={styles.cardMeta}>
-                      <Text style={styles.healthLabel}>{HEALTH_LABELS[plant.health_status]}</Text>
-                      {plant.expected_harvest_date && (
-                        <Text style={styles.metaText}>
-                          🧺 {new Date(plant.expected_harvest_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                        </Text>
-                      )}
-                      {plant.total_yield_grams > 0 && (
-                        <Text style={styles.metaText}>⚖️ {plant.total_yield_grams}g</Text>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </PressableScale>
-            </FadeInView>
-          ))
-        )}
+        ) : plantCards}
       </ScrollView>
-
-      <Modal visible={showAdd} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalContent}
-              keyboardShouldPersistTaps="handled"
-              bounces={false}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.modalTitle}>🌱 Add Plant</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Plant name (e.g. Tomato) *"
-                placeholderTextColor={G.stone}
-                value={form.name}
-                onChangeText={onNameChange}
-                autoFocus
-              />
-              {suggestions.length > 0 && (
-                <View style={styles.suggestions}>
-                  {suggestions.slice(0, 4).map(({ key, entry }) => (
-                    <TouchableOpacity
-                      key={key}
-                      style={styles.suggestionRow}
-                      onPress={() => selectSuggestion(key, entry)}
-                    >
-                      <Text style={styles.suggestionName}>{entry.name}</Text>
-                      <Text style={styles.suggestionMeta}>
-                        {SUN_EMOJIS[entry.sunRequirement]} · 💧 every {entry.waterIntervalDays}d · {entry.category}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-              <TextInput
-                style={styles.input}
-                placeholder="Variety (optional)"
-                placeholderTextColor={G.stone}
-                value={form.variety}
-                onChangeText={(v) => setForm((f) => ({ ...f, variety: v }))}
-              />
-              <Text style={styles.fieldLabel}>Sun requirement</Text>
-              <View style={styles.sunRow}>
-                {(['full_sun', 'partial_sun', 'shade'] as SunRequirement[]).map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.sunChip, form.sunRequirement === s && styles.sunChipActive]}
-                    onPress={() => setForm((f) => ({ ...f, sunRequirement: s }))}
-                  >
-                    <Text style={[styles.sunChipText, form.sunRequirement === s && styles.sunChipTextActive]}>
-                      {SUN_EMOJIS[s]} {s.replace('_', ' ')}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={styles.waterRow}>
-                <Text style={styles.fieldLabel}>Water every</Text>
-                <View style={styles.waterStepper}>
-                  <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.max(1, f.waterIntervalDays - 1) }))}>
-                    <Text style={styles.stepBtnText}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.stepValue}>{form.waterIntervalDays} days</Text>
-                  <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.min(30, f.waterIntervalDays + 1) }))}>
-                    <Text style={styles.stepBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {gardens.length > 1 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
-                  {gardens.map((g) => (
-                    <TouchableOpacity
-                      key={g.id}
-                      style={[styles.gardenChip, form.gardenId === g.id && styles.gardenChipActive]}
-                      onPress={() => setForm((f) => ({ ...f, gardenId: g.id }))}
-                    >
-                      <Text style={[styles.gardenChipText, form.gardenId === g.id && styles.gardenChipTextActive]}>
-                        {g.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => { setSuggestions([]); setShowAdd(false); }} disabled={adding}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <PressableScale
-                style={[styles.addBtn, adding && { opacity: 0.6 }]}
-                onPress={addPlant}
-                disabled={adding}
-              >
-                <LinearGradient
-                  colors={[G.sage, G.hunter]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.addBtnGradient}
-                >
-                  {adding
-                    ? <ActivityIndicator color={G.cloud} size="small" />
-                    : <Text style={styles.addBtnText}>Add Plant</Text>
-                  }
-                </LinearGradient>
-              </PressableScale>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {addModal}
     </View>
   );
 }
@@ -286,6 +322,47 @@ const HEALTH_COLORS: Record<HealthStatus, string> = {
 
 const styles = StyleSheet.create({
   container:       { flex: 1, backgroundColor: G.foam },
+
+  // Desktop
+  desktopTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 32,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: G.mist,
+    backgroundColor: G.foam,
+  },
+  desktopPageTitle: { fontSize: 28, fontWeight: '800', color: G.forest, letterSpacing: -0.5 },
+  desktopPageSub: { fontSize: 13, color: G.stone, marginTop: 3 },
+  desktopAddBtn: { borderRadius: R.md, overflow: 'hidden', ...Shadow.card },
+  desktopAddBtnGradient: { paddingVertical: 11, paddingHorizontal: 22 },
+  desktopAddBtnText: { color: G.cloud, fontWeight: '700', fontSize: 14 },
+  desktopGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    padding: 28,
+    paddingBottom: 48,
+  },
+  desktopCardWrap: { width: '31.5%' },
+  desktopCard: {
+    backgroundColor: G.cloud,
+    borderRadius: R.lg,
+    overflow: 'hidden',
+    ...Shadow.soft,
+    flex: 1,
+  },
+  desktopCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+
+  // Mobile
   addButton:       { margin: 16, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   addButtonGradient: { paddingVertical: 14, alignItems: 'center' },
   addButtonText:   { color: G.cloud, fontWeight: '700', fontSize: 16 },
