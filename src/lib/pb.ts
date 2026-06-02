@@ -26,6 +26,7 @@ const store = new AsyncAuthStore({
 });
 
 export const pb = new PocketBase(PB_URL, store);
+pb.autoCancellation(false);
 
 export function fileUrl(record: { collectionId: string; collectionName: string; id: string }, filename: string): string {
   return `${PB_URL}/api/files/${record.collectionName}/${record.id}/${filename}`;
