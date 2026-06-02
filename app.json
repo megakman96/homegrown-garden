@@ -1,0 +1,77 @@
+{
+  "expo": {
+    "name": "HomeGrown",
+    "slug": "homegrown-garden",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "homegrown",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.homegrown.garden",
+      "icon": "./assets/images/icon.png"
+    },
+    "android": {
+      "package": "com.homegrown.garden",
+      "adaptiveIcon": {
+        "backgroundColor": "#1b4332",
+        "foregroundImage": "./assets/images/icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "single-page",
+      "favicon": "./assets/images/favicon.png",
+      "name": "HomeGrown",
+      "shortName": "HomeGrown",
+      "description": "Plan your garden, track your plants, harvest more.",
+      "themeColor": "#1b4332",
+      "backgroundColor": "#f0f7ee",
+      "lang": "en",
+      "scope": "/",
+      "startUrl": "/",
+      "display": "standalone",
+      "orientation": "portrait-primary",
+      "icons": [
+        {
+          "src": "./assets/images/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png",
+          "purpose": "any maskable"
+        },
+        {
+          "src": "./assets/images/icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png",
+          "purpose": "any maskable"
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow HomeGrown to access your photos to add plant progress pictures."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1b4332",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 180,
+          "android": {
+            "image": "./assets/images/icon.png",
+            "imageWidth": 180
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

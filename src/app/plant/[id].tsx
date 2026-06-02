@@ -1,0 +1,306 @@
+import { useEffect, useState } from 'react';
+import {
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  TextInput, Modal, Alert, Image,
+} from 'react-native';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/use-auth';
+import type { Plant, Harvest, PlantPhoto, HealthStatus } from '@/lib/types';
+
+const HEALTH_OPTIONS: HealthStatus[] = ['healthy', 'needs_water', 'sick', 'harvested', 'dead'];
+
+export default function PlantDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
+  const navigation = useNavigation();
+  const [plant, setPlant] = useState<Plant | null>(null);
+  const [harvests, setHarvests] = useState<Harvest[]>([]);
+  const [photos, setPhotos] = useState<PlantPhoto[]>([]);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [showHarvest, setShowHarvest] = useState(false);
+  const [harvestGrams, setHarvestGrams] = useState('');
+  const [harvestNotes, setHarvestNotes] = useState('');
+
+  useEffect(() => {
+    if (!id) return;
+    Promise.all([
+      supabase.from('plants').select('*').eq('id', id).single(),
+      supabase.from('harvests').select('*').eq('plant_id', id).order('harvested_at', { ascending: false }),
+      supabase.from('plant_photos').select('*').eq('plant_id', id).order('taken_at', { ascending: false }),
+    ]).then(([p, h, ph]) => {
+      if (p.data) {
+        setPlant(p.data);
+        navigation.setOptions({ title: p.data.name });
+      }
+      setHarvests(h.data ?? []);
+      setPhotos(ph.data ?? []);
+    });
+  }, [id]);
+
+  useEffect(() => {
+    photos.forEach(async (photo) => {
+      if (photoUrls[photo.id]) return;
+      const { data } = supabase.storage.from('plant-photos').getPublicUrl(photo.storage_path);
+      setPhotoUrls((prev) => ({ ...prev, [photo.id]: data.publicUrl }));
+    });
+  }, [photos]);
+
+  async function updateHealth(status: HealthStatus) {
+    if (!plant) return;
+    await supabase.from('plants').update({ health_status: status }).eq('id', plant.id);
+    setPlant((p) => p ? { ...p, health_status: status } : p);
+  }
+
+  async function markWatered() {
+    if (!plant) return;
+    const now = new Date().toISOString();
+    await supabase.from('plants').update({ last_watered: now }).eq('id', plant.id);
+    setPlant((p) => p ? { ...p, last_watered: now } : p);
+    Alert.alert('Watered!', `${plant.name} marked as watered.`);
+  }
+
+  async function logHarvest() {
+    if (!user || !plant || !harvestGrams) return;
+    const grams = parseInt(harvestGrams, 10);
+    if (isNaN(grams)) return;
+    const { data } = await supabase
+      .from('harvests')
+      .insert({ plant_id: plant.id, user_id: user.id, yield_grams: grams, notes: harvestNotes || null })
+      .select()
+      .single();
+    if (data) {
+      setHarvests((h) => [data, ...h]);
+      const newTotal = plant.total_yield_grams + grams;
+      await supabase.from('plants').update({ total_yield_grams: newTotal }).eq('id', plant.id);
+      setPlant((p) => p ? { ...p, total_yield_grams: newTotal } : p);
+    }
+    setShowHarvest(false);
+    setHarvestGrams('');
+    setHarvestNotes('');
+  }
+
+  async function addPhoto() {
+    if (!user || !plant) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    const ext = asset.uri.split('.').pop() ?? 'jpg';
+    const path = `${user.id}/${plant.id}/${Date.now()}.${ext}`;
+
+    const response = await fetch(asset.uri);
+    const blob = await response.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+
+    const { error } = await supabase.storage
+      .from('plant-photos')
+      .upload(path, arrayBuffer, { contentType: `image/${ext}` });
+
+    if (error) { Alert.alert('Upload failed', error.message); return; }
+
+    const { data } = await supabase
+      .from('plant_photos')
+      .insert({ plant_id: plant.id, user_id: user.id, storage_path: path })
+      .select()
+      .single();
+
+    if (data) setPhotos((p) => [data, ...p]);
+  }
+
+  if (!plant) return <View style={styles.loading}><Text>Loading...</Text></View>;
+
+  const totalYieldKg = (plant.total_yield_grams / 1000).toFixed(2);
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Health status */}
+      <Text style={styles.label}>Health Status</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.healthPicker}>
+        {HEALTH_OPTIONS.map((status) => (
+          <TouchableOpacity
+            key={status}
+            style={[styles.healthChip, plant.health_status === status && styles.healthChipActive]}
+            onPress={() => updateHealth(status)}
+          >
+            <Text style={[styles.healthChipText, plant.health_status === status && styles.healthChipTextActive]}>
+              {status.replace('_', ' ')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Info card */}
+      <View style={styles.infoCard}>
+        {plant.variety && <InfoRow label="Variety" value={plant.variety} />}
+        {plant.planted_date && <InfoRow label="Planted" value={new Date(plant.planted_date).toLocaleDateString()} />}
+        {plant.expected_harvest_date && (
+          <InfoRow label="Expected harvest" value={new Date(plant.expected_harvest_date).toLocaleDateString()} />
+        )}
+        {plant.last_watered && (
+          <InfoRow label="Last watered" value={new Date(plant.last_watered).toLocaleDateString()} />
+        )}
+        {plant.water_interval_days && (
+          <InfoRow label="Water every" value={`${plant.water_interval_days} days`} />
+        )}
+        <InfoRow label="Total yield" value={`${totalYieldKg} kg`} />
+        {plant.notes && <InfoRow label="Notes" value={plant.notes} />}
+      </View>
+
+      {/* Quick actions */}
+      <View style={styles.actions}>
+        <TouchableOpacity style={styles.actionButton} onPress={markWatered}>
+          <Text style={styles.actionText}>💧 Mark Watered</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => setShowHarvest(true)}>
+          <Text style={styles.actionText}>🧺 Log Harvest</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={addPhoto}>
+          <Text style={styles.actionText}>📷 Add Photo</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Photos */}
+      {photos.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Photos</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
+            {photos.map((photo) => (
+              photoUrls[photo.id] ? (
+                <Image key={photo.id} source={{ uri: photoUrls[photo.id] }} style={styles.photo} />
+              ) : (
+                <View key={photo.id} style={[styles.photo, styles.photoPlaceholder]}>
+                  <Text>📷</Text>
+                </View>
+              )
+            ))}
+          </ScrollView>
+        </>
+      )}
+
+      {/* Harvest log */}
+      {harvests.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Harvest Log</Text>
+          {harvests.map((h) => (
+            <View key={h.id} style={styles.harvestRow}>
+              <Text style={styles.harvestDate}>{new Date(h.harvested_at).toLocaleDateString()}</Text>
+              <Text style={styles.harvestYield}>{h.yield_grams}g</Text>
+              {h.notes && <Text style={styles.harvestNotes}>{h.notes}</Text>}
+            </View>
+          ))}
+        </>
+      )}
+
+      <Modal visible={showHarvest} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Log Harvest</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Yield in grams"
+              value={harvestGrams}
+              onChangeText={setHarvestGrams}
+              keyboardType="numeric"
+              autoFocus
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Notes (optional)"
+              value={harvestNotes}
+              onChangeText={setHarvestNotes}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity onPress={() => setShowHarvest(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={logHarvest}>
+                <Text style={styles.buttonText}>Log</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#f0f7ee' },
+  content: { padding: 16, paddingBottom: 40 },
+  label: { fontSize: 13, fontWeight: '600', color: '#52796f', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  healthPicker: { flexGrow: 0, marginBottom: 20 },
+  healthChip: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#b7e4c7',
+  },
+  healthChipActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
+  healthChipText: { color: '#2d6a4f', fontWeight: '500', textTransform: 'capitalize' },
+  healthChipTextActive: { color: '#fff' },
+  infoCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 20 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f0f7ee' },
+  infoLabel: { fontSize: 14, color: '#52796f' },
+  infoValue: { fontSize: 14, color: '#1b4332', fontWeight: '500', maxWidth: '55%', textAlign: 'right' },
+  actions: { flexDirection: 'row', gap: 8, marginBottom: 24 },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#b7e4c7',
+  },
+  actionText: { fontSize: 12, fontWeight: '600', color: '#2d6a4f', textAlign: 'center' },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#2d6a4f', marginBottom: 12 },
+  photoRow: { flexGrow: 0, marginBottom: 24 },
+  photo: { width: 120, height: 120, borderRadius: 12, marginRight: 10 },
+  photoPlaceholder: { backgroundColor: '#d8f3dc', justifyContent: 'center', alignItems: 'center' },
+  harvestRow: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  harvestDate: { fontSize: 13, color: '#52796f' },
+  harvestYield: { fontSize: 15, fontWeight: '700', color: '#2d6a4f', flex: 1 },
+  harvestNotes: { fontSize: 12, color: '#74c69d' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modal: { backgroundColor: '#fff', borderRadius: 20, padding: 24, margin: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#2d6a4f', marginBottom: 16 },
+  input: {
+    backgroundColor: '#f0f7ee',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#b7e4c7',
+    marginBottom: 12,
+  },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  cancelText: { color: '#52796f', fontSize: 16 },
+  button: { backgroundColor: '#2d6a4f', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
+  buttonText: { color: '#fff', fontWeight: '600' },
+});

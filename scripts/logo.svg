@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="256" fill="#1b4332"/>
+
+  <!-- House body -->
+  <rect x="156" y="260" width="200" height="150" rx="8" fill="#d8f3dc"/>
+  <!-- House door -->
+  <rect x="226" y="330" width="60" height="80" rx="6" fill="#2d6a4f"/>
+  <!-- House roof -->
+  <polygon points="256,120 130,265 382,265" fill="#52b788"/>
+  <!-- Roof ridge cap -->
+  <rect x="240" y="118" width="32" height="16" rx="4" fill="#40916c"/>
+  <!-- Chimney -->
+  <rect x="310" y="140" width="26" height="60" rx="4" fill="#40916c"/>
+
+  <!-- Flower stem (centered on door top area) -->
+  <line x1="256" y1="330" x2="256" y2="230" stroke="#52b788" stroke-width="8" stroke-linecap="round"/>
+  <!-- Leaves -->
+  <ellipse cx="238" cy="290" rx="22" ry="10" fill="#74c69d" transform="rotate(-30 238 290)"/>
+  <ellipse cx="274" cy="270" rx="22" ry="10" fill="#74c69d" transform="rotate(30 274 270)"/>
+
+  <!-- Flower petals -->
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#b7e4c7" opacity="0.9"/>
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#b7e4c7" opacity="0.9" transform="rotate(45 256 230)"/>
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#b7e4c7" opacity="0.9" transform="rotate(90 256 230)"/>
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#b7e4c7" opacity="0.9" transform="rotate(135 256 230)"/>
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#d8f3dc" opacity="0.7" transform="rotate(22.5 256 230)"/>
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#d8f3dc" opacity="0.7" transform="rotate(67.5 256 230)"/>
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#d8f3dc" opacity="0.7" transform="rotate(112.5 256 230)"/>
+  <ellipse cx="256" cy="200" rx="18" ry="32" fill="#d8f3dc" opacity="0.7" transform="rotate(157.5 256 230)"/>
+  <!-- Flower center -->
+  <circle cx="256" cy="230" r="22" fill="#f9c74f"/>
+  <circle cx="256" cy="230" r="14" fill="#f8961e"/>
+
+  <!-- Small decorative dots -->
+  <circle cx="150" cy="380" r="6" fill="#74c69d" opacity="0.6"/>
+  <circle cx="362" cy="390" r="5" fill="#74c69d" opacity="0.6"/>
+  <circle cx="135" cy="340" r="4" fill="#95d5b2" opacity="0.5"/>
+  <circle cx="375" cy="350" r="4" fill="#95d5b2" opacity="0.5"/>
+</svg>
