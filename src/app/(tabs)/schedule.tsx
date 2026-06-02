@@ -4,7 +4,7 @@ import {
   ActivityIndicator, RefreshControl, TextInput, Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import type { Plant } from '@/lib/types';
 import {
@@ -39,13 +39,10 @@ export default function ScheduleScreen() {
 
   const loadPlants = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from('plants')
-      .select('*')
-      .eq('user_id', user.id)
-      .neq('health_status', 'dead')
-      .neq('health_status', 'harvested');
-    return data ?? [];
+    const data = await pb.collection('plants').getFullList({
+      filter: `user_id = "${user.id}" && health_status != "dead" && health_status != "harvested"`,
+    });
+    return data as any[];
   }, [user]);
 
   const loadWeather = useCallback(async (loc?: Location) => {
@@ -173,7 +170,7 @@ export default function ScheduleScreen() {
 
   async function markWatered(plant: Plant) {
     const now = new Date().toISOString();
-    await supabase.from('plants').update({ last_watered: now }).eq('id', plant.id);
+    await pb.collection('plants').update(plant.id, { last_watered: now });
     setPlants((prev) => prev.map((p) => p.id === plant.id ? { ...p, last_watered: now } : p));
     buildSchedule(
       plants.map((p) => p.id === plant.id ? { ...p, last_watered: now } : p),

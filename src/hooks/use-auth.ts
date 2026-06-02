@@ -1,28 +1,34 @@
 import { useState, useEffect } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { pb } from '../lib/pb';
+
+export interface AuthUser {
+  id: string;
+  email: string;
+}
 
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(
+    pb.authStore.isValid && pb.authStore.model
+      ? { id: pb.authStore.model.id, email: pb.authStore.model.email }
+      : null
+  );
+  const [loading, setLoading] = useState(!pb.authStore.isValid);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    if (pb.authStore.isValid && pb.authStore.model) {
+      setUser({ id: pb.authStore.model.id, email: pb.authStore.model.email });
+      setLoading(false);
+    }
+
+    const unsub = pb.authStore.onChange((_, model) => {
+      setUser(model ? { id: model.id, email: model.email } : null);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => unsub();
   }, []);
 
-  const signOut = () => supabase.auth.signOut();
+  const signOut = () => pb.authStore.clear();
 
-  return { session, user, loading, signOut };
+  return { user, session: pb.authStore.isValid ? pb.authStore : null, loading, signOut };
 }

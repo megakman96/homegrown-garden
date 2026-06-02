@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { supabase } from '@/lib/supabase';
+import { pb, fileUrl } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import type { Plant, Harvest, PlantPhoto, HealthStatus } from '@/lib/types';
 
@@ -26,56 +26,54 @@ export default function PlantDetailScreen() {
   useEffect(() => {
     if (!id) return;
     Promise.all([
-      supabase.from('plants').select('*').eq('id', id).single(),
-      supabase.from('harvests').select('*').eq('plant_id', id).order('harvested_at', { ascending: false }),
-      supabase.from('plant_photos').select('*').eq('plant_id', id).order('taken_at', { ascending: false }),
+      pb.collection('plants').getOne(id),
+      pb.collection('harvests').getFullList({ filter: `plant_id = "${id}"`, sort: '-harvested_at' }),
+      pb.collection('plant_photos').getFullList({ filter: `plant_id = "${id}"`, sort: '-created' }),
     ]).then(([p, h, ph]) => {
-      if (p.data) {
-        setPlant(p.data);
-        navigation.setOptions({ title: p.data.name });
-      }
-      setHarvests(h.data ?? []);
-      setPhotos(ph.data ?? []);
-    });
+      setPlant(p as any);
+      navigation.setOptions({ title: (p as any).name });
+      setHarvests(h as any);
+      setPhotos(ph as any);
+    }).catch(() => {});
   }, [id]);
 
   useEffect(() => {
-    photos.forEach(async (photo) => {
+    photos.forEach((photo: any) => {
       if (photoUrls[photo.id]) return;
-      const { data } = supabase.storage.from('plant-photos').getPublicUrl(photo.storage_path);
-      setPhotoUrls((prev) => ({ ...prev, [photo.id]: data.publicUrl }));
+      const url = fileUrl(photo, photo.photo);
+      setPhotoUrls((prev) => ({ ...prev, [photo.id]: url }));
     });
   }, [photos]);
 
   async function updateHealth(status: HealthStatus) {
     if (!plant) return;
-    await supabase.from('plants').update({ health_status: status }).eq('id', plant.id);
+    await pb.collection('plants').update(plant.id, { health_status: status });
     setPlant((p) => p ? { ...p, health_status: status } : p);
   }
 
   async function markWatered() {
     if (!plant) return;
     const now = new Date().toISOString();
-    await supabase.from('plants').update({ last_watered: now }).eq('id', plant.id);
+    await pb.collection('plants').update(plant.id, { last_watered: now });
     setPlant((p) => p ? { ...p, last_watered: now } : p);
-    Alert.alert('Watered!', `${plant.name} marked as watered.`);
+    Alert.alert('Watered! 💧', `${plant.name} marked as watered.`);
   }
 
   async function logHarvest() {
     if (!user || !plant || !harvestGrams) return;
     const grams = parseInt(harvestGrams, 10);
     if (isNaN(grams)) return;
-    const { data } = await supabase
-      .from('harvests')
-      .insert({ plant_id: plant.id, user_id: user.id, yield_grams: grams, notes: harvestNotes || null })
-      .select()
-      .single();
-    if (data) {
-      setHarvests((h) => [data, ...h]);
-      const newTotal = plant.total_yield_grams + grams;
-      await supabase.from('plants').update({ total_yield_grams: newTotal }).eq('id', plant.id);
-      setPlant((p) => p ? { ...p, total_yield_grams: newTotal } : p);
-    }
+    const data = await pb.collection('harvests').create({
+      plant_id: plant.id,
+      user_id: user.id,
+      yield_grams: grams,
+      notes: harvestNotes || null,
+      harvested_at: new Date().toISOString(),
+    });
+    setHarvests((h) => [data as any, ...h]);
+    const newTotal = (plant.total_yield_grams ?? 0) + grams;
+    await pb.collection('plants').update(plant.id, { total_yield_grams: newTotal });
+    setPlant((p) => p ? { ...p, total_yield_grams: newTotal } : p);
     setShowHarvest(false);
     setHarvestGrams('');
     setHarvestNotes('');
@@ -88,28 +86,19 @@ export default function PlantDetailScreen() {
       quality: 0.7,
     });
     if (result.canceled || !result.assets[0]) return;
-
     const asset = result.assets[0];
-    const ext = asset.uri.split('.').pop() ?? 'jpg';
-    const path = `${user.id}/${plant.id}/${Date.now()}.${ext}`;
-
     const response = await fetch(asset.uri);
     const blob = await response.blob();
-    const arrayBuffer = await blob.arrayBuffer();
-
-    const { error } = await supabase.storage
-      .from('plant-photos')
-      .upload(path, arrayBuffer, { contentType: `image/${ext}` });
-
-    if (error) { Alert.alert('Upload failed', error.message); return; }
-
-    const { data } = await supabase
-      .from('plant_photos')
-      .insert({ plant_id: plant.id, user_id: user.id, storage_path: path })
-      .select()
-      .single();
-
-    if (data) setPhotos((p) => [data, ...p]);
+    const formData = new FormData();
+    formData.append('photo', blob as any, `photo_${Date.now()}.jpg`);
+    formData.append('plant_id', plant.id);
+    formData.append('user_id', user.id);
+    try {
+      const data = await pb.collection('plant_photos').create(formData);
+      setPhotos((p) => [data as any, ...p]);
+    } catch (e: any) {
+      Alert.alert('Upload failed', e?.message ?? 'Unknown error');
+    }
   }
 
   if (!plant) return <View style={styles.loading}><Text>Loading...</Text></View>;

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '@/lib/supabase';
+import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
@@ -24,12 +24,10 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from('plants')
-      .select('*')
-      .eq('user_id', user.id)
-      .then(({ data }) => {
-        setPlants(data ?? []);
+    pb.collection('plants')
+      .getFullList({ filter: `user_id = "${user.id}"` })
+      .then((data) => {
+        setPlants(data as any);
         setLoading(false);
       });
   }, [user]);

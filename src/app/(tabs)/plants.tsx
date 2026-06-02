@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '@/lib/supabase';
+import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
@@ -37,13 +37,13 @@ export default function PlantsScreen() {
 
   const loadData = useCallback(async () => {
     if (!user) return;
-    const [plantsRes, gardensRes] = await Promise.all([
-      supabase.from('plants').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('gardens').select('*').eq('user_id', user.id),
+    const [plantsData, gardensData] = await Promise.all([
+      pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"`, sort: '-created' }),
+      pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }),
     ]);
-    setPlants(plantsRes.data ?? []);
-    setGardens(gardensRes.data ?? []);
-    if (gardensRes.data?.length) setForm((f) => ({ ...f, gardenId: f.gardenId || gardensRes.data![0].id }));
+    setPlants(plantsData as any);
+    setGardens(gardensData as any);
+    if (gardensData.length) setForm((f) => ({ ...f, gardenId: f.gardenId || gardensData[0].id }));
   }, [user]);
 
   // Refresh every time this tab comes into focus (catches plants added from garden view)
@@ -74,47 +74,32 @@ export default function PlantsScreen() {
   async function addPlant() {
     if (!user || !form.name.trim()) return;
     setAdding(true);
-
     try {
-      // Auto-create a default garden if the user has none
       let gardenId = form.gardenId || gardens[0]?.id;
       if (!gardenId) {
-        const { data: newGarden, error: gardenErr } = await supabase
-          .from('gardens')
-          .insert({ user_id: user.id, name: 'My Garden', sun_exposure: 'full_sun' })
-          .select()
-          .single();
-        if (gardenErr || !newGarden) {
-          Alert.alert('Error', gardenErr?.message ?? 'Could not create garden');
-          return;
-        }
+        const newGarden = await pb.collection('gardens').create({
+          user_id: user.id, name: 'My Garden', sun_exposure: 'full_sun', rows: 6, cols: 8,
+        });
         gardenId = newGarden.id;
-        setGardens((g) => [...g, newGarden]);
+        setGardens((g) => [...g, newGarden as any]);
         setForm((f) => ({ ...f, gardenId: newGarden.id }));
       }
-
-      const { data, error } = await supabase
-        .from('plants')
-        .insert({
-          user_id: user.id,
-          garden_id: gardenId,
-          name: form.name.trim(),
-          variety: form.variety.trim() || null,
-          health_status: 'healthy',
-          sun_requirement: form.sunRequirement,
-          water_interval_days: form.waterIntervalDays,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        Alert.alert('Error', error.message);
-        return;
-      }
-      if (data) setPlants((p) => [data, ...p]);
+      const data = await pb.collection('plants').create({
+        user_id: user.id,
+        garden_id: gardenId,
+        name: form.name.trim(),
+        variety: form.variety.trim() || null,
+        health_status: 'healthy',
+        sun_requirement: form.sunRequirement,
+        water_interval_days: form.waterIntervalDays,
+        total_yield_grams: 0,
+      });
+      setPlants((p) => [data as any, ...p]);
       setSuggestions([]);
       setShowAdd(false);
       setForm((f) => ({ ...f, name: '', variety: '', sunRequirement: 'full_sun', waterIntervalDays: 3 }));
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not add plant');
     } finally {
       setAdding(false);
     }

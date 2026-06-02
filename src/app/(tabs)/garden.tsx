@@ -4,7 +4,7 @@ import {
   Modal, TextInput, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import type { Garden, Plant } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
@@ -53,37 +53,25 @@ export default function GardenScreen() {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from('gardens')
-      .select('*')
-      .eq('user_id', user.id)
-      .then(({ data }) => {
-        const list = data ?? [];
-        setGardens(list);
-        if (list.length > 0) setSelectedGarden(list[0]);
-      });
+    pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }).then((list) => {
+      setGardens(list as any);
+      if (list.length > 0) setSelectedGarden(list[0] as any);
+    });
   }, [user]);
 
   useEffect(() => {
     if (!selectedGarden) return;
-    supabase
-      .from('plants')
-      .select('*')
-      .eq('garden_id', selectedGarden.id)
-      .then(({ data }) => setPlants(data ?? []));
+    pb.collection('plants').getFullList({ filter: `garden_id = "${selectedGarden.id}"` })
+      .then((data) => setPlants(data as any));
   }, [selectedGarden]);
 
   async function createGarden() {
     if (!user || !newName.trim()) return;
-    const { data } = await supabase
-      .from('gardens')
-      .insert({ user_id: user.id, name: newName.trim(), rows: 6, cols: 8, sun_exposure: newSun })
-      .select()
-      .single();
-    if (data) {
-      setGardens((g) => [...g, data]);
-      setSelectedGarden(data);
-    }
+    const data = await pb.collection('gardens').create({
+      user_id: user.id, name: newName.trim(), rows: 6, cols: 8, sun_exposure: newSun,
+    });
+    setGardens((g) => [...g, data as any]);
+    setSelectedGarden(data as any);
     setShowNewGarden(false);
     setNewName('');
     setNewSun('full_sun');
@@ -134,21 +122,18 @@ export default function GardenScreen() {
 
   async function placePlant() {
     if (!user || !selectedGarden || !placement || !placeName.trim()) return;
-    const { data } = await supabase
-      .from('plants')
-      .insert({
-        user_id: user.id,
-        garden_id: selectedGarden.id,
-        name: placeName.trim(),
-        row: placement.row,
-        col: placement.col,
-        health_status: 'healthy',
-        sun_requirement: placeSun,
-        water_interval_days: placeWaterDays,
-      })
-      .select()
-      .single();
-    if (data) setPlants((p) => [...p, data]);
+    const data = await pb.collection('plants').create({
+      user_id: user.id,
+      garden_id: selectedGarden.id,
+      name: placeName.trim(),
+      row: placement.row,
+      col: placement.col,
+      health_status: 'healthy',
+      sun_requirement: placeSun,
+      water_interval_days: placeWaterDays,
+      total_yield_grams: 0,
+    });
+    setPlants((p) => [...p, data as any]);
     setPlacement(null);
     setPlaceSuggestions([]);
   }

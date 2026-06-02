@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
-import { supabase } from '@/lib/supabase';
+import { pb } from '@/lib/pb';
 import { G, Spring, Shadow, R } from '@/constants/theme';
 
 export default function LoginScreen() {
@@ -40,13 +40,14 @@ export default function LoginScreen() {
     if (!email || !password) return;
     setLoading(true);
     try {
-      const { error } = isSignUp
-        ? await supabase.auth.signUp({ email, password })
-        : await supabase.auth.signInWithPassword({ email, password });
-
-      if (error) Alert.alert('Oops', error.message);
-      else if (isSignUp)
-        Alert.alert('Check your email', 'We sent you a confirmation link 🌱');
+      if (isSignUp) {
+        await pb.collection('users').create({ email, password, passwordConfirm: password });
+        await pb.collection('users').authWithPassword(email, password);
+      } else {
+        await pb.collection('users').authWithPassword(email, password);
+      }
+    } catch (e: any) {
+      Alert.alert('Oops', e?.message ?? 'Something went wrong');
     } finally {
       setLoading(false);
     }

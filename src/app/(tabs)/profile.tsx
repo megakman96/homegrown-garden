@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Modal, Alert,
 } from 'react-native';
-import { supabase } from '@/lib/supabase';
+import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import type { Garden, GardenShare } from '@/lib/types';
 
@@ -18,38 +18,35 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!user) return;
     Promise.all([
-      supabase.from('gardens').select('*').eq('user_id', user.id),
-      supabase.from('garden_shares').select('*').eq('owner_id', user.id),
-    ]).then(([g, s]) => {
-      const gardenList = g.data ?? [];
-      setGardens(gardenList);
-      setShares(s.data ?? []);
+      pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }),
+      pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` }),
+    ]).then(([gardenList, shareList]) => {
+      setGardens(gardenList as any);
+      setShares(shareList as any);
       if (gardenList.length) setShareGardenId(gardenList[0].id);
     });
   }, [user]);
 
   async function shareGarden() {
     if (!user || !shareEmail.trim() || !shareGardenId) return;
-    const { error } = await supabase.from('garden_shares').insert({
-      garden_id: shareGardenId,
-      owner_id: user.id,
-      shared_with_email: shareEmail.trim(),
-    });
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
+    try {
+      const record = await pb.collection('garden_shares').create({
+        garden_id: shareGardenId,
+        owner_id: user.id,
+        shared_with_email: shareEmail.trim(),
+        permission: 'view',
+      });
       Alert.alert('Shared!', `Garden shared with ${shareEmail}`);
-      setShares((s) => [
-        ...s,
-        { id: '', garden_id: shareGardenId, owner_id: user.id, shared_with_email: shareEmail, permission: 'view', created_at: new Date().toISOString() },
-      ]);
+      setShares((s) => [...s, record as any]);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not share garden');
     }
     setShowShare(false);
     setShareEmail('');
   }
 
   async function removeShare(id: string) {
-    await supabase.from('garden_shares').delete().eq('id', id);
+    await pb.collection('garden_shares').delete(id);
     setShares((s) => s.filter((sh) => sh.id !== id));
   }
 
