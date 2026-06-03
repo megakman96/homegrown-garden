@@ -21,7 +21,8 @@ export default function PlantDetailScreen() {
   const [photos, setPhotos] = useState<PlantPhoto[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [showHarvest, setShowHarvest] = useState(false);
-  const [harvestGrams, setHarvestGrams] = useState('');
+  const [harvestUnit, setHarvestUnit] = useState<'grams' | 'quantity'>('grams');
+  const [harvestValue, setHarvestValue] = useState(100); // grams or count
   const [harvestNotes, setHarvestNotes] = useState('');
 
   useEffect(() => {
@@ -70,22 +71,29 @@ export default function PlantDetailScreen() {
   }
 
   async function logHarvest() {
-    if (!user || !plant || !harvestGrams) return;
-    const grams = parseInt(harvestGrams, 10);
-    if (isNaN(grams)) return;
+    if (!user || !plant || harvestValue <= 0) return;
+    // Store quantity as a count; store grams as-is. Both go into yield_grams field.
+    // Quantity harvests set yield_grams = 0 and record count in notes.
+    const isQty = harvestUnit === 'quantity';
+    const yieldGrams = isQty ? 0 : harvestValue;
+    const autoNote = isQty ? `${harvestValue} piece${harvestValue !== 1 ? 's' : ''} harvested` : null;
+    const notes = harvestNotes.trim() || autoNote || null;
+
     const data = await pb.collection('harvests').create({
       plant_id: plant.id,
       user_id: user.id,
-      yield_grams: grams,
-      notes: harvestNotes || null,
+      yield_grams: yieldGrams,
+      notes,
       harvested_at: new Date().toISOString(),
     });
     setHarvests((h) => [data as any, ...h]);
-    const newTotal = (plant.total_yield_grams ?? 0) + grams;
-    await pb.collection('plants').update(plant.id, { total_yield_grams: newTotal });
-    setPlant((p) => p ? { ...p, total_yield_grams: newTotal } : p);
+    if (!isQty) {
+      const newTotal = (plant.total_yield_grams ?? 0) + yieldGrams;
+      await pb.collection('plants').update(plant.id, { total_yield_grams: newTotal });
+      setPlant((p) => p ? { ...p, total_yield_grams: newTotal } : p);
+    }
     setShowHarvest(false);
-    setHarvestGrams('');
+    setHarvestValue(harvestUnit === 'grams' ? 100 : 1);
     setHarvestNotes('');
   }
 
@@ -205,8 +213,12 @@ export default function PlantDetailScreen() {
           {harvests.map((h) => (
             <View key={h.id} style={styles.harvestRow}>
               <Text style={styles.harvestDate}>{new Date(h.harvested_at).toLocaleDateString()}</Text>
-              <Text style={styles.harvestYield}>{h.yield_grams}g</Text>
-              {h.notes && <Text style={styles.harvestNotes}>{h.notes}</Text>}
+              <Text style={styles.harvestYield}>
+                {h.yield_grams > 0 ? `${h.yield_grams}g` : h.notes?.match(/^\d+ pieces?/) ? h.notes.match(/^\d+ pieces?/)?.[0] : '—'}
+              </Text>
+              {h.notes && !h.notes.match(/^\d+ pieces?/) && (
+                <Text style={styles.harvestNotes}>{h.notes}</Text>
+              )}
             </View>
           ))}
         </>
@@ -215,27 +227,62 @@ export default function PlantDetailScreen() {
       <Modal visible={showHarvest} transparent animationType="slide">
         <View style={styles.modalBackdrop}>
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Log Harvest</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Yield in grams"
-              value={harvestGrams}
-              onChangeText={setHarvestGrams}
-              keyboardType="numeric"
-              autoFocus
-            />
+            <Text style={styles.modalTitle}>🧺 Log Harvest</Text>
+
+            {/* Unit toggle */}
+            <View style={styles.unitToggle}>
+              <TouchableOpacity
+                style={[styles.unitBtn, harvestUnit === 'grams' && styles.unitBtnActive]}
+                onPress={() => { setHarvestUnit('grams'); setHarvestValue(100); }}
+              >
+                <Text style={[styles.unitBtnText, harvestUnit === 'grams' && styles.unitBtnTextActive]}>
+                  ⚖️ Grams
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.unitBtn, harvestUnit === 'quantity' && styles.unitBtnActive]}
+                onPress={() => { setHarvestUnit('quantity'); setHarvestValue(1); }}
+              >
+                <Text style={[styles.unitBtnText, harvestUnit === 'quantity' && styles.unitBtnTextActive]}>
+                  🔢 Quantity
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Stepper */}
+            <View style={styles.stepper}>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => setHarvestValue(v => Math.max(harvestUnit === 'grams' ? 10 : 1, v - (harvestUnit === 'grams' ? 10 : 1)))}
+              >
+                <Text style={styles.stepBtnText}>−</Text>
+              </TouchableOpacity>
+              <View style={styles.stepValueWrap}>
+                <Text style={styles.stepValue}>{harvestValue}</Text>
+                <Text style={styles.stepUnit}>{harvestUnit === 'grams' ? 'g' : harvestValue === 1 ? 'piece' : 'pieces'}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.stepBtn}
+                onPress={() => setHarvestValue(v => v + (harvestUnit === 'grams' ? 10 : 1))}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Notes */}
             <TextInput
               style={styles.input}
               placeholder="Notes (optional)"
               value={harvestNotes}
               onChangeText={setHarvestNotes}
             />
+
             <View style={styles.modalButtons}>
               <TouchableOpacity onPress={() => setShowHarvest(false)}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.button} onPress={logHarvest}>
-                <Text style={styles.buttonText}>Log</Text>
+                <Text style={styles.buttonText}>Log Harvest</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -309,6 +356,17 @@ const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modal: { backgroundColor: '#fff', borderRadius: 20, padding: 24, margin: 16 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#2d6a4f', marginBottom: 16 },
+  unitToggle: { flexDirection: 'row', backgroundColor: '#f0f7ee', borderRadius: 12, padding: 4, marginBottom: 20 },
+  unitBtn: { flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center' },
+  unitBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  unitBtnText: { fontSize: 14, color: '#52796f', fontWeight: '500' },
+  unitBtnTextActive: { color: '#2d6a4f', fontWeight: '700' },
+  stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 20 },
+  stepBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#d8f3dc', justifyContent: 'center', alignItems: 'center' },
+  stepBtnText: { fontSize: 26, fontWeight: '300', color: '#2d6a4f', lineHeight: 30 },
+  stepValueWrap: { alignItems: 'center', minWidth: 90 },
+  stepValue: { fontSize: 36, fontWeight: '800', color: '#1b4332' },
+  stepUnit: { fontSize: 13, color: '#52796f', marginTop: 2 },
   input: {
     backgroundColor: '#f0f7ee',
     borderRadius: 12,
