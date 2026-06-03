@@ -143,6 +143,39 @@ export async function clearSavedLocation(): Promise<void> {
   }
 }
 
+export async function saveGardenLocation(gardenId: string, loc: Location): Promise<void> {
+  const key = `garden_location_${gardenId}`;
+  try {
+    const { setItemAsync } = await import('expo-secure-store');
+    await setItemAsync(key, JSON.stringify(loc));
+  } catch {
+    try { localStorage.setItem(key, JSON.stringify(loc)); } catch {}
+  }
+}
+
+export async function loadGardenLocation(garden: { id: string; location_json?: string | null }): Promise<Location | null> {
+  if (garden.location_json) {
+    try {
+      const parsed = typeof garden.location_json === 'string'
+        ? JSON.parse(garden.location_json)
+        : garden.location_json;
+      if (parsed?.latitude != null && parsed?.longitude != null) return parsed as Location;
+    } catch {}
+  }
+  const key = `garden_location_${garden.id}`;
+  try {
+    const { getItemAsync } = await import('expo-secure-store');
+    const raw = await getItemAsync(key);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+  }
+  return null;
+}
+
 // ─── WATERING LOGIC ───────────────────────────────────────────────────────────
 
 export interface WateringAdvice {

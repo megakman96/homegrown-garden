@@ -48,8 +48,25 @@ export default function PlantsScreen() {
     if (gardensData.length) setForm((f) => ({ ...f, gardenId: f.gardenId || gardensData[0].id }));
   }, [user]);
 
-  // Refresh every time this tab comes into focus (catches plants added from garden view)
+  // Refresh on focus (catches plants added from garden view on mobile)
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  // Realtime subscription — catches plants added from garden view on desktop
+  useEffect(() => {
+    if (!user) return;
+    let cancel: (() => void) | null = null;
+    pb.collection('plants').subscribe('*', (e) => {
+      if ((e.record as any).user_id !== user.id) return;
+      if (e.action === 'create') {
+        setPlants(prev => prev.find(p => p.id === e.record.id) ? prev : [e.record as any, ...prev]);
+      } else if (e.action === 'update') {
+        setPlants(prev => prev.map(p => p.id === e.record.id ? (e.record as any) : p));
+      } else if (e.action === 'delete') {
+        setPlants(prev => prev.filter(p => p.id !== e.record.id));
+      }
+    }).then(fn => { cancel = fn; }).catch(() => {});
+    return () => { cancel?.(); };
+  }, [user]);
 
   function onNameChange(name: string) {
     const key = findPlantKey(name);

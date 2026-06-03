@@ -21,7 +21,7 @@ import {
   type TileState, type GardenLayout,
 } from '@/lib/garden-layout';
 import {
-  searchCity, getBrowserLocation, saveLocation,
+  searchCity, getBrowserLocation, saveLocation, saveGardenLocation,
   type GeoResult, type Location,
 } from '@/lib/weather';
 
@@ -168,7 +168,7 @@ export default function NewGardenScreen() {
     if (!user) return;
     setSaving(true);
     try {
-      await pb.collection('gardens').create({
+      const garden = await pb.collection('gardens').create({
         user_id: user.id,
         name: name.trim() || 'My Garden',
         rows,
@@ -179,6 +179,7 @@ export default function NewGardenScreen() {
       });
       if (selectedLocation) {
         await saveLocation(selectedLocation);
+        await saveGardenLocation(garden.id, selectedLocation);
       }
       router.replace('/(tabs)/garden');
     } catch (e: any) {
