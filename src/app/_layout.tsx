@@ -1,9 +1,10 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
-import { Platform, useColorScheme } from 'react-native';
+import { Platform } from 'react-native';
 import { useAuth } from '@/hooks/use-auth';
 import { pb } from '@/lib/pb';
+import { AppThemeProvider, useAppTheme } from '@/contexts/theme-context';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, user, loading } = useAuth();
@@ -13,7 +14,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
     const inAuthGroup = segments[0] === '(auth)';
-    const inNewGarden = segments[0] === 'new-garden';
 
     if (!session) {
       if (!inAuthGroup) router.replace('/(auth)/login');
@@ -21,7 +21,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     if (inAuthGroup) {
-      // Just authenticated — check if this user has any gardens yet
       const uid = user?.id ?? (pb.authStore.model as any)?.id;
       if (!uid) { router.replace('/(tabs)'); return; }
 
@@ -37,8 +36,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function ThemedApp() {
+  const { isDark } = useAppTheme();
 
   useEffect(() => {
     if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
@@ -47,7 +46,7 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <AuthGuard>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
@@ -57,5 +56,13 @@ export default function RootLayout() {
         </Stack>
       </AuthGuard>
     </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AppThemeProvider>
+      <ThemedApp />
+    </AppThemeProvider>
   );
 }

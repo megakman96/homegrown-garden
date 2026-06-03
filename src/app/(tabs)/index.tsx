@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
@@ -8,211 +8,336 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
+import { useAppTheme, isBirthdayToday, loadBirthday } from '@/contexts/theme-context';
+import { fetchWeather, loadSavedLocation, type WeatherData } from '@/lib/weather';
 import type { Plant } from '@/lib/types';
 
 function greeting() {
   const h = new Date().getHours();
+  if (h < 5)  return 'Up late';
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
 }
 
+const BIRTHDAY_MSGS = [
+  '🎂 Happy Birthday! Wishing you a garden full of joy today! 🌸',
+  '🎉 It\'s your special day! Hope it\'s as bright as a sunny garden! 🌻',
+  '🎈 Happy Birthday! May your harvests be as sweet as this day! 🍓',
+];
+
 export default function DashboardScreen() {
   const { user } = useAuth();
+  const { isDark, colors } = useAppTheme();
   const router = useRouter();
+  const { isDesktop } = useBreakpoint();
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const firstName = (pb.authStore.model as any)?.name?.split(' ')?.[0]
+    ?? user?.email?.split('@')[0]
+    ?? 'Gardener';
+  const birthday = user ? loadBirthday(user.id) : null;
+  const isToday = isBirthdayToday(birthday);
+  const bdayMsg = isToday ? BIRTHDAY_MSGS[new Date().getDate() % BIRTHDAY_MSGS.length] : null;
 
   useEffect(() => {
     if (!user) return;
     pb.collection('plants')
       .getFullList({ filter: `user_id = "${user.id}"` })
-      .then((data) => {
-        setPlants(data as any);
-        setLoading(false);
-      });
+      .then((data) => { setPlants(data as any); setLoading(false); })
+      .catch(() => setLoading(false));
   }, [user]);
 
-  const needsWater = plants.filter((p) => {
+  useEffect(() => {
+    setWeatherLoading(true);
+    loadSavedLocation()
+      .then(loc => loc ? fetchWeather(loc) : null)
+      .then(wx => { setWeather(wx); setWeatherLoading(false); })
+      .catch(() => setWeatherLoading(false));
+  }, []);
+
+  const now = new Date();
+
+  const needsWater = plants.filter(p => {
     if (!p.last_watered || !p.water_interval_days) return false;
     const due = new Date(p.last_watered);
     due.setDate(due.getDate() + p.water_interval_days);
-    return due <= new Date();
+    return due <= now;
   });
 
   const upcomingHarvests = plants
-    .filter((p) => p.expected_harvest_date && p.health_status !== 'harvested')
-    .sort((a, b) => new Date(a.expected_harvest_date!).getTime() - new Date(b.expected_harvest_date!).getTime())
-    .slice(0, 3);
+    .filter(p => p.expected_harvest_date && p.health_status !== 'harvested')
+    .map(p => ({ ...p, harvestDate: new Date(p.expected_harvest_date!) }))
+    .filter(p => {
+      const diff = (p.harvestDate.getTime() - now.getTime()) / 86_400_000;
+      return diff >= -1 && diff <= 7;
+    })
+    .sort((a, b) => a.harvestDate.getTime() - b.harvestDate.getTime())
+    .slice(0, 4);
 
-  const firstName = user?.email?.split('@')[0] ?? 'Gardener';
-  const { isDesktop } = useBreakpoint();
+  const todayWeather = weather?.days.find(d => d.date === now.toISOString().slice(0, 10));
+  const next3Rain = weather?.days.filter(d => d.isFuture && d.isRainy).slice(0, 3) ?? [];
 
-  const alertSection = (
-    <>
-      {needsWater.length > 0 && (
-        <FadeInView delay={260} style={styles.section}>
-          <Text style={styles.sectionTitle}>💧 Needs Water</Text>
-          {needsWater.map((p, i) => (
-            <FadeInView key={p.id} delay={280 + i * 50} from="bottom">
-              <PressableScale onPress={() => router.push(`/plant/${p.id}`)} style={styles.alertCard}>
-                <View style={[styles.alertAccent, { backgroundColor: G.sage }]} />
-                <Text style={styles.alertName}>{p.name}</Text>
-                <View style={styles.badge}><Text style={styles.badgeText}>Water now</Text></View>
-              </PressableScale>
-            </FadeInView>
-          ))}
-        </FadeInView>
-      )}
-      {upcomingHarvests.length > 0 && (
-        <FadeInView delay={340} style={styles.section}>
-          <Text style={styles.sectionTitle}>🧺 Upcoming Harvests</Text>
-          {upcomingHarvests.map((p, i) => (
-            <FadeInView key={p.id} delay={360 + i * 50} from="bottom">
-              <PressableScale onPress={() => router.push(`/plant/${p.id}`)} style={styles.alertCard}>
-                <View style={[styles.alertAccent, { backgroundColor: G.sun }]} />
-                <Text style={styles.alertName}>{p.name}</Text>
-                <Text style={styles.alertDate}>
-                  {new Date(p.expected_harvest_date!).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+  const bg = isDark ? colors.bg : G.foam;
+  const cardBg = isDark ? colors.bgCard : G.cloud;
+  const textPrimary = isDark ? colors.text : G.forest;
+  const textSecondary = isDark ? colors.textSec : G.stone;
+  const borderColor = isDark ? colors.border : G.mist;
+
+  const heroSection = (
+    <FadeInView delay={0} from="fade">
+      <LinearGradient
+        colors={isDark ? ['#1e3828', '#162a1e'] : [G.forest, G.hunter]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={[styles.hero, isDesktop && styles.heroDesktop]}
+      >
+        {bdayMsg ? (
+          <>
+            <Text style={styles.heroEmoji}>🎂</Text>
+            <Text style={styles.heroGreeting}>Happy Birthday, {firstName}!</Text>
+            <Text style={styles.heroBday}>{bdayMsg.replace(/^🎂 /, '')}</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.heroEmoji}>🌱</Text>
+            <Text style={styles.heroGreeting}>{greeting()}, {firstName}!</Text>
+            <Text style={styles.heroSub}>
+              {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+          </>
+        )}
+        <View style={styles.heroLeaves}>
+          <Text style={styles.heroLeaf}>🌿</Text>
+          <Text style={styles.heroLeaf}>🍃</Text>
+        </View>
+      </LinearGradient>
+    </FadeInView>
+  );
+
+  // Weather card (compact)
+  const weatherCard = (
+    <FadeInView delay={60} from="bottom" style={{ marginHorizontal: isDesktop ? 0 : 16, marginBottom: 12 }}>
+      <TouchableOpacity
+        style={[styles.weatherCard, { backgroundColor: cardBg, borderColor }]}
+        onPress={() => router.push('/(tabs)/schedule')}
+        activeOpacity={0.85}
+      >
+        {weatherLoading ? (
+          <ActivityIndicator color={G.sage} size="small" />
+        ) : weather && todayWeather ? (
+          <View style={styles.weatherRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.weatherTemp, { color: textPrimary }]}>
+                {Math.round(todayWeather.tempMaxC)}° / {Math.round(todayWeather.tempMinC)}°C
+              </Text>
+              <Text style={[styles.weatherLoc, { color: textSecondary }]}>
+                📍 {weather.locationName ?? 'Your location'} · {todayWeather.isRainy ? '🌧️ Rain today' : '☀️ Clear today'}
+              </Text>
+              {next3Rain.length > 0 && (
+                <Text style={[styles.weatherRain, { color: G.sage }]}>
+                  🌧️ Rain expected {next3Rain.map(d =>
+                    new Date(d.date + 'T12:00').toLocaleDateString(undefined, { weekday: 'short' })
+                  ).join(', ')}
                 </Text>
-              </PressableScale>
-            </FadeInView>
-          ))}
+              )}
+            </View>
+            <Text style={styles.weatherEmoji}>{todayWeather.isRainy ? '🌧️' : '☀️'}</Text>
+          </View>
+        ) : (
+          <Text style={[styles.weatherLoc, { color: textSecondary }]}>
+            📍 Set a location in the Schedule tab for weather
+          </Text>
+        )}
+      </TouchableOpacity>
+    </FadeInView>
+  );
+
+  // Stats row
+  const statsRow = (
+    <View style={[styles.statsRow, isDesktop && styles.statsRowDesktop]}>
+      {[
+        { label: 'Plants', value: plants.length, emoji: '🌱', color: G.sage },
+        { label: 'Thirsty', value: needsWater.length, emoji: '💧', color: needsWater.length > 0 ? G.bloom : G.sage },
+        { label: 'Harvested', value: plants.filter(p => p.health_status === 'harvested').length, emoji: '🧺', color: G.sun },
+      ].map(({ label, value, emoji, color }) => (
+        <FadeInView key={label} style={styles.statWrap}>
+          <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+            <Text style={styles.statEmoji}>{emoji}</Text>
+            <Text style={[styles.statValue, { color }]}>{value}</Text>
+            <Text style={[styles.statLabel, { color: textSecondary }]}>{label}</Text>
+          </View>
         </FadeInView>
+      ))}
+    </View>
+  );
+
+  // Needs water section
+  const waterSection = needsWater.length > 0 && (
+    <FadeInView delay={120} from="bottom" style={[styles.section, isDesktop && styles.sectionDesktop]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>💧 Needs Water Now</Text>
+      {needsWater.slice(0, 5).map(p => (
+        <PressableScale key={p.id} style={[styles.taskCard, { backgroundColor: cardBg, borderColor }]}
+          onPress={() => router.push(`/plant/${p.id}`)}>
+          <View style={[styles.taskAccent, { backgroundColor: '#74c0fc' }]} />
+          <Text style={[styles.taskName, { color: textPrimary }]}>{p.name}</Text>
+          <View style={[styles.taskBadge, { backgroundColor: '#e7f5ff' }]}>
+            <Text style={styles.taskBadgeText}>Water now</Text>
+          </View>
+        </PressableScale>
+      ))}
+      {needsWater.length > 5 && (
+        <Text style={[styles.moreTasks, { color: textSecondary }]}>+{needsWater.length - 5} more</Text>
       )}
-      {!loading && plants.length === 0 && (
-        <FadeInView delay={300} style={styles.empty} from="scale">
-          <Text style={styles.emptyEmoji}>🌾</Text>
-          <Text style={styles.emptyTitle}>Your garden awaits</Text>
-          <Text style={styles.emptyText}>Add your first plant and start growing something amazing.</Text>
-          <PressableScale onPress={() => router.push('/(tabs)/plants')} style={styles.emptyBtn}>
-            <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyBtnGradient}>
-              <Text style={styles.emptyBtnText}>🌱  Add your first plant</Text>
-            </LinearGradient>
+    </FadeInView>
+  );
+
+  // Upcoming harvests
+  const harvestSection = upcomingHarvests.length > 0 && (
+    <FadeInView delay={180} from="bottom" style={[styles.section, isDesktop && styles.sectionDesktop]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>🧺 Upcoming Harvests</Text>
+      {upcomingHarvests.map(p => {
+        const diff = Math.ceil((p.harvestDate.getTime() - now.getTime()) / 86_400_000);
+        const label = diff <= 0 ? 'Ready now!' : diff === 1 ? 'Tomorrow' :
+          p.harvestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        return (
+          <PressableScale key={p.id} style={[styles.taskCard, { backgroundColor: cardBg, borderColor }]}
+            onPress={() => router.push(`/plant/${p.id}`)}>
+            <View style={[styles.taskAccent, { backgroundColor: G.sun }]} />
+            <Text style={[styles.taskName, { color: textPrimary }]}>{p.name}</Text>
+            <View style={[styles.taskBadge, { backgroundColor: diff <= 0 ? '#d8f3dc' : '#fff9db' }]}>
+              <Text style={[styles.taskBadgeText, { color: diff <= 0 ? G.hunter : '#7d5a00' }]}>{label}</Text>
+            </View>
           </PressableScale>
-        </FadeInView>
-      )}
-    </>
+        );
+      })}
+    </FadeInView>
+  );
+
+  // Empty state
+  const emptyState = !loading && plants.length === 0 && (
+    <FadeInView delay={120} from="scale" style={styles.empty}>
+      <Text style={styles.emptyEmoji}>🌾</Text>
+      <Text style={[styles.emptyTitle, { color: textPrimary }]}>Your garden awaits</Text>
+      <Text style={[styles.emptyText, { color: textSecondary }]}>Add your first plant and start growing.</Text>
+      <PressableScale onPress={() => router.push('/(tabs)/plants')} style={styles.emptyBtn}>
+        <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyBtnGradient}>
+          <Text style={styles.emptyBtnText}>🌱  Add your first plant</Text>
+        </LinearGradient>
+      </PressableScale>
+    </FadeInView>
   );
 
   if (isDesktop) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.desktopContent} showsVerticalScrollIndicator={false}>
-        <FadeInView delay={0} from="fade">
-          <LinearGradient colors={[G.forest, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.desktopHero}>
-            <Text style={styles.heroEmoji}>🌤️</Text>
-            <Text style={styles.heroGreeting}>{greeting()}, {firstName}!</Text>
-            <Text style={styles.heroSub}>Here's what your garden needs today</Text>
-            <View style={styles.heroLeaves}>
-              <Text style={styles.heroLeaf}>🌿</Text>
-              <Text style={styles.heroLeaf}>🍃</Text>
+      <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.desktopContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.desktopPadding}>
+          {heroSection}
+          {weatherCard}
+          {statsRow}
+          <View style={styles.desktopColumns}>
+            <View style={styles.desktopCol}>
+              {waterSection}
+              {emptyState}
             </View>
-          </LinearGradient>
-        </FadeInView>
-        <View style={styles.desktopBody}>
-          {/* Left column: stats */}
-          <View style={styles.desktopLeft}>
-            <FadeInView delay={80}><StatCard label="Plants" value={plants.length} emoji="🌱" color={G.sage} delay={80} /></FadeInView>
-            <FadeInView delay={140}><StatCard label="Thirsty" value={needsWater.length} emoji="💧" color={needsWater.length > 0 ? G.bloom : G.sage} delay={140} /></FadeInView>
-            <FadeInView delay={200}><StatCard label="Harvested" value={plants.filter(p => p.health_status === 'harvested').length} emoji="🧺" color={G.sage} delay={200} /></FadeInView>
+            <View style={styles.desktopCol}>
+              {harvestSection}
+            </View>
           </View>
-          {/* Right column: alerts */}
-          <View style={styles.desktopRight}>{alertSection}</View>
         </View>
-        <View style={{ height: 32 }} />
       </ScrollView>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <FadeInView delay={0} from="fade">
-        <LinearGradient colors={[G.forest, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-          <Text style={styles.heroEmoji}>🌤️</Text>
-          <Text style={styles.heroGreeting}>{greeting()}, {firstName}!</Text>
-          <Text style={styles.heroSub}>Here's what your garden needs today</Text>
-          <View style={styles.heroLeaves}>
-            <Text style={styles.heroLeaf}>🌿</Text>
-            <Text style={styles.heroLeaf}>🍃</Text>
-          </View>
-        </LinearGradient>
-      </FadeInView>
-      <View style={styles.statsRow}>
-        <FadeInView delay={80} style={styles.statFlex}><StatCard label="Plants" value={plants.length} emoji="🌱" color={G.sage} delay={80} /></FadeInView>
-        <FadeInView delay={140} style={styles.statFlex}><StatCard label="Thirsty" value={needsWater.length} emoji="💧" color={needsWater.length > 0 ? G.bloom : G.sage} delay={140} /></FadeInView>
-        <FadeInView delay={200} style={styles.statFlex}><StatCard label="Harvested" value={plants.filter(p => p.health_status === 'harvested').length} emoji="🧺" color={G.sage} delay={200} /></FadeInView>
-      </View>
-      {alertSection}
+    <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.mobileContent} showsVerticalScrollIndicator={false}>
+      {heroSection}
+      <View style={{ height: 16 }} />
+      {weatherCard}
+      {statsRow}
+      {waterSection}
+      {harvestSection}
+      {emptyState}
       <View style={{ height: 32 }} />
     </ScrollView>
   );
 }
 
-function StatCard({ label, value, emoji, color, delay }: { label: string; value: number; emoji: string; color: string; delay: number }) {
-  return (
-    <View style={styles.statCard}>
-      <LinearGradient
-        colors={[color + '22', color + '11']}
-        style={styles.statGradient}
-      >
-        <Text style={styles.statEmoji}>{emoji}</Text>
-        <Text style={[styles.statValue, { color }]}>{value}</Text>
-        <Text style={styles.statLabel}>{label}</Text>
-      </LinearGradient>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: G.foam },
-  content:      { paddingBottom: 40 },
-  desktopContent: { paddingBottom: 40, maxWidth: 1200, width: '100%', alignSelf: 'center' },
-  desktopHero:  { margin: 24, borderRadius: R.xl, padding: 32, overflow: 'hidden', ...Shadow.card },
-  desktopBody:  { flexDirection: 'row', paddingHorizontal: 24, gap: 24, alignItems: 'flex-start' },
-  desktopLeft:  { width: 200, gap: 12 },
-  desktopRight: { flex: 1 },
+  container:       { flex: 1 },
+  mobileContent:   { paddingBottom: 40 },
+  desktopContent:  { paddingBottom: 48 },
+  desktopPadding:  { maxWidth: 1200, width: '100%', alignSelf: 'center', paddingHorizontal: 24 },
+  desktopColumns:  { flexDirection: 'row', gap: 24, alignItems: 'flex-start' },
+  desktopCol:      { flex: 1 },
+
+  // Hero
   hero: {
     margin: 16,
-    marginTop: Platform.OS === 'ios' ? 8 : 16,
     borderRadius: R.xl,
     padding: 24,
     paddingBottom: 28,
     overflow: 'hidden',
     ...Shadow.card,
   },
-  heroEmoji:    { fontSize: 36, marginBottom: 8 },
-  heroGreeting: { fontSize: 24, fontWeight: '800', color: G.cloud, letterSpacing: -0.3 },
-  heroSub:      { fontSize: 14, color: G.mist, marginTop: 4 },
-  heroLeaves:   { position: 'absolute', right: 20, bottom: 16, flexDirection: 'row', gap: 4 },
-  heroLeaf:     { fontSize: 28, opacity: 0.4 },
-  statsRow:     { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 8 },
-  statFlex:     { flex: 1 },
-  statCard:     { borderRadius: R.lg, overflow: 'hidden', ...Shadow.soft },
-  statGradient: { padding: 16, alignItems: 'center', borderRadius: R.lg },
-  statEmoji:    { fontSize: 22, marginBottom: 4 },
-  statValue:    { fontSize: 26, fontWeight: '800' },
-  statLabel:    { fontSize: 11, color: G.stone, marginTop: 2, fontWeight: '600' },
-  section:      { paddingHorizontal: 16, marginTop: 8, marginBottom: 8 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: G.forest, marginBottom: 10, letterSpacing: 0.1 },
-  alertCard: {
-    backgroundColor: G.cloud,
+  heroDesktop: { margin: 0, marginTop: 24, marginBottom: 16 },
+  heroEmoji:   { fontSize: 36, marginBottom: 8 },
+  heroGreeting:{ fontSize: 24, fontWeight: '800', color: G.cloud, letterSpacing: -0.3 },
+  heroSub:     { fontSize: 14, color: G.mist, marginTop: 4 },
+  heroBday:    { fontSize: 13, color: G.mint, marginTop: 6, lineHeight: 18 },
+  heroLeaves:  { position: 'absolute', right: 20, bottom: 16, flexDirection: 'row', gap: 4 },
+  heroLeaf:    { fontSize: 28, opacity: 0.3 },
+
+  // Weather
+  weatherCard: {
+    borderRadius: R.lg,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    ...Shadow.soft,
+  },
+  weatherRow:  { flexDirection: 'row', alignItems: 'center' },
+  weatherTemp: { fontSize: 20, fontWeight: '700' },
+  weatherLoc:  { fontSize: 12, marginTop: 3 },
+  weatherRain: { fontSize: 12, marginTop: 4 },
+  weatherEmoji:{ fontSize: 32, marginLeft: 12 },
+
+  // Stats
+  statsRow:       { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 12 },
+  statsRowDesktop:{ paddingHorizontal: 0, marginBottom: 16 },
+  statWrap:       { flex: 1 },
+  statCard:       { borderRadius: R.lg, padding: 14, alignItems: 'center', borderWidth: 1, ...Shadow.soft },
+  statEmoji:      { fontSize: 20, marginBottom: 4 },
+  statValue:      { fontSize: 24, fontWeight: '800' },
+  statLabel:      { fontSize: 11, marginTop: 2, fontWeight: '600' },
+
+  // Task sections
+  section:        { paddingHorizontal: 16, marginBottom: 16 },
+  sectionDesktop: { paddingHorizontal: 0 },
+  sectionTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 10, letterSpacing: 0.1 },
+  taskCard: {
     borderRadius: R.md,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
+    borderWidth: 1,
     ...Shadow.soft,
   },
-  alertAccent:  { width: 4, alignSelf: 'stretch', marginRight: 14 },
-  alertName:    { flex: 1, fontSize: 15, color: G.ink, fontWeight: '600', paddingVertical: 16 },
-  badge:        { backgroundColor: G.dew, borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 5, marginRight: 14 },
-  badgeText:    { fontSize: 12, color: G.hunter, fontWeight: '700' },
-  alertDate:    { fontSize: 13, color: G.stone, marginRight: 14, fontWeight: '600' },
-  empty:        { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },
-  emptyEmoji:   { fontSize: 64, marginBottom: 16 },
-  emptyTitle:   { fontSize: 22, fontWeight: '800', color: G.forest, marginBottom: 8 },
-  emptyText:    { fontSize: 15, color: G.stone, textAlign: 'center', lineHeight: 22, marginBottom: 28 },
-  emptyBtn:     { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
-  emptyBtnGradient: { paddingVertical: 15, paddingHorizontal: 28 },
-  emptyBtnText: { color: G.cloud, fontWeight: '700', fontSize: 16 },
+  taskAccent:     { width: 4, alignSelf: 'stretch', marginRight: 14 },
+  taskName:       { flex: 1, fontSize: 15, fontWeight: '600', paddingVertical: 14 },
+  taskBadge:      { borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 5, marginRight: 12 },
+  taskBadgeText:  { fontSize: 12, color: G.hunter, fontWeight: '700' },
+  moreTasks:      { fontSize: 13, textAlign: 'center', marginTop: 4 },
+
+  // Empty
+  empty:          { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },
+  emptyEmoji:     { fontSize: 56, marginBottom: 14 },
+  emptyTitle:     { fontSize: 20, fontWeight: '800', marginBottom: 8 },
+  emptyText:      { fontSize: 14, textAlign: 'center', marginBottom: 24 },
+  emptyBtn:       { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  emptyBtnGradient: { paddingVertical: 14, paddingHorizontal: 28 },
+  emptyBtnText:   { color: G.cloud, fontWeight: '700', fontSize: 15 },
 });

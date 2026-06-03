@@ -12,12 +12,15 @@ import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { pb } from '@/lib/pb';
 import { G, Spring, Shadow, R } from '@/constants/theme';
+import { saveBirthday } from '@/contexts/theme-context';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [birthday, setBirthday] = useState(''); // MM/DD
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const logoFloat = useSharedValue(0);
@@ -43,8 +46,13 @@ export default function LoginScreen() {
     setErrorMsg(null);
     try {
       if (isSignUp) {
-        await pb.collection('users').create({ email, password, passwordConfirm: password });
+        await pb.collection('users').create({
+          email, password, passwordConfirm: password,
+          name: firstName.trim() || email.split('@')[0],
+        });
         await pb.collection('users').authWithPassword(email, password);
+        const uid = (pb.authStore.model as any)?.id;
+        if (uid && birthday.trim()) saveBirthday(uid, birthday.trim());
       } else {
         await pb.collection('users').authWithPassword(email, password);
       }
@@ -102,6 +110,35 @@ export default function LoginScreen() {
               </View>
             )}
 
+            {isSignUp && (
+              <>
+                <View style={styles.inputWrap}>
+                  <Text style={styles.label}>First Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Your first name"
+                    placeholderTextColor={G.stone}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    autoCapitalize="words"
+                    autoComplete="given-name"
+                  />
+                </View>
+                <View style={styles.inputWrap}>
+                  <Text style={styles.label}>Birthday <Text style={{ fontWeight: '400', textTransform: 'none' }}>(optional)</Text></Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="MM/DD  e.g. 03/15"
+                    placeholderTextColor={G.stone}
+                    value={birthday}
+                    onChangeText={setBirthday}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                  />
+                </View>
+              </>
+            )}
+
             <View style={styles.inputWrap}>
               <Text style={styles.label}>Email</Text>
               <TextInput
@@ -144,7 +181,7 @@ export default function LoginScreen() {
             </PressableScale>
 
             <PressableScale
-              onPress={() => { setIsSignUp(v => !v); setErrorMsg(null); }}
+              onPress={() => { setIsSignUp(v => !v); setErrorMsg(null); setFirstName(''); setBirthday(''); }}
               style={styles.switchBtn}
               haptic={false}
             >

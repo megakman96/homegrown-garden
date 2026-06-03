@@ -6,17 +6,47 @@ import {
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode } from '@/contexts/theme-context';
 import type { Garden, GardenShare } from '@/lib/types';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { isDesktop } = useBreakpoint();
+  const { mode, setMode, isDark, colors } = useAppTheme();
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [shares, setShares] = useState<GardenShare[]>([]);
   const [showShare, setShowShare] = useState(false);
   const [shareGardenId, setShareGardenId] = useState('');
   const [shareEmail, setShareEmail] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
+
+  // Settings edit state
+  const displayName = (pb.authStore.model as any)?.name ?? user?.email?.split('@')[0] ?? '';
+  const displayBday = user ? loadBirthday(user.id) ?? '' : '';
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editingBday, setEditingBday] = useState(false);
+  const [editBday, setEditBday] = useState('');
+
+  async function saveName() {
+    if (!user || !editName.trim()) return;
+    try {
+      await pb.collection('users').update(user.id, { name: editName.trim() });
+      setEditingName(false);
+    } catch (e: any) { Alert.alert('Error', e?.message ?? 'Could not update name'); }
+  }
+
+  function saveBdayFn() {
+    if (!user) return;
+    saveBirthday(user.id, editBday.trim());
+    setEditingBday(false);
+  }
+
+  const bg = isDark ? colors.bg : '#f0f7ee';
+  const cardBg = isDark ? colors.bgCard : '#fff';
+  const textPrimary = isDark ? colors.text : '#1b4332';
+  const textSecondary = isDark ? colors.textSec : '#52796f';
+  const borderCol = isDark ? colors.border : '#e8f5e9';
 
   useEffect(() => {
     if (!user) return;
@@ -158,13 +188,90 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const settingsSection = (
+    <View style={[styles.section, { backgroundColor: cardBg, borderColor: borderCol }]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>⚙️ Settings</Text>
+
+      {/* Dark mode */}
+      <Text style={[styles.settingLabel, { color: textSecondary }]}>APPEARANCE</Text>
+      <View style={styles.modeRow}>
+        {(['system', 'light', 'dark'] as ThemeMode[]).map(m => (
+          <TouchableOpacity
+            key={m}
+            style={[styles.modeBtn, { borderColor: borderCol }, mode === m && styles.modeBtnActive]}
+            onPress={() => setMode(m)}
+          >
+            <Text style={styles.modeEmoji}>{m === 'system' ? '⚙️' : m === 'light' ? '☀️' : '🌙'}</Text>
+            <Text style={[styles.modeBtnText, { color: textSecondary }, mode === m && styles.modeBtnTextActive]}>
+              {m === 'system' ? 'System' : m === 'light' ? 'Light' : 'Dark'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Name */}
+      <Text style={[styles.settingLabel, { color: textSecondary, marginTop: 14 }]}>ACCOUNT</Text>
+      <View style={[styles.settingRow, { borderBottomColor: borderCol }]}>
+        <Text style={[styles.settingKey, { color: textSecondary }]}>First Name</Text>
+        {editingName ? (
+          <View style={styles.settingEditRow}>
+            <TextInput
+              style={[styles.settingInput, { color: textPrimary, borderColor: borderCol, backgroundColor: isDark ? colors.bgElement : '#f0f7ee' }]}
+              value={editName} onChangeText={setEditName} autoFocus
+            />
+            <TouchableOpacity onPress={saveName} style={styles.settingSaveBtn}>
+              <Text style={styles.settingSave}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setEditingName(false)} style={{ marginLeft: 6 }}>
+              <Text style={[styles.settingSave, { color: textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.settingValueRow}>
+            <Text style={[styles.settingValue, { color: textPrimary }]}>{displayName || '—'}</Text>
+            <TouchableOpacity onPress={() => { setEditingName(true); setEditName(displayName); }}>
+              <Text style={styles.settingEdit}>{displayName ? 'Edit' : 'Add'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Birthday */}
+      <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
+        <Text style={[styles.settingKey, { color: textSecondary }]}>Birthday</Text>
+        {editingBday ? (
+          <View style={styles.settingEditRow}>
+            <TextInput
+              style={[styles.settingInput, { color: textPrimary, borderColor: borderCol, backgroundColor: isDark ? colors.bgElement : '#f0f7ee' }]}
+              value={editBday} onChangeText={setEditBday}
+              placeholder="MM/DD" keyboardType="numbers-and-punctuation" maxLength={5} autoFocus
+            />
+            <TouchableOpacity onPress={saveBdayFn} style={styles.settingSaveBtn}>
+              <Text style={styles.settingSave}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setEditingBday(false)} style={{ marginLeft: 6 }}>
+              <Text style={[styles.settingSave, { color: textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.settingValueRow}>
+            <Text style={[styles.settingValue, { color: textPrimary }]}>{displayBday || '—'}</Text>
+            <TouchableOpacity onPress={() => { setEditingBday(true); setEditBday(displayBday); }}>
+              <Text style={styles.settingEdit}>{displayBday ? 'Edit' : 'Add'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
   if (isDesktop) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.desktopContent}>
+      <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.desktopContent}>
         {shareModal}
         <View style={styles.desktopPageHeader}>
-          <Text style={styles.desktopPageTitle}>👤 Profile</Text>
-          <Text style={styles.desktopPageSub}>Manage your account and garden sharing</Text>
+          <Text style={[styles.desktopPageTitle, { color: textPrimary }]}>👤 Profile</Text>
+          <Text style={[styles.desktopPageSub, { color: textSecondary }]}>Account, sharing & settings</Text>
         </View>
         <View style={styles.desktopBody}>
           {/* Left: user card */}
@@ -196,9 +303,10 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
           </View>
-          {/* Right: shares */}
+          {/* Right: shares + settings */}
           <View style={styles.desktopRight}>
             {sharesSection}
+            {settingsSection}
           </View>
         </View>
       </ScrollView>
@@ -206,12 +314,16 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.profileCard}>
+    <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.content}>
+      <View style={[styles.profileCard, { backgroundColor: cardBg }]}>
         <Text style={styles.avatar}>👤</Text>
-        <Text style={styles.email}>{user?.email}</Text>
+        <Text style={[styles.email, { color: textSecondary }]}>{user?.email}</Text>
+        {displayName && displayName !== user?.email?.split('@')[0] && (
+          <Text style={[styles.email, { color: textPrimary, fontWeight: '700', marginTop: 2 }]}>{displayName}</Text>
+        )}
       </View>
       {sharesSection}
+      {settingsSection}
       <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
@@ -224,7 +336,7 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f7ee' },
+  container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
 
   // Desktop
@@ -273,11 +385,29 @@ const styles = StyleSheet.create({
   },
   desktopSignOutText: { color: '#e03131', fontWeight: '600', fontSize: 14 },
 
+  // Settings
+  settingLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 8, textTransform: 'uppercase' },
+  modeRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  modeBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, gap: 4 },
+  modeBtnActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
+  modeEmoji: { fontSize: 16 },
+  modeBtnText: { fontSize: 12, fontWeight: '500' },
+  modeBtnTextActive: { color: '#fff', fontWeight: '700' },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1 },
+  settingKey: { fontSize: 14 },
+  settingValueRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  settingValue: { fontSize: 14, fontWeight: '600' },
+  settingEdit: { fontSize: 13, color: '#2d6a4f', fontWeight: '600' },
+  settingEditRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end' },
+  settingInput: { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 14, minWidth: 80 },
+  settingSaveBtn: {},
+  settingSave: { fontSize: 13, color: '#2d6a4f', fontWeight: '700' },
+
   // Mobile
-  profileCard: { alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 24, marginBottom: 24 },
+  profileCard: { alignItems: 'center', borderRadius: 16, padding: 24, marginBottom: 24 },
   avatar: { fontSize: 48, marginBottom: 8 },
   email: { fontSize: 15, color: '#52796f' },
-  section: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 24 },
+  section: { borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#2d6a4f' },
   shareLink: { color: '#52b788', fontWeight: '600' },
