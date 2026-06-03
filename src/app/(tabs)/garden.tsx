@@ -39,10 +39,13 @@ type PlacementInfo = {
   tileSun: TileState;
 };
 
+type SharedEntry = { garden: Garden; ownerEmail: string };
+
 export default function GardenScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const [gardens, setGardens] = useState<Garden[]>([]);
+  const [gardens, setGardens] = useState<Garden[]>([]);        // owned
+  const [sharedEntries, setSharedEntries] = useState<SharedEntry[]>([]); // shared with me
   const [selectedGarden, setSelectedGarden] = useState<Garden | null>(null);
   const [plants, setPlants] = useState<Plant[]>([]);
 
@@ -62,10 +65,33 @@ export default function GardenScreen() {
 
   useEffect(() => {
     if (!user) return;
-    pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }).then((list) => {
-      setGardens(list as any);
-      if (list.length > 0) setSelectedGarden(list[0] as any);
-    });
+
+    // Own gardens
+    pb.collection('gardens')
+      .getFullList({ filter: `user_id = "${user.id}"` })
+      .then((list) => {
+        setGardens(list as any);
+        if (list.length > 0) setSelectedGarden(list[0] as any);
+      });
+
+    // Gardens shared with me via my email
+    pb.collection('garden_shares')
+      .getFullList({ filter: `shared_with_email = "${user.email}"` })
+      .then(async (shares) => {
+        const entries: SharedEntry[] = [];
+        for (const share of shares as any[]) {
+          const garden = await pb.collection('gardens').getOne(share.garden_id).catch(() => null);
+          if (!garden) continue;
+          let ownerEmail = 'Shared';
+          try {
+            const owner = await pb.collection('users').getOne(share.owner_id);
+            ownerEmail = (owner as any).email ?? 'Shared';
+          } catch {}
+          entries.push({ garden: garden as any, ownerEmail });
+        }
+        setSharedEntries(entries);
+      })
+      .catch(() => {});
   }, [user]);
 
   useEffect(() => {
@@ -191,6 +217,20 @@ export default function GardenScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+        {sharedEntries.map(({ garden: g, ownerEmail }) => (
+          <TouchableOpacity
+            key={g.id}
+            style={[styles.gardenChip, styles.gardenChipShared, selectedGarden?.id === g.id && styles.gardenChipActive]}
+            onPress={() => setSelectedGarden(g)}
+          >
+            <Text style={[styles.gardenChipText, selectedGarden?.id === g.id && styles.gardenChipTextActive]}>
+              🤝 {g.name}
+            </Text>
+            <Text style={styles.gardenChipOwner} numberOfLines={1}>
+              {ownerEmail.split('@')[0]}
+            </Text>
+          </TouchableOpacity>
+        ))}
         <TouchableOpacity style={styles.gardenChip} onPress={() => router.push('/new-garden')}>
           <Text style={styles.gardenChipText}>+ New</Text>
         </TouchableOpacity>
@@ -198,15 +238,28 @@ export default function GardenScreen() {
 
       {selectedGarden ? (
         <ScrollView contentContainerStyle={styles.gridContainer}>
-          <View style={styles.gardenHeader}>
-            <View>
-              <Text style={styles.gardenName}>{selectedGarden.name}</Text>
-              <Text style={styles.gardenMeta}>
-                {SUN_EMOJIS[selectedGarden.sun_exposure as SunRequirement]}{' '}
-                {SUN_LABELS[selectedGarden.sun_exposure as SunRequirement]} · {selectedGarden.rows}×{selectedGarden.cols}
-              </Text>
-            </View>
-          </View>
+          {(() => {
+            const sharedEntry = sharedEntries.find(e => e.garden.id === selectedGarden.id);
+            return (
+              <View style={styles.gardenHeader}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.gardenName}>{selectedGarden.name}</Text>
+                    {sharedEntry && (
+                      <View style={styles.sharedBadge}>
+                        <Text style={styles.sharedBadgeText}>🤝 Shared</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.gardenMeta}>
+                    {SUN_EMOJIS[selectedGarden.sun_exposure as SunRequirement]}{' '}
+                    {SUN_LABELS[selectedGarden.sun_exposure as SunRequirement]} · {selectedGarden.rows}×{selectedGarden.cols}
+                    {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View>
@@ -554,9 +607,13 @@ const styles = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8,
     backgroundColor: '#fff', borderWidth: 1, borderColor: '#b7e4c7',
   },
+  gardenChipShared: { borderColor: '#a5d8ff', backgroundColor: '#f0f8ff', borderStyle: 'dashed' },
   gardenChipActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
   gardenChipText: { color: '#2d6a4f', fontWeight: '500' },
   gardenChipTextActive: { color: '#fff' },
+  gardenChipOwner: { fontSize: 10, color: '#74c0fc', marginTop: 1 },
+  sharedBadge: { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  sharedBadgeText: { fontSize: 11, color: '#1971c2', fontWeight: '600' },
   gridContainer: { padding: 16 },
   gardenHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   gardenName: { fontSize: 20, fontWeight: '700', color: '#2d6a4f' },

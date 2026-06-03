@@ -37,7 +37,7 @@ export default function ProfileScreen() {
         garden_id: shareGardenId,
         owner_id: user.id,
         shared_with_email: shareEmail.trim(),
-        permission: 'view',
+        permission: 'edit',
       });
       Alert.alert('Shared!', `Garden shared with ${shareEmail}`);
       setShares((s) => [...s, record as any]);
