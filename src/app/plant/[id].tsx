@@ -16,6 +16,7 @@ export default function PlantDetailScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
   const [plant, setPlant] = useState<Plant | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [harvests, setHarvests] = useState<Harvest[]>([]);
   const [photos, setPhotos] = useState<PlantPhoto[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
@@ -25,16 +26,25 @@ export default function PlantDetailScreen() {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([
-      pb.collection('plants').getOne(id),
-      pb.collection('harvests').getFullList({ filter: `plant_id = "${id}"`, sort: '-harvested_at' }),
-      pb.collection('plant_photos').getFullList({ filter: `plant_id = "${id}"`, sort: '-created' }),
-    ]).then(([p, h, ph]) => {
-      setPlant(p as any);
-      navigation.setOptions({ title: (p as any).name });
-      setHarvests(h as any);
-      setPhotos(ph as any);
-    }).catch(() => {});
+    // Fetch plant first — harvests/photos collections may not exist, don't let them block plant load
+    pb.collection('plants').getOne(id as string)
+      .then((p) => {
+        setPlant(p as any);
+        navigation.setOptions({ title: (p as any).name });
+      })
+      .catch((e) => {
+        setLoadError(e?.message ?? 'Could not load plant');
+      });
+
+    pb.collection('harvests')
+      .getFullList({ filter: `plant_id = "${id}"`, sort: '-harvested_at' })
+      .then((h) => setHarvests(h as any))
+      .catch(() => {}); // collection may not exist yet
+
+    pb.collection('plant_photos')
+      .getFullList({ filter: `plant_id = "${id}"`, sort: '-created' })
+      .then((ph) => setPhotos(ph as any))
+      .catch(() => {}); // collection may not exist yet
   }, [id]);
 
   useEffect(() => {
@@ -101,7 +111,24 @@ export default function PlantDetailScreen() {
     }
   }
 
-  if (!plant) return <View style={styles.loading}><Text>Loading...</Text></View>;
+  if (loadError) {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.loadingEmoji}>🌱</Text>
+        <Text style={styles.loadingTitle}>Couldn't load plant</Text>
+        <Text style={styles.loadingMsg}>{loadError}</Text>
+      </View>
+    );
+  }
+
+  if (!plant) {
+    return (
+      <View style={styles.loading}>
+        <Text style={styles.loadingEmoji}>🌿</Text>
+        <Text style={styles.loadingTitle}>Loading…</Text>
+      </View>
+    );
+  }
 
   const totalYieldKg = (plant.total_yield_grams / 1000).toFixed(2);
 
@@ -228,7 +255,10 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f7ee', padding: 32 },
+  loadingEmoji: { fontSize: 48, marginBottom: 12 },
+  loadingTitle: { fontSize: 18, fontWeight: '700', color: '#1b4332', marginBottom: 6 },
+  loadingMsg: { fontSize: 14, color: '#52796f', textAlign: 'center', lineHeight: 20 },
   container: { flex: 1, backgroundColor: '#f0f7ee' },
   content: { padding: 16, paddingBottom: 40 },
   label: { fontSize: 13, fontWeight: '600', color: '#52796f', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
