@@ -11,6 +11,7 @@ import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
 import { layoutFromGarden, TILE_COLORS } from '@/lib/garden-layout';
+import type { TileState } from '@/lib/garden-layout';
 import type { Garden, Plant } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
 import {
@@ -35,6 +36,7 @@ type PlacementInfo = {
   row: number;
   col: number;
   neighbors: Plant[];
+  tileSun: TileState;
 };
 
 export default function GardenScreen() {
@@ -55,6 +57,8 @@ export default function GardenScreen() {
   const [placeSun, setPlaceSun] = useState<SunRequirement>('full_sun');
   const [placeWaterDays, setPlaceWaterDays] = useState(3);
   const [placeSuggestions, setPlaceSuggestions] = useState<Array<{ key: string; entry: CatalogEntry }>>([]);
+
+  const gardenLayout = selectedGarden ? layoutFromGarden(selectedGarden) : null;
 
   useEffect(() => {
     if (!user) return;
@@ -100,10 +104,11 @@ export default function GardenScreen() {
       return;
     }
     const neighbors = getNeighbors(row, col);
-    setPlacement({ row, col, neighbors });
+    const tileSun = (gardenLayout?.[row]?.[col] ?? 'full_sun') as TileState;
+    setPlacement({ row, col, neighbors, tileSun });
     setPlaceName('');
     setPlaceSuggestions([]);
-    setPlaceSun(selectedGarden?.sun_exposure ?? 'full_sun');
+    setPlaceSun(tileSun === 'inactive' ? 'full_sun' : tileSun as SunRequirement);
     setPlaceWaterDays(3);
   }
 
@@ -146,12 +151,14 @@ export default function GardenScreen() {
   // Build compatibility summary for placement modal
   function buildCompatSummary() {
     if (!placement || !placeName.trim()) return null;
-    const gardenSun = selectedGarden?.sun_exposure ?? 'full_sun';
+    const tileSun = (placement.tileSun === 'inactive'
+      ? (selectedGarden?.sun_exposure ?? 'full_sun')
+      : placement.tileSun) as SunRequirement;
     const plantKey = findPlantKey(placeName);
     const plantInfo = plantKey ? PLANT_CATALOG[plantKey] : null;
 
     const sunCompat = plantInfo
-      ? getSunCompatibility(plantInfo.sunRequirement, gardenSun as SunRequirement)
+      ? getSunCompatibility(plantInfo.sunRequirement, tileSun)
       : null;
 
     const neighborResults = placement.neighbors.map((neighbor) => {
@@ -164,7 +171,7 @@ export default function GardenScreen() {
     const overall: 'go' | 'warn' | 'stop' =
       hasBad ? 'stop' : hasGood ? 'go' : 'warn';
 
-    return { sunCompat, neighborResults, plantInfo, overall };
+    return { sunCompat, neighborResults, plantInfo, overall, tileSun };
   }
 
   const compatSummary = buildCompatSummary();
@@ -203,13 +210,11 @@ export default function GardenScreen() {
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View>
-              {Array.from({ length: selectedGarden.rows }).map((_, row) => {
-                const tileLayout = layoutFromGarden(selectedGarden);
-                return (
+              {Array.from({ length: selectedGarden.rows }).map((_, row) => (
                   <View key={row} style={styles.gridRow}>
                     {Array.from({ length: selectedGarden.cols }).map((_, col) => {
                       const plant = getPlantAt(row, col);
-                      const tileState = tileLayout[row]?.[col] ?? 'inactive';
+                      const tileState = gardenLayout?.[row]?.[col] ?? 'inactive';
                       const isInactive = tileState === 'inactive';
                       const tileBg = plant
                         ? HEALTH_COLORS[plant.health_status]
@@ -236,8 +241,7 @@ export default function GardenScreen() {
                       );
                     })}
                   </View>
-                );
-              })}
+                ))}
             </View>
           </ScrollView>
 
@@ -306,9 +310,48 @@ export default function GardenScreen() {
         <View style={styles.modalBackdrop}>
           <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
             <View style={styles.modal}>
-              <Text style={styles.modalTitle}>
-                Plant Here (row {(placement?.row ?? 0) + 1}, col {(placement?.col ?? 0) + 1})
-              </Text>
+              <View style={styles.modalTitleRow}>
+                <Text style={styles.modalTitle}>Plant Here</Text>
+                <Text style={styles.modalTileSun}>
+                  Tile: {placement?.tileSun && placement.tileSun !== 'inactive'
+                    ? `${SUN_EMOJIS[placement.tileSun as SunRequirement]} ${SUN_LABELS[placement.tileSun as SunRequirement]}`
+                    : '—'
+                  }
+                </Text>
+              </View>
+
+              {/* Sun mismatch error */}
+              {compatSummary?.sunCompat === 'mismatch' && (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorBannerText}>
+                    ⛔ Sun mismatch — {compatSummary.plantInfo?.name} needs{' '}
+                    {SUN_LABELS[compatSummary.plantInfo!.sunRequirement]}, but this tile gets{' '}
+                    {SUN_LABELS[compatSummary.tileSun as SunRequirement]}
+                  </Text>
+                </View>
+              )}
+              {compatSummary?.sunCompat === 'tolerable' && (
+                <View style={styles.warnBanner}>
+                  <Text style={styles.warnBannerText}>
+                    ⚠️ Marginal sun — {compatSummary.plantInfo?.name} prefers{' '}
+                    {SUN_LABELS[compatSummary.plantInfo!.sunRequirement]}, this tile gets{' '}
+                    {SUN_LABELS[compatSummary.tileSun as SunRequirement]}
+                  </Text>
+                </View>
+              )}
+
+              {/* Bad companion error */}
+              {compatSummary?.overall === 'stop' && (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorBannerText}>
+                    ⛔ Bad companions nearby:{' '}
+                    {compatSummary.neighborResults
+                      .filter(r => r.compat === 'bad')
+                      .map(r => r.neighbor.name)
+                      .join(', ')}
+                  </Text>
+                </View>
+              )}
 
               <TextInput
                 style={styles.input}
@@ -454,11 +497,23 @@ export default function GardenScreen() {
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.button, !placeName.trim() && styles.buttonDisabled]}
+                  style={[
+                    styles.button,
+                    !placeName.trim() && styles.buttonDisabled,
+                    compatSummary?.sunCompat === 'mismatch' || compatSummary?.overall === 'stop'
+                      ? styles.buttonDanger
+                      : compatSummary?.sunCompat === 'tolerable'
+                      ? styles.buttonWarn
+                      : null,
+                  ]}
                   onPress={placePlant}
                   disabled={!placeName.trim()}
                 >
-                  <Text style={styles.buttonText}>Plant It</Text>
+                  <Text style={styles.buttonText}>
+                    {compatSummary?.sunCompat === 'mismatch' || compatSummary?.overall === 'stop'
+                      ? 'Plant Anyway ⚠️'
+                      : 'Plant It ✓'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -511,12 +566,26 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 16, color: '#52796f', marginBottom: 20 },
   button: { backgroundColor: '#2d6a4f', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   buttonDisabled: { opacity: 0.4 },
+  buttonDanger: { backgroundColor: '#c0392b' },
+  buttonWarn: { backgroundColor: '#d97706' },
   buttonText: { color: '#fff', fontWeight: '600' },
+  modalTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  modalTileSun: { fontSize: 12, color: '#52796f', fontWeight: '500' },
+  errorBanner: {
+    backgroundColor: '#ffe3e3', borderRadius: 10, padding: 12, marginBottom: 10,
+    borderLeftWidth: 4, borderLeftColor: '#c0392b',
+  },
+  errorBannerText: { fontSize: 13, color: '#922b21', fontWeight: '600', lineHeight: 18 },
+  warnBanner: {
+    backgroundColor: '#fff8e1', borderRadius: 10, padding: 12, marginBottom: 10,
+    borderLeftWidth: 4, borderLeftColor: '#d97706',
+  },
+  warnBannerText: { fontSize: 13, color: '#7d5a00', fontWeight: '600', lineHeight: 18 },
   // Modals
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalScroll: { justifyContent: 'flex-end', flexGrow: 1 },
   modal: { backgroundColor: '#fff', borderRadius: 20, padding: 24, margin: 16 },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#2d6a4f', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#2d6a4f' },
   input: {
     backgroundColor: '#f0f7ee', borderRadius: 12, padding: 14, fontSize: 16,
     borderWidth: 1, borderColor: '#b7e4c7', marginBottom: 12,

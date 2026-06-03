@@ -46,7 +46,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
   },
   // ─── PEPPERS ─────────────────────────────────────────────────────────────────
   pepper: {
-    name: 'Pepper', aliases: ['peppers', 'bell pepper', 'chili', 'chilli', 'capsicum'],
+    name: 'Pepper', aliases: ['peppers', 'bell pepper', 'chili', 'chilli', 'capsicum', 'sweet pepper'],
     scientificName: 'Capsicum annuum', category: 'vegetable',
     sunRequirement: 'full_sun', waterNeeds: 'medium', waterIntervalDays: 3,
     goodCompanions: ['basil', 'carrot', 'marigold', 'tomato', 'parsley', 'spinach', 'oregano'],
@@ -59,6 +59,26 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
       { name: 'Banana', notes: 'Mild; yellow to red' },
       { name: 'Poblano', notes: 'Mild-medium; great for roasting' },
       { name: 'Cayenne', notes: 'Hot; drying pepper' },
+    ],
+  },
+  // ─── JALAPEÑO ────────────────────────────────────────────────────────────────
+  jalapeno: {
+    name: 'Jalapeño', aliases: [
+      'jalapeno', 'jalapeños', 'jalapenos', 'jalapeño pepper', 'jalapeno pepper',
+      'hot pepper', 'chili pepper', 'chile pepper', 'serrano',
+    ],
+    scientificName: 'Capsicum annuum var. annuum', category: 'vegetable',
+    sunRequirement: 'full_sun', waterNeeds: 'medium', waterIntervalDays: 3,
+    goodCompanions: ['basil', 'carrot', 'marigold', 'tomato', 'parsley', 'spinach', 'oregano', 'onion', 'garlic'],
+    badCompanions: ['fennel', 'kohlrabi', 'apricot'],
+    notes: 'Alliums (onion, garlic) deter aphids and spider mites. Avoid planting near fennel.',
+    daysToMaturity: { min: 70, max: 85 }, spacingCm: 45,
+    varieties: [
+      { name: 'Classic', notes: '2,500–8,000 SHU; most common' },
+      { name: 'Tam Jalapeño', notes: 'Very mild; 1,000–1,500 SHU' },
+      { name: 'Mucho Nacho', notes: 'Extra large pods; mild-medium' },
+      { name: 'Jalapeño M', notes: 'Heavy producer; consistent heat' },
+      { name: 'Chipotle', notes: 'Smoked ripe jalapeño; same plant' },
     ],
   },
   // ─── CUCUMBER ────────────────────────────────────────────────────────────────

@@ -324,6 +324,9 @@ export default function NewGardenScreen() {
           {/* ── Step: size ── */}
           {step === 'size' && (
             <View style={styles.sizeStep}>
+              <View style={styles.tileSizeNote}>
+                <Text style={styles.tileSizeText}>📏 Each tile = 30 × 30 cm (1 sq ft)</Text>
+              </View>
               <SizeStepper label="Rows" value={rows} min={MIN_SIZE} max={MAX_ROWS}
                 onChange={d => handleSizeChange('rows', d)} />
               <SizeStepper label="Columns" value={cols} min={MIN_SIZE} max={MAX_COLS}
@@ -338,7 +341,9 @@ export default function NewGardenScreen() {
                   </View>
                 ))}
               </View>
-              <Text style={styles.previewCount}>{rows} × {cols} = {rows * cols} tiles</Text>
+              <Text style={styles.previewCount}>
+                {rows} × {cols} = {rows * cols} tiles · ~{(rows * 0.3).toFixed(1)} × {(cols * 0.3).toFixed(1)} m ({(rows * cols).toFixed(0)} sq ft)
+              </Text>
             </View>
           )}
 
@@ -564,6 +569,8 @@ const styles = StyleSheet.create({
 
   // Size step
   sizeStep:      { width: '100%', maxWidth: 380, alignItems: 'center' },
+  tileSizeNote:  { backgroundColor: G.dew, borderRadius: R.md, paddingVertical: 10, paddingHorizontal: 16, marginBottom: 16, borderWidth: 1, borderColor: G.mist },
+  tileSizeText:  { fontSize: 13, color: G.hunter, fontWeight: '600', textAlign: 'center' },
   stepper:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 16, backgroundColor: G.cloud, borderRadius: R.lg, padding: 16, ...Shadow.soft },
   stepperLabel:  { fontSize: 15, fontWeight: '700', color: G.forest },
   stepperControls:{ flexDirection: 'row', alignItems: 'center', gap: 16 },
