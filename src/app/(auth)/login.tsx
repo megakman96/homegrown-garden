@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, Alert,
+  View, Text, TextInput, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, Image, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,6 +18,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const logoFloat = useSharedValue(0);
 
@@ -39,6 +40,7 @@ export default function LoginScreen() {
   async function handleAuth() {
     if (!email || !password) return;
     setLoading(true);
+    setErrorMsg(null);
     try {
       if (isSignUp) {
         await pb.collection('users').create({ email, password, passwordConfirm: password });
@@ -47,7 +49,16 @@ export default function LoginScreen() {
         await pb.collection('users').authWithPassword(email, password);
       }
     } catch (e: any) {
-      Alert.alert('Oops', e?.message ?? 'Something went wrong');
+      const msg: string = e?.response?.message ?? e?.message ?? 'Something went wrong';
+      // If they tried to sign up with an existing email, nudge them to sign in
+      const alreadyExists = msg.toLowerCase().includes('already exists') ||
+        msg.toLowerCase().includes('email') && msg.toLowerCase().includes('unique');
+      if (isSignUp && alreadyExists) {
+        setErrorMsg('An account with that email already exists. Try signing in instead.');
+        setIsSignUp(false);
+      } else {
+        setErrorMsg(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -84,6 +95,12 @@ export default function LoginScreen() {
 
           <FadeInView delay={240} style={styles.card}>
             <Text style={styles.cardTitle}>{isSignUp ? 'Create Account' : 'Welcome back'}</Text>
+
+            {errorMsg && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>⚠️ {errorMsg}</Text>
+              </View>
+            )}
 
             <View style={styles.inputWrap}>
               <Text style={styles.label}>Email</Text>
@@ -127,7 +144,7 @@ export default function LoginScreen() {
             </PressableScale>
 
             <PressableScale
-              onPress={() => setIsSignUp(v => !v)}
+              onPress={() => { setIsSignUp(v => !v); setErrorMsg(null); }}
               style={styles.switchBtn}
               haptic={false}
             >
@@ -165,7 +182,9 @@ const styles = StyleSheet.create({
     padding: 28,
     ...Shadow.float,
   },
-  cardTitle:   { fontSize: 22, fontWeight: '700', color: G.forest, marginBottom: 20 },
+  cardTitle:   { fontSize: 22, fontWeight: '700', color: G.forest, marginBottom: 16 },
+  errorBox:    { backgroundColor: '#fff5f5', borderRadius: R.md, padding: 12, marginBottom: 14, borderLeftWidth: 3, borderLeftColor: '#e03131' },
+  errorText:   { fontSize: 13, color: '#c0392b', lineHeight: 18 },
   inputWrap:   { marginBottom: 16 },
   label:       { fontSize: 11, fontWeight: '700', color: G.stone, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 },
   input: {

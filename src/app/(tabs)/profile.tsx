@@ -16,6 +16,7 @@ export default function ProfileScreen() {
   const [showShare, setShowShare] = useState(false);
   const [shareGardenId, setShareGardenId] = useState('');
   const [shareEmail, setShareEmail] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -50,6 +51,40 @@ export default function ProfileScreen() {
   async function removeShare(id: string) {
     await pb.collection('garden_shares').delete(id);
     setShares((s) => s.filter((sh) => sh.id !== id));
+  }
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account, all gardens, and all plants. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete Everything', style: 'destructive', onPress: deleteAccount },
+      ],
+    );
+  }
+
+  async function deleteAccount() {
+    if (!user) return;
+    setDeletingAccount(true);
+    try {
+      // Delete in order: plants → gardens → shares → user record
+      const plants = await pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` });
+      await Promise.all(plants.map(p => pb.collection('plants').delete(p.id)));
+
+      const gardenList = await pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` });
+      await Promise.all(gardenList.map(g => pb.collection('gardens').delete(g.id)));
+
+      const shareList = await pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` });
+      await Promise.all(shareList.map(s => pb.collection('garden_shares').delete(s.id)));
+
+      await pb.collection('users').delete(user.id);
+      signOut();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not delete account. Try from the admin panel.');
+    } finally {
+      setDeletingAccount(false);
+    }
   }
 
   const shareModal = (
@@ -156,6 +191,9 @@ export default function ProfileScreen() {
               <TouchableOpacity style={styles.desktopSignOut} onPress={signOut}>
                 <Text style={styles.desktopSignOutText}>Sign out</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.desktopDeleteBtn} onPress={confirmDeleteAccount} disabled={deletingAccount}>
+                <Text style={styles.desktopDeleteText}>{deletingAccount ? 'Deleting…' : 'Delete Account'}</Text>
+              </TouchableOpacity>
             </View>
           </View>
           {/* Right: shares */}
@@ -176,6 +214,9 @@ export default function ProfileScreen() {
       {sharesSection}
       <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.deleteButton} onPress={confirmDeleteAccount} disabled={deletingAccount}>
+        <Text style={styles.deleteButtonText}>{deletingAccount ? 'Deleting…' : 'Delete Account'}</Text>
       </TouchableOpacity>
       {shareModal}
     </ScrollView>
@@ -259,8 +300,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#ff6b6b',
+    marginBottom: 10,
   },
   signOutText: { color: '#ff6b6b', fontWeight: '600', fontSize: 16 },
+  deleteButton: {
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  deleteButtonText: { color: '#adb5bd', fontSize: 13 },
+  desktopDeleteBtn: { marginTop: 6, alignItems: 'center', paddingVertical: 6 },
+  desktopDeleteText: { color: '#adb5bd', fontSize: 12 },
 
   // Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
