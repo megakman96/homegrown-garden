@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
+export type TempUnit = 'C' | 'F';
 
 const DARK_COLORS = {
   bg:        '#0d2018',
@@ -30,6 +31,31 @@ interface AppThemeCtx {
   setMode: (m: ThemeMode) => void;
   isDark: boolean;
   colors: typeof LIGHT_COLORS;
+  tempUnit: TempUnit;
+  setTempUnit: (u: TempUnit) => void;
+}
+
+export function formatTemp(celsius: number, unit: TempUnit): string {
+  if (unit === 'F') return `${Math.round(celsius * 9 / 5 + 32)}°F`;
+  return `${Math.round(celsius)}°C`;
+}
+
+async function loadPref(key: string): Promise<string | null> {
+  try {
+    const { getItemAsync } = await import('expo-secure-store');
+    return await getItemAsync(key);
+  } catch {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+}
+
+async function savePref(key: string, value: string): Promise<void> {
+  try {
+    const { setItemAsync } = await import('expo-secure-store');
+    await setItemAsync(key, value);
+  } catch {
+    try { localStorage.setItem(key, value); } catch {}
+  }
 }
 
 const AppThemeContext = createContext<AppThemeCtx>({
@@ -37,29 +63,41 @@ const AppThemeContext = createContext<AppThemeCtx>({
   setMode: () => {},
   isDark: false,
   colors: LIGHT_COLORS,
+  tempUnit: 'C',
+  setTempUnit: () => {},
 });
 
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>('system');
+  const [tempUnit, setTempUnitState] = useState<TempUnit>('C');
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('hg_theme') as ThemeMode;
-      if (saved === 'light' || saved === 'dark' || saved === 'system') setModeState(saved);
-    } catch {}
+    (async () => {
+      const savedTheme = await loadPref('hg_theme');
+      if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
+        setModeState(savedTheme);
+      }
+      const savedUnit = await loadPref('hg_temp_unit');
+      if (savedUnit === 'C' || savedUnit === 'F') setTempUnitState(savedUnit);
+    })();
   }, []);
 
   function setMode(m: ThemeMode) {
     setModeState(m);
-    try { localStorage.setItem('hg_theme', m); } catch {}
+    savePref('hg_theme', m);
+  }
+
+  function setTempUnit(u: TempUnit) {
+    setTempUnitState(u);
+    savePref('hg_temp_unit', u);
   }
 
   const isDark = mode === 'dark' || (mode === 'system' && system === 'dark');
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
 
   return (
-    <AppThemeContext.Provider value={{ mode, setMode, isDark, colors }}>
+    <AppThemeContext.Provider value={{ mode, setMode, isDark, colors, tempUnit, setTempUnit }}>
       {children}
     </AppThemeContext.Provider>
   );
@@ -69,7 +107,7 @@ export const useAppTheme = () => useContext(AppThemeContext);
 
 // Birthday helpers
 export function saveBirthday(userId: string, mmdd: string) {
-  try { localStorage.setItem(`hg_bday_${userId}`, mmdd); } catch {}
+  savePref(`hg_bday_${userId}`, mmdd);
 }
 
 export function loadBirthday(userId: string): string | null {

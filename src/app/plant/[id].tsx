@@ -1,58 +1,85 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, Alert, Image,
+  TextInput, Modal, Alert, Image, Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { pb, fileUrl } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
+import PlantAvatar from '@/components/PlantAvatar';
+import { G, R, Shadow } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
 import type { Plant, Harvest, PlantPhoto, HealthStatus } from '@/lib/types';
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const HERO_HEIGHT = 260;
+
 const HEALTH_OPTIONS: HealthStatus[] = ['healthy', 'needs_water', 'sick', 'harvested', 'dead'];
+
+const HEALTH_COLORS: Record<HealthStatus, string> = {
+  healthy:     '#52b788',
+  needs_water: '#339af0',
+  sick:        '#f03e3e',
+  harvested:   '#a9e34b',
+  dead:        '#adb5bd',
+};
+
+const HEALTH_LABELS: Record<HealthStatus, string> = {
+  healthy:     '🟢 Healthy',
+  needs_water: '💧 Needs water',
+  sick:        '🟠 Sick',
+  harvested:   '🧺 Harvested',
+  dead:        '⚫ Dead',
+};
 
 export default function PlantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
+  const { isDark, colors } = useAppTheme();
+  const bg      = isDark ? colors.bg        : G.foam;
+  const cardBg  = isDark ? colors.bgCard    : G.cloud;
+  const textPrim= isDark ? colors.text      : G.forest;
+  const textSec = isDark ? colors.textSec   : G.stone;
+  const border  = isDark ? colors.border    : G.mist;
+  const inputBg = isDark ? colors.bgElement : G.foam;
   const navigation = useNavigation();
   const [plant, setPlant] = useState<Plant | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [harvests, setHarvests] = useState<Harvest[]>([]);
   const [photos, setPhotos] = useState<PlantPhoto[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
   const [showHarvest, setShowHarvest] = useState(false);
   const [harvestUnit, setHarvestUnit] = useState<'grams' | 'quantity'>('grams');
-  const [harvestValue, setHarvestValue] = useState(100); // grams or count
+  const [harvestValue, setHarvestValue] = useState(100);
   const [harvestNotes, setHarvestNotes] = useState('');
 
   useEffect(() => {
     if (!id) return;
-    // Fetch plant first — harvests/photos collections may not exist, don't let them block plant load
     pb.collection('plants').getOne(id as string)
       .then((p) => {
         setPlant(p as any);
         navigation.setOptions({ title: (p as any).name });
       })
-      .catch((e) => {
-        setLoadError(e?.message ?? 'Could not load plant');
-      });
+      .catch((e) => setLoadError(e?.message ?? 'Could not load plant'));
 
     pb.collection('harvests')
       .getFullList({ filter: `plant_id = "${id}"`, sort: '-harvested_at' })
       .then((h) => setHarvests(h as any))
-      .catch(() => {}); // collection may not exist yet
+      .catch(() => {});
 
     pb.collection('plant_photos')
       .getFullList({ filter: `plant_id = "${id}"`, sort: '-created' })
       .then((ph) => setPhotos(ph as any))
-      .catch(() => {}); // collection may not exist yet
+      .catch(() => {});
   }, [id]);
 
   useEffect(() => {
     photos.forEach((photo: any) => {
       if (photoUrls[photo.id]) return;
-      const url = fileUrl(photo, photo.photo);
-      setPhotoUrls((prev) => ({ ...prev, [photo.id]: url }));
+      setPhotoUrls((prev) => ({ ...prev, [photo.id]: fileUrl(photo, photo.photo) }));
     });
   }, [photos]);
 
@@ -72,8 +99,6 @@ export default function PlantDetailScreen() {
 
   async function logHarvest() {
     if (!user || !plant || harvestValue <= 0) return;
-    // Store quantity as a count; store grams as-is. Both go into yield_grams field.
-    // Quantity harvests set yield_grams = 0 and record count in notes.
     const isQty = harvestUnit === 'quantity';
     const yieldGrams = isQty ? 0 : harvestValue;
     const autoNote = isQty ? `${harvestValue} piece${harvestValue !== 1 ? 's' : ''} harvested` : null;
@@ -101,21 +126,24 @@ export default function PlantDetailScreen() {
     if (!user || !plant) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
+      quality: 0.8,
     });
     if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    const response = await fetch(asset.uri);
-    const blob = await response.blob();
-    const formData = new FormData();
-    formData.append('photo', blob as any, `photo_${Date.now()}.jpg`);
-    formData.append('plant_id', plant.id);
-    formData.append('user_id', user.id);
+    setUploading(true);
     try {
+      const asset = result.assets[0];
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const formData = new FormData();
+      formData.append('photo', blob as any, `photo_${Date.now()}.jpg`);
+      formData.append('plant_id', plant.id);
+      formData.append('user_id', user.id);
       const data = await pb.collection('plant_photos').create(formData);
       setPhotos((p) => [data as any, ...p]);
     } catch (e: any) {
       Alert.alert('Upload failed', e?.message ?? 'Unknown error');
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -139,27 +167,91 @@ export default function PlantDetailScreen() {
   }
 
   const totalYieldKg = (plant.total_yield_grams / 1000).toFixed(2);
+  const heroUrl = photos.length > 0 ? photoUrls[photos[0].id] : null;
+  const additionalPhotos = photos.length > 1 ? photos.slice(1) : [];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Health status */}
-      <Text style={styles.label}>Health Status</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.healthPicker}>
-        {HEALTH_OPTIONS.map((status) => (
-          <TouchableOpacity
-            key={status}
-            style={[styles.healthChip, plant.health_status === status && styles.healthChipActive]}
-            onPress={() => updateHealth(status)}
-          >
-            <Text style={[styles.healthChipText, plant.health_status === status && styles.healthChipTextActive]}>
-              {status.replace('_', ' ')}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+    <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.content}>
 
-      {/* Info card */}
-      <View style={styles.infoCard}>
+      {/* ── Hero photo ─────────────────────────────────────────────────── */}
+      <View style={styles.hero}>
+        {heroUrl ? (
+          <Image source={{ uri: heroUrl }} style={styles.heroImage} resizeMode="cover" />
+        ) : (
+          <LinearGradient
+            colors={[G.forest, G.fern]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.heroEmpty}
+          >
+            <PlantAvatar name={plant.name} size={110} />
+          </LinearGradient>
+        )}
+
+        {/* Gradient overlay + name at bottom */}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.55)']}
+          style={styles.heroOverlay}
+        >
+          <View style={styles.heroBottom}>
+            <Text style={styles.heroName}>{plant.name}</Text>
+            {plant.variety ? (
+              <Text style={styles.heroVariety}>{plant.variety}</Text>
+            ) : null}
+          </View>
+        </LinearGradient>
+
+        {/* Camera button */}
+        <TouchableOpacity style={styles.cameraBtn} onPress={addPhoto} disabled={uploading}>
+          <Text style={styles.cameraBtnText}>{uploading ? '⏳' : '📷'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Additional photos strip ─────────────────────────────────────── */}
+      {photos.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.photoStrip}
+          contentContainerStyle={styles.photoStripContent}
+        >
+          {photos.map((photo) =>
+            photoUrls[photo.id] ? (
+              <Image key={photo.id} source={{ uri: photoUrls[photo.id] }} style={styles.photoThumb} resizeMode="cover" />
+            ) : (
+              <View key={photo.id} style={[styles.photoThumb, styles.photoThumbLoading]}>
+                <Text>📷</Text>
+              </View>
+            )
+          )}
+          <TouchableOpacity style={[styles.photoThumb, styles.addPhotoThumb]} onPress={addPhoto} disabled={uploading}>
+            <Text style={styles.addPhotoThumbText}>+</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* ── Health status ───────────────────────────────────────────────── */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Health Status</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {HEALTH_OPTIONS.map((status) => (
+            <TouchableOpacity
+              key={status}
+              style={[
+                styles.healthChip,
+                plant.health_status === status && { backgroundColor: HEALTH_COLORS[status], borderColor: HEALTH_COLORS[status] },
+              ]}
+              onPress={() => updateHealth(status)}
+            >
+              <Text style={[styles.healthChipText, plant.health_status === status && styles.healthChipTextActive]}>
+                {status.replace('_', ' ')}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* ── Info card ───────────────────────────────────────────────────── */}
+      <View style={[styles.infoCard, { backgroundColor: cardBg }]}>
         {plant.variety && <InfoRow label="Variety" value={plant.variety} />}
         {plant.planted_date && <InfoRow label="Planted" value={new Date(plant.planted_date).toLocaleDateString()} />}
         {plant.expected_harvest_date && (
@@ -175,81 +267,65 @@ export default function PlantDetailScreen() {
         {plant.notes && <InfoRow label="Notes" value={plant.notes} />}
       </View>
 
-      {/* Quick actions */}
+      {/* ── Quick actions ────────────────────────────────────────────────── */}
       <View style={styles.actions}>
         <TouchableOpacity style={styles.actionButton} onPress={markWatered}>
-          <Text style={styles.actionText}>💧 Mark Watered</Text>
+          <Text style={styles.actionEmoji}>💧</Text>
+          <Text style={styles.actionText}>Mark Watered</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionButton} onPress={() => setShowHarvest(true)}>
-          <Text style={styles.actionText}>🧺 Log Harvest</Text>
+          <Text style={styles.actionEmoji}>🧺</Text>
+          <Text style={styles.actionText}>Log Harvest</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={addPhoto}>
-          <Text style={styles.actionText}>📷 Add Photo</Text>
-        </TouchableOpacity>
+        {photos.length === 0 && (
+          <TouchableOpacity style={styles.actionButton} onPress={addPhoto} disabled={uploading}>
+            <Text style={styles.actionEmoji}>{uploading ? '⏳' : '📷'}</Text>
+            <Text style={styles.actionText}>Add Photo</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Photos */}
-      {photos.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Photos</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
-            {photos.map((photo) => (
-              photoUrls[photo.id] ? (
-                <Image key={photo.id} source={{ uri: photoUrls[photo.id] }} style={styles.photo} />
-              ) : (
-                <View key={photo.id} style={[styles.photo, styles.photoPlaceholder]}>
-                  <Text>📷</Text>
-                </View>
-              )
-            ))}
-          </ScrollView>
-        </>
-      )}
-
-      {/* Harvest log */}
+      {/* ── Harvest log ─────────────────────────────────────────────────── */}
       {harvests.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Harvest Log</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🧺 Harvest Log</Text>
           {harvests.map((h) => (
             <View key={h.id} style={styles.harvestRow}>
               <Text style={styles.harvestDate}>{new Date(h.harvested_at).toLocaleDateString()}</Text>
               <Text style={styles.harvestYield}>
-                {h.yield_grams > 0 ? `${h.yield_grams}g` : h.notes?.match(/^\d+ pieces?/) ? h.notes.match(/^\d+ pieces?/)?.[0] : '—'}
+                {h.yield_grams > 0
+                  ? `${h.yield_grams}g`
+                  : h.notes?.match(/^\d+ pieces?/)?.[0] ?? '—'}
               </Text>
               {h.notes && !h.notes.match(/^\d+ pieces?/) && (
                 <Text style={styles.harvestNotes}>{h.notes}</Text>
               )}
             </View>
           ))}
-        </>
+        </View>
       )}
 
+      {/* ── Harvest modal ────────────────────────────────────────────────── */}
       <Modal visible={showHarvest} transparent animationType="slide">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>🧺 Log Harvest</Text>
+          <View style={[styles.modal, { backgroundColor: cardBg }]}>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>🧺 Log Harvest</Text>
 
-            {/* Unit toggle */}
             <View style={styles.unitToggle}>
               <TouchableOpacity
                 style={[styles.unitBtn, harvestUnit === 'grams' && styles.unitBtnActive]}
                 onPress={() => { setHarvestUnit('grams'); setHarvestValue(100); }}
               >
-                <Text style={[styles.unitBtnText, harvestUnit === 'grams' && styles.unitBtnTextActive]}>
-                  ⚖️ Grams
-                </Text>
+                <Text style={[styles.unitBtnText, harvestUnit === 'grams' && styles.unitBtnTextActive]}>⚖️ Grams</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.unitBtn, harvestUnit === 'quantity' && styles.unitBtnActive]}
                 onPress={() => { setHarvestUnit('quantity'); setHarvestValue(1); }}
               >
-                <Text style={[styles.unitBtnText, harvestUnit === 'quantity' && styles.unitBtnTextActive]}>
-                  🔢 Quantity
-                </Text>
+                <Text style={[styles.unitBtnText, harvestUnit === 'quantity' && styles.unitBtnTextActive]}>🔢 Quantity</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Stepper */}
             <View style={styles.stepper}>
               <TouchableOpacity
                 style={styles.stepBtn}
@@ -269,10 +345,10 @@ export default function PlantDetailScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Notes */}
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
               placeholder="Notes (optional)"
+              placeholderTextColor={textSec}
               value={harvestNotes}
               onChangeText={setHarvestNotes}
             />
@@ -302,82 +378,156 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f7ee', padding: 32 },
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: G.foam, padding: 32 },
   loadingEmoji: { fontSize: 48, marginBottom: 12 },
-  loadingTitle: { fontSize: 18, fontWeight: '700', color: '#1b4332', marginBottom: 6 },
-  loadingMsg: { fontSize: 14, color: '#52796f', textAlign: 'center', lineHeight: 20 },
-  container: { flex: 1, backgroundColor: '#f0f7ee' },
-  content: { padding: 16, paddingBottom: 40 },
-  label: { fontSize: 13, fontWeight: '600', color: '#52796f', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  healthPicker: { flexGrow: 0, marginBottom: 20 },
+  loadingTitle: { fontSize: 18, fontWeight: '700', color: G.forest, marginBottom: 6 },
+  loadingMsg: { fontSize: 14, color: G.stone, textAlign: 'center', lineHeight: 20 },
+
+  container: { flex: 1, backgroundColor: G.foam },
+  content: { paddingBottom: 48 },
+
+  // Hero
+  hero: {
+    width: SCREEN_WIDTH,
+    height: HERO_HEIGHT,
+    backgroundColor: G.forest,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+  },
+  heroBottom: { gap: 2 },
+  heroName: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  heroVariety: { fontSize: 14, color: 'rgba(255,255,255,0.75)' },
+  cameraBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraBtnText: { fontSize: 18 },
+
+  // Photo strip
+  photoStrip: { flexGrow: 0, backgroundColor: G.foam },
+  photoStripContent: { paddingHorizontal: 14, paddingVertical: 12, gap: 8, flexDirection: 'row' },
+  photoThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: R.md,
+    overflow: 'hidden',
+  },
+  photoThumbLoading: { backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
+  addPhotoThumb: {
+    backgroundColor: G.dew,
+    borderWidth: 1.5,
+    borderColor: G.mist,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addPhotoThumbText: { fontSize: 22, color: G.sage },
+
+  // Sections
+  section: { paddingHorizontal: 16, marginTop: 16 },
+  label: { fontSize: 11, fontWeight: '700', color: G.stone, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: G.forest, marginBottom: 12 },
+
+  // Health chips
   healthChip: {
-    borderRadius: 20,
+    borderRadius: R.full,
     paddingHorizontal: 16,
     paddingVertical: 8,
     marginRight: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#b7e4c7',
+    backgroundColor: G.cloud,
+    borderWidth: 1.5,
+    borderColor: G.mist,
   },
-  healthChipActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
-  healthChipText: { color: '#2d6a4f', fontWeight: '500', textTransform: 'capitalize' },
+  healthChipText: { color: G.hunter, fontWeight: '500', textTransform: 'capitalize' },
   healthChipTextActive: { color: '#fff' },
-  infoCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 20 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f0f7ee' },
-  infoLabel: { fontSize: 14, color: '#52796f' },
-  infoValue: { fontSize: 14, color: '#1b4332', fontWeight: '500', maxWidth: '55%', textAlign: 'right' },
-  actions: { flexDirection: 'row', gap: 8, marginBottom: 24 },
+
+  // Info card — bg/text set inline from theme
+  infoCard: { borderRadius: R.lg, marginHorizontal: 16, marginTop: 16, ...Shadow.soft },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 11, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: G.foam },
+  infoLabel: { fontSize: 14, color: G.stone },
+  infoValue: { fontSize: 14, color: G.forest, fontWeight: '500', maxWidth: '55%', textAlign: 'right' },
+
+  // Quick actions
+  actions: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginTop: 16 },
   actionButton: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: R.lg,
+    paddingVertical: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#b7e4c7',
+    borderColor: G.mist,
+    gap: 4,
+    ...Shadow.soft,
   },
-  actionText: { fontSize: 12, fontWeight: '600', color: '#2d6a4f', textAlign: 'center' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#2d6a4f', marginBottom: 12 },
-  photoRow: { flexGrow: 0, marginBottom: 24 },
-  photo: { width: 120, height: 120, borderRadius: 12, marginRight: 10 },
-  photoPlaceholder: { backgroundColor: '#d8f3dc', justifyContent: 'center', alignItems: 'center' },
+  actionEmoji: { fontSize: 20 },
+  actionText: { fontSize: 11, fontWeight: '600', color: G.hunter, textAlign: 'center' },
+
+  // Harvest log
   harvestRow: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: G.cloud,
+    borderRadius: R.md,
     padding: 12,
     marginBottom: 8,
     flexDirection: 'row',
     gap: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: G.dew,
   },
-  harvestDate: { fontSize: 13, color: '#52796f' },
-  harvestYield: { fontSize: 15, fontWeight: '700', color: '#2d6a4f', flex: 1 },
-  harvestNotes: { fontSize: 12, color: '#74c69d' },
+  harvestDate: { fontSize: 13, color: G.stone, minWidth: 72 },
+  harvestYield: { fontSize: 15, fontWeight: '700', color: G.hunter, flex: 1 },
+  harvestNotes: { fontSize: 12, color: G.fern },
+
+  // Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: '#fff', borderRadius: 20, padding: 24, margin: 16 },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#2d6a4f', marginBottom: 16 },
-  unitToggle: { flexDirection: 'row', backgroundColor: '#f0f7ee', borderRadius: 12, padding: 4, marginBottom: 20 },
-  unitBtn: { flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center' },
-  unitBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  unitBtnText: { fontSize: 14, color: '#52796f', fontWeight: '500' },
-  unitBtnTextActive: { color: '#2d6a4f', fontWeight: '700' },
+  modal: { borderRadius: R.xl, padding: 24, margin: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: G.forest, marginBottom: 16 },
+  unitToggle: { flexDirection: 'row', backgroundColor: G.foam, borderRadius: R.md, padding: 4, marginBottom: 20 },
+  unitBtn: { flex: 1, paddingVertical: 9, borderRadius: R.sm, alignItems: 'center' },
+  unitBtnActive: { backgroundColor: G.cloud, ...Shadow.soft },
+  unitBtnText: { fontSize: 14, color: G.stone, fontWeight: '500' },
+  unitBtnTextActive: { color: G.forest, fontWeight: '700' },
   stepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 20 },
-  stepBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#d8f3dc', justifyContent: 'center', alignItems: 'center' },
-  stepBtnText: { fontSize: 26, fontWeight: '300', color: '#2d6a4f', lineHeight: 30 },
+  stepBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
+  stepBtnText: { fontSize: 26, fontWeight: '300', color: G.hunter, lineHeight: 30 },
   stepValueWrap: { alignItems: 'center', minWidth: 90 },
-  stepValue: { fontSize: 36, fontWeight: '800', color: '#1b4332' },
-  stepUnit: { fontSize: 13, color: '#52796f', marginTop: 2 },
+  stepValue: { fontSize: 36, fontWeight: '800', color: G.forest },
+  stepUnit: { fontSize: 13, color: G.stone, marginTop: 2 },
   input: {
-    backgroundColor: '#f0f7ee',
-    borderRadius: 12,
+    borderRadius: R.md,
     padding: 14,
     fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#b7e4c7',
+    borderWidth: 1.5,
     marginBottom: 12,
   },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  cancelText: { color: '#52796f', fontSize: 16 },
-  button: { backgroundColor: '#2d6a4f', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
-  buttonText: { color: '#fff', fontWeight: '600' },
+  cancelText: { color: G.stone, fontSize: 16 },
+  button: { backgroundColor: G.hunter, borderRadius: R.md, paddingHorizontal: 24, paddingVertical: 12 },
+  buttonText: { color: G.cloud, fontWeight: '600' },
 });

@@ -10,10 +10,13 @@ import { useAuth } from '@/hooks/use-auth';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
+import { getPlantIcon } from '@/lib/plant-icons';
 import {
   layoutFromGarden, makeLayout, resizeLayout,
   TILE_COLORS, TILE_LABELS, TILE_EMOJIS, SUN_CYCLE, activeCount,
 } from '@/lib/garden-layout';
+import { emit } from '@/lib/events';
 import type { TileState, GardenLayout } from '@/lib/garden-layout';
 import type { Garden, Plant } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
@@ -24,11 +27,11 @@ import {
 import type { CatalogEntry } from '@/lib/plant-catalog';
 
 const HEALTH_COLORS: Record<string, string> = {
-  healthy: '#52b788',
-  needs_water: '#74c0fc',
-  sick: '#ffa94d',
-  harvested: '#a9e34b',
-  dead: '#adb5bd',
+  healthy:     '#52b788',  // green
+  needs_water: '#339af0',  // vivid blue (distinct from muted sky-blue shade tiles)
+  sick:        '#f03e3e',  // red (distinct from orange partial-sun tiles)
+  harvested:   '#a9e34b',  // lime
+  dead:        '#adb5bd',  // stone
 };
 
 const COMPAT_COLOR = { good: '#52b788', bad: '#ff6b6b', neutral: '#adb5bd', unknown: '#dee2e6' } as const;
@@ -46,6 +49,13 @@ type SharedEntry = { garden: Garden; ownerEmail: string };
 
 export default function GardenScreen() {
   const { user } = useAuth();
+  const { isDark, colors } = useAppTheme();
+  const bg         = isDark ? colors.bg        : G.foam;
+  const cardBg     = isDark ? colors.bgCard    : '#fff';
+  const textPrim   = isDark ? colors.text      : '#2d6a4f';
+  const textSec    = isDark ? colors.textSec   : '#52796f';
+  const border     = isDark ? colors.border    : '#b7e4c7';
+  const inputBg    = isDark ? colors.bgElement : '#f0f7ee';
   const router = useRouter();
   const [gardens, setGardens] = useState<Garden[]>([]);        // owned
   const [sharedEntries, setSharedEntries] = useState<SharedEntry[]>([]); // shared with me
@@ -184,6 +194,7 @@ export default function GardenScreen() {
       total_yield_grams: 0,
     });
     setPlants((p) => [...p, data as any]);
+    emit('plants:changed');
     setPlacement(null);
     setPlaceSuggestions([]);
   }
@@ -324,13 +335,13 @@ export default function GardenScreen() {
   const compatSummary = buildCompatSummary();
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: bg }]}>
       {/* Garden selector */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
         {gardens.map((g) => (
           <TouchableOpacity
             key={g.id}
-            style={[styles.gardenChip, selectedGarden?.id === g.id && styles.gardenChipActive]}
+            style={[styles.gardenChip, { backgroundColor: isDark ? colors.bgCard : '#fff', borderColor: border }, selectedGarden?.id === g.id && styles.gardenChipActive]}
             onPress={() => setSelectedGarden(g)}
           >
             <Text style={[styles.gardenChipText, selectedGarden?.id === g.id && styles.gardenChipTextActive]}>
@@ -341,7 +352,7 @@ export default function GardenScreen() {
         {sharedEntries.map(({ garden: g, ownerEmail }) => (
           <TouchableOpacity
             key={g.id}
-            style={[styles.gardenChip, styles.gardenChipShared, selectedGarden?.id === g.id && styles.gardenChipActive]}
+            style={[styles.gardenChip, styles.gardenChipShared, { borderColor: isDark ? colors.border : '#a5d8ff' }, selectedGarden?.id === g.id && styles.gardenChipActive]}
             onPress={() => setSelectedGarden(g)}
           >
             <Text style={[styles.gardenChipText, selectedGarden?.id === g.id && styles.gardenChipTextActive]}>
@@ -352,8 +363,8 @@ export default function GardenScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-        <TouchableOpacity style={styles.gardenChip} onPress={() => router.push('/new-garden')}>
-          <Text style={styles.gardenChipText}>+ New</Text>
+        <TouchableOpacity style={[styles.gardenChip, { backgroundColor: isDark ? colors.bgCard : '#fff', borderColor: border }]} onPress={() => router.push('/new-garden')}>
+          <Text style={[styles.gardenChipText, { color: textPrim }]}>+ New</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -366,14 +377,14 @@ export default function GardenScreen() {
               <View style={styles.gardenHeader}>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <Text style={styles.gardenName}>{selectedGarden.name}</Text>
+                    <Text style={[styles.gardenName, { color: textPrim }]}>{selectedGarden.name}</Text>
                     {sharedEntry && (
                       <View style={styles.sharedBadge}>
                         <Text style={styles.sharedBadgeText}>🤝 Shared</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={styles.gardenMeta}>
+                  <Text style={[styles.gardenMeta, { color: textSec }]}>
                     {SUN_EMOJIS[selectedGarden.sun_exposure as SunRequirement]}{' '}
                     {SUN_LABELS[selectedGarden.sun_exposure as SunRequirement]} · {selectedGarden.rows}×{selectedGarden.cols}
                     {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
@@ -415,10 +426,9 @@ export default function GardenScreen() {
                         >
                           {plant ? (
                             <>
-                              <Text style={styles.cellText} numberOfLines={1}>{plant.name.slice(0, 5)}</Text>
-                              {/* Tile-sun dot in bottom-right — distinct from health color */}
+                              <Text style={styles.cellEmoji}>{getPlantIcon(plant.name).emoji}</Text>
                               {tileState !== 'inactive' && (
-                                <View style={[styles.cellSunDot, { backgroundColor: TILE_COLORS[tileState] }]} />
+                                <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>
                               )}
                             </>
                           ) : !isInactive ? (
@@ -439,13 +449,13 @@ export default function GardenScreen() {
               {Object.entries(HEALTH_COLORS).map(([status, color]) => (
                 <View key={status} style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: color }]} />
-                  <Text style={styles.legendLabel}>{status.replace('_', ' ')}</Text>
+                  <Text style={[styles.legendLabel, { color: textSec }]}>{status.replace('_', ' ')}</Text>
                 </View>
               ))}
             </View>
           </View>
           <View style={styles.legendSection}>
-            <Text style={styles.legendHeading}>Tile sunlight (dot in corner)</Text>
+            <Text style={styles.legendHeading}>Tile sunlight (emoji in corner)</Text>
             <View style={styles.legend}>
               {SUN_CYCLE.map(s => (
                 <View key={s} style={styles.legendItem}>
@@ -474,23 +484,23 @@ export default function GardenScreen() {
       <Modal visible={!!plantAction} transparent animationType="slide">
         <View style={styles.modalBackdrop}>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlantAction(null)} />
-          <View style={[styles.modal, { paddingTop: 12 }]}>
+          <View style={[styles.modal, { paddingTop: 12, backgroundColor: cardBg }]}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>{plantAction?.name ?? ''}</Text>
-            <Text style={[styles.fieldLabel, { marginBottom: 16 }]}>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>{plantAction?.name ?? ''}</Text>
+            <Text style={[styles.fieldLabel, { marginBottom: 16, color: textSec }]}>
               {plantAction?.health_status?.replace('_', ' ')} · {plantAction?.sun_requirement?.replace('_', ' ')}
             </Text>
 
-            <TouchableOpacity style={styles.actionRow} onPress={() => {
+            <TouchableOpacity style={[styles.actionRow, { borderBottomColor: isDark ? colors.border : undefined }]} onPress={() => {
               const p = plantAction; setPlantAction(null);
               if (p) router.push(`/plant/${p.id}`);
             }}>
-              <Text style={styles.actionRowText}>👁  View Plant Details</Text>
+              <Text style={[styles.actionRowText, { color: textPrim }]}>👁  View Plant Details</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionRow} onPress={unplantPlant}>
-              <Text style={styles.actionRowText}>⬜  Remove from Garden Grid</Text>
-              <Text style={styles.actionRowSub}>Plant stays in your Plants list</Text>
+            <TouchableOpacity style={[styles.actionRow, { borderBottomColor: isDark ? colors.border : undefined }]} onPress={unplantPlant}>
+              <Text style={[styles.actionRowText, { color: textPrim }]}>⬜  Remove from Garden Grid</Text>
+              <Text style={[styles.actionRowSub, { color: textSec }]}>Plant stays in your Plants list</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={[styles.actionRow, styles.actionRowDanger]} onPress={confirmDeletePlant}>
@@ -498,7 +508,7 @@ export default function GardenScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setPlantAction(null)} style={styles.actionCancel}>
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={[styles.cancelText, { color: textSec }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -508,9 +518,9 @@ export default function GardenScreen() {
       <Modal visible={showEditGarden} transparent animationType="slide">
         <View style={styles.modalBackdrop}>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowEditGarden(false)} />
-          <View style={[styles.modal, { paddingTop: 12, maxHeight: '85%' }]}>
+          <View style={[styles.modal, { paddingTop: 12, maxHeight: '85%', backgroundColor: cardBg }]}>
             <View style={styles.modalHandle} />
-            <View style={styles.editStepTabs}>
+            <View style={[styles.editStepTabs, { backgroundColor: isDark ? colors.bgElement : G.foam }]}>
               {(['size', 'shape', 'sun'] as const).map((s, i) => (
                 <TouchableOpacity
                   key={s} style={[styles.editTab, editStep === s && styles.editTabActive]}
@@ -556,9 +566,9 @@ export default function GardenScreen() {
               )}
             </ScrollView>
 
-            <View style={[styles.modalButtons, { paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f0f7ee' }]}>
+            <View style={[styles.modalButtons, { paddingTop: 12, borderTopWidth: 1, borderTopColor: border }]}>
               <TouchableOpacity onPress={() => setShowEditGarden(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
+                <Text style={[styles.cancelText, { color: textSec }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.button, editSaving && { opacity: 0.6 }]}
@@ -575,16 +585,17 @@ export default function GardenScreen() {
       {/* New Garden Modal */}
       <Modal visible={showNewGarden} transparent animationType="slide">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>New Garden</Text>
+          <View style={[styles.modal, { backgroundColor: cardBg }]}>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>New Garden</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
               placeholder="Garden name"
+              placeholderTextColor={textSec}
               value={newName}
               onChangeText={setNewName}
               autoFocus
             />
-            <Text style={styles.fieldLabel}>Sun exposure</Text>
+            <Text style={[styles.fieldLabel, { color: textSec }]}>Sun exposure</Text>
             <View style={styles.sunRow}>
               {SUN_OPTIONS.map((s) => (
                 <TouchableOpacity
@@ -598,7 +609,7 @@ export default function GardenScreen() {
             </View>
             <View style={styles.modalButtons}>
               <TouchableOpacity onPress={() => setShowNewGarden(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
+                <Text style={[styles.cancelText, { color: textSec }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.button} onPress={createGarden}>
                 <Text style={styles.buttonText}>Create</Text>
@@ -617,7 +628,7 @@ export default function GardenScreen() {
           {/* Tap-to-dismiss area above the card */}
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlacement(null)} />
 
-          <View style={styles.modal}>
+          <View style={[styles.modal, { backgroundColor: cardBg }]}>
             {/* Drag handle */}
             <View style={styles.modalHandle} />
 
@@ -629,8 +640,8 @@ export default function GardenScreen() {
               style={styles.modalScroll}
             >
               <View style={styles.modalTitleRow}>
-                <Text style={styles.modalTitle}>Plant Here</Text>
-                <Text style={styles.modalTileSun}>
+                <Text style={[styles.modalTitle, { color: textPrim }]}>Plant Here</Text>
+                <Text style={[styles.modalTileSun, { color: textSec }]}>
                   Tile: {placement?.tileSun && placement.tileSun !== 'inactive'
                     ? `${SUN_EMOJIS[placement.tileSun as SunRequirement]} ${SUN_LABELS[placement.tileSun as SunRequirement]}`
                     : '—'
@@ -672,8 +683,9 @@ export default function GardenScreen() {
               )}
 
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
                 placeholder="What are you planting? (e.g. Tomato)"
+                placeholderTextColor={textSec}
                 value={placeName}
                 onChangeText={onPlaceNameChange}
                 autoFocus
@@ -957,7 +969,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#d8f3dc', borderWidth: 1,
     borderColor: '#b7e4c7', borderStyle: 'dashed',
   },
-  cellText: { fontSize: 9, fontWeight: '700', color: '#1b4332', textAlign: 'center' },
+  cellEmoji: { fontSize: 22, lineHeight: 28 },
   cellSun: { fontSize: 10 },
   cellPlus: { fontSize: 18, color: '#b7e4c7' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 20, gap: 12 },
@@ -969,7 +981,7 @@ const styles = StyleSheet.create({
   legendHeading: { fontSize: 11, fontWeight: '700', color: '#52796f', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
 
   // Cell
-  cellSunDot: { position: 'absolute', bottom: 3, right: 3, width: 10, height: 10, borderRadius: 3, borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)' },
+  cellSunEmoji: { position: 'absolute', bottom: 1, right: 2, fontSize: 11, lineHeight: 14 },
 
   // Plant action sheet
   actionRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: G.foam },

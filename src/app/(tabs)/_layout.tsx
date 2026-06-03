@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { G, Shadow, Spring, R } from '@/constants/theme';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useAppTheme } from '@/contexts/theme-context';
 
 const TABS = [
   { name: 'index',    label: 'Home',     emoji: '🏡' },
@@ -53,17 +54,21 @@ function DesktopTabsWrapper() {
 }
 
 function MobileTabs() {
+  const { isDark, colors } = useAppTheme();
+  const tabBg = isDark ? colors.bgCard : G.cloud;
+  const headerBg = isDark ? colors.bgCard : G.foam;
+
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: G.foam, ...Shadow.soft },
-        headerTintColor: G.forest,
+        headerStyle: { backgroundColor: headerBg, ...Shadow.soft },
+        headerTintColor: isDark ? colors.text : G.forest,
         headerTitleStyle: { fontWeight: '700', fontSize: 18 },
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { backgroundColor: tabBg, borderTopColor: isDark ? colors.border : 'transparent' }],
         tabBarShowLabel: true,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarActiveTintColor: G.hunter,
-        tabBarInactiveTintColor: G.stone,
+        tabBarActiveTintColor: isDark ? colors.tint : G.hunter,
+        tabBarInactiveTintColor: isDark ? colors.textSec : G.stone,
       }}
     >
       {TABS.map(tab => (

@@ -6,13 +6,13 @@ import {
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode } from '@/contexts/theme-context';
+import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit } from '@/contexts/theme-context';
 import type { Garden, GardenShare } from '@/lib/types';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { isDesktop } = useBreakpoint();
-  const { mode, setMode, isDark, colors } = useAppTheme();
+  const { mode, setMode, isDark, colors, tempUnit, setTempUnit } = useAppTheme();
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [shares, setShares] = useState<GardenShare[]>([]);
   const [showShare, setShowShare] = useState(false);
@@ -31,7 +31,8 @@ export default function ProfileScreen() {
   async function saveName() {
     if (!user || !editName.trim()) return;
     try {
-      await pb.collection('users').update(user.id, { name: editName.trim() });
+      const updated = await pb.collection('users').update(user.id, { name: editName.trim() });
+      pb.authStore.save(pb.authStore.token, updated);
       setEditingName(false);
     } catch (e: any) { Alert.alert('Error', e?.message ?? 'Could not update name'); }
   }
@@ -265,6 +266,26 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const tempSection = (
+    <View style={[styles.section, { backgroundColor: cardBg, borderColor: borderCol }]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>🌡️ Temperature Units</Text>
+      <View style={styles.modeRow}>
+        {(['C', 'F'] as TempUnit[]).map(u => (
+          <TouchableOpacity
+            key={u}
+            style={[styles.modeBtn, { borderColor: borderCol }, tempUnit === u && styles.modeBtnActive]}
+            onPress={() => setTempUnit(u)}
+          >
+            <Text style={styles.modeEmoji}>{u === 'C' ? '🌡️' : '°F'}</Text>
+            <Text style={[styles.modeBtnText, { color: textSecondary }, tempUnit === u && styles.modeBtnTextActive]}>
+              {u === 'C' ? 'Celsius' : 'Fahrenheit'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
   if (isDesktop) {
     return (
       <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.desktopContent}>
@@ -307,6 +328,7 @@ export default function ProfileScreen() {
           <View style={styles.desktopRight}>
             {sharesSection}
             {settingsSection}
+            {tempSection}
           </View>
         </View>
       </ScrollView>
@@ -324,6 +346,7 @@ export default function ProfileScreen() {
       </View>
       {sharesSection}
       {settingsSection}
+      {tempSection}
       <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>

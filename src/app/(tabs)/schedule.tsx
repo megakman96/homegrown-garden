@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useAppTheme, formatTemp, type TempUnit } from '@/contexts/theme-context';
 import type { Plant, Garden } from '@/lib/types';
 import {
   fetchWeather, getBrowserLocation, calculateWateringAdvice, formatDateShort,
@@ -25,6 +26,13 @@ interface PlantWithAdvice {
 export default function ScheduleScreen() {
   const { user } = useAuth();
   const { isDesktop } = useBreakpoint();
+  const { tempUnit, isDark, colors } = useAppTheme();
+  const bg      = isDark ? colors.bg        : '#f0f7ee';
+  const cardBg  = isDark ? colors.bgCard    : '#fff';
+  const textPrim= isDark ? colors.text      : '#1b4332';
+  const textSec = isDark ? colors.textSec   : '#52796f';
+  const border  = isDark ? colors.border    : '#e8f5e9';
+  const inputBg = isDark ? colors.bgElement : '#f0f7ee';
   const router = useRouter();
 
   const [plants, setPlants] = useState<Plant[]>([]);
@@ -214,7 +222,7 @@ export default function ScheduleScreen() {
     }
   }
 
-  // ── Grouping ──────────────────────────────────────────────────────────────
+  // ── Grouping by location ─────────────────────────────────────────────────
 
   const itemsByGarden: Record<string, PlantWithAdvice[]> = {};
   for (const item of items) {
@@ -223,10 +231,29 @@ export default function ScheduleScreen() {
     itemsByGarden[gid].push(item);
   }
 
-  // Gardens that have items, in order
-  const activeGardens = gardens.filter(g => itemsByGarden[g.id]?.length);
-  // Gardens with no items (show as empty sections only if we have multiple gardens)
-  const inactiveGardens = gardens.filter(g => !itemsByGarden[g.id]?.length);
+  // Two gardens share a location if their location name matches (case-insensitive)
+  // or their rounded lat/lon (0.1°) matches — whichever is available.
+  function locationKey(loc: Location): string {
+    if (loc.name) return loc.name.toLowerCase().trim();
+    return `${loc.latitude.toFixed(1)},${loc.longitude.toFixed(1)}`;
+  }
+
+  type LocationGroup = { key: string; location: Location; gardens: Garden[] };
+
+  const groupMap = new Map<string, LocationGroup>();
+  for (const g of gardens) {
+    const loc = gardenLocations[g.id];
+    if (!loc) continue;
+    const key = locationKey(loc);
+    if (!groupMap.has(key)) groupMap.set(key, { key, location: loc, gardens: [] });
+    groupMap.get(key)!.gardens.push(g);
+  }
+
+  const locationGroups = Array.from(groupMap.values());
+  const noLocationGardens = gardens.filter(g => !gardenLocations[g.id]);
+
+  const activeGardens = gardens.filter(g => (itemsByGarden[g.id]?.length ?? 0) > 0);
+  const inactiveGardens = gardens.filter(g => !((itemsByGarden[g.id]?.length ?? 0) > 0));
 
   const totalItems = items.length;
   const totalOverdue = items.filter(i => i.overdue).length;
@@ -237,8 +264,8 @@ export default function ScheduleScreen() {
   const locationModal = (
     <Modal visible={!!locationGardenId} transparent animationType="slide">
       <View style={styles.modalBackdrop}>
-        <View style={styles.modal}>
-          <Text style={styles.modalTitle}>
+        <View style={[styles.modal, { backgroundColor: cardBg }]}>
+          <Text style={[styles.modalTitle, { color: textPrim }]}>
             📍 {locationModalGarden ? `Location for ${locationModalGarden.name}` : 'Set Location'}
           </Text>
           <Text style={styles.modalSub}>Used for rain forecasts and watering advice</Text>
@@ -293,8 +320,8 @@ export default function ScheduleScreen() {
         {/* Garden header */}
         <View style={styles.gardenHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.gardenName}>🌻 {garden.name}</Text>
-            {loc && <Text style={styles.gardenLoc}>📍 {loc.name ?? 'Saved location'}</Text>}
+            <Text style={[styles.gardenName, { color: textPrim }]}>🌻 {garden.name}</Text>
+            {loc && <Text style={[styles.gardenLoc, { color: textSec }]}>📍 {loc.name ?? 'Saved location'}</Text>}
           </View>
           <TouchableOpacity
             style={styles.setLocBtn}
@@ -308,6 +335,7 @@ export default function ScheduleScreen() {
         <WeatherWidget
           weather={wx}
           loading={wxLoading}
+          tempUnit={tempUnit}
           onSetLocation={() => openLocationModal(garden.id)}
           onChangeLocation={() => openLocationModal(garden.id)}
         />
@@ -343,14 +371,14 @@ export default function ScheduleScreen() {
   if (isDesktop) {
     return (
       <ScrollView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: bg }]}
         contentContainerStyle={styles.desktopContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {locationModal}
         <View style={styles.desktopPageHeader}>
-          <Text style={styles.desktopPageTitle}>📅 Schedule</Text>
-          <Text style={styles.desktopPageSub}>
+          <Text style={[styles.desktopPageTitle, { color: textPrim }]}>📅 Schedule</Text>
+          <Text style={[styles.desktopPageSub, { color: textSec }]}>
             {totalOverdue > 0
               ? `${totalOverdue} overdue · ${totalItems} total tasks`
               : `${totalItems} upcoming task${totalItems !== 1 ? 's' : ''}`}
@@ -374,7 +402,7 @@ export default function ScheduleScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: bg }]}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
@@ -394,25 +422,32 @@ export default function ScheduleScreen() {
 
 // ─── WEATHER WIDGET ──────────────────────────────────────────────────────────
 
-function WeatherWidget({ weather, loading, onSetLocation, onChangeLocation }: {
+function WeatherWidget({ weather, loading, tempUnit, onSetLocation, onChangeLocation }: {
   weather: WeatherData | null;
   loading: boolean;
+  tempUnit: TempUnit;
   onSetLocation: () => void;
   onChangeLocation: () => void;
 }) {
+  const { isDark, colors } = useAppTheme();
+  const cardBg  = isDark ? colors.bgCard  : '#fff';
+  const textPrim= isDark ? colors.text    : '#1b4332';
+  const textSec = isDark ? colors.textSec : '#52796f';
+  const border  = isDark ? colors.border  : '#f0f7ee';
+
   if (loading) {
     return (
-      <View style={styles.weatherCard}>
+      <View style={[styles.weatherCard, { backgroundColor: cardBg }]}>
         <ActivityIndicator color="#2d6a4f" size="small" />
-        <Text style={styles.weatherLoading}>Fetching weather…</Text>
+        <Text style={[styles.weatherLoading, { color: textSec }]}>Fetching weather…</Text>
       </View>
     );
   }
 
   if (!weather) {
     return (
-      <TouchableOpacity style={[styles.weatherCard, styles.weatherCardEmpty]} onPress={onSetLocation}>
-        <Text style={styles.weatherErrorText}>📍 Set a location for weather-aware watering</Text>
+      <TouchableOpacity style={[styles.weatherCard, styles.weatherCardEmpty, { backgroundColor: cardBg }]} onPress={onSetLocation}>
+        <Text style={[styles.weatherErrorText, { color: textSec }]}>📍 Set a location for weather-aware watering</Text>
         <Text style={styles.retryLink}>Tap to set location →</Text>
       </TouchableOpacity>
     );
@@ -425,14 +460,14 @@ function WeatherWidget({ weather, loading, onSetLocation, onChangeLocation }: {
   const totalRainMm = next7.reduce((s, d) => s + d.precipMm, 0);
 
   return (
-    <View style={styles.weatherCard}>
+    <View style={[styles.weatherCard, { backgroundColor: cardBg, borderColor: border }]}>
       <View style={styles.weatherHeader}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.weatherTitle}>
-            {today ? `${Math.round(today.tempMaxC)}° / ${Math.round(today.tempMinC)}°C` : 'Weather'}
+          <Text style={[styles.weatherTitle, { color: textPrim }]}>
+            {today ? `${formatTemp(today.tempMaxC, tempUnit)} / ${formatTemp(today.tempMinC, tempUnit)}` : 'Weather'}
           </Text>
           <TouchableOpacity onPress={onChangeLocation}>
-            <Text style={styles.weatherSub}>
+            <Text style={[styles.weatherSub, { color: textSec }]}>
               📍 {weather.locationName ?? `${weather.latitude.toFixed(2)}, ${weather.longitude.toFixed(2)}`}
               {'  '}<Text style={styles.changeLink}>change</Text>
             </Text>
@@ -487,20 +522,24 @@ function ScheduleCard({ item, onWater, onPress }: {
   onWater: (p: Plant) => void;
   onPress: () => void;
 }) {
+  const { isDark, colors } = useAppTheme();
+  const cardBg  = isDark ? colors.bgCard  : '#fff';
+  const textPrim= isDark ? colors.text    : '#1b4332';
+  const textSec = isDark ? colors.textSec : '#52796f';
   const isWater = item.type === 'water';
   const { advice } = item;
 
   return (
     <TouchableOpacity
-      style={[styles.card, item.overdue && styles.cardOverdue, advice?.skipReason && styles.cardSkip]}
+      style={[styles.card, { backgroundColor: cardBg }, item.overdue && styles.cardOverdue, advice?.skipReason && styles.cardSkip]}
       onPress={onPress}
     >
       <View style={styles.cardLeft}>
         <Text style={styles.cardEmoji}>{isWater ? '💧' : '🧺'}</Text>
       </View>
       <View style={styles.cardBody}>
-        <Text style={styles.cardName}>{item.plant.name}</Text>
-        <Text style={styles.cardSub}>
+        <Text style={[styles.cardName, { color: textPrim }]}>{item.plant.name}</Text>
+        <Text style={[styles.cardSub, { color: textSec }]}>
           {isWater ? 'Water' : 'Harvest'} · {formatDateShort(item.nextDate)}
           {item.overdue && !advice?.skipReason && ' ⚠️'}
         </Text>

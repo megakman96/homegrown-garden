@@ -8,7 +8,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
-import { useAppTheme, isBirthdayToday, loadBirthday } from '@/contexts/theme-context';
+import { useAppTheme, isBirthdayToday, loadBirthday, formatTemp } from '@/contexts/theme-context';
 import { fetchWeather, loadSavedLocation, type WeatherData } from '@/lib/weather';
 import type { Plant } from '@/lib/types';
 
@@ -28,7 +28,7 @@ const BIRTHDAY_MSGS = [
 
 export default function DashboardScreen() {
   const { user } = useAuth();
-  const { isDark, colors } = useAppTheme();
+  const { isDark, colors, tempUnit } = useAppTheme();
   const router = useRouter();
   const { isDesktop } = useBreakpoint();
   const [plants, setPlants] = useState<Plant[]>([]);
@@ -36,7 +36,7 @@ export default function DashboardScreen() {
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const firstName = (pb.authStore.model as any)?.name?.split(' ')?.[0]
+  const firstName = user?.name?.split(' ')?.[0]
     ?? user?.email?.split('@')[0]
     ?? 'Gardener';
   const birthday = user ? loadBirthday(user.id) : null;
@@ -131,7 +131,7 @@ export default function DashboardScreen() {
           <View style={styles.weatherRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.weatherTemp, { color: textPrimary }]}>
-                {Math.round(todayWeather.tempMaxC)}° / {Math.round(todayWeather.tempMinC)}°C
+                {formatTemp(todayWeather.tempMaxC, tempUnit)} / {formatTemp(todayWeather.tempMinC, tempUnit)}
               </Text>
               <Text style={[styles.weatherLoc, { color: textSecondary }]}>
                 📍 {weather.locationName ?? 'Your location'} · {todayWeather.isRainy ? '🌧️ Rain today' : '☀️ Clear today'}

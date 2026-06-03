@@ -12,9 +12,11 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
 import type { Plant, Garden, HealthStatus } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
 import { findPlantKey, PLANT_CATALOG, SUN_EMOJIS, searchPlants } from '@/lib/plant-catalog';
+import { subscribe } from '@/lib/events';
 import type { CatalogEntry } from '@/lib/plant-catalog';
 import PlantAvatar from '@/components/PlantAvatar';
 
@@ -29,6 +31,13 @@ const HEALTH_LABELS: Record<HealthStatus, string> = {
 export default function PlantsScreen() {
   const { user } = useAuth();
   const { isDesktop } = useBreakpoint();
+  const { isDark, colors } = useAppTheme();
+  const bg      = isDark ? colors.bg        : G.foam;
+  const cardBg  = isDark ? colors.bgCard    : G.cloud;
+  const textPrim= isDark ? colors.text      : G.forest;
+  const textSec = isDark ? colors.textSec   : G.stone;
+  const border  = isDark ? colors.border    : G.mist;
+  const inputBg = isDark ? colors.bgElement : G.foam;
   const router = useRouter();
   const [plants, setPlants] = useState<Plant[]>([]);
   const [gardens, setGardens] = useState<Garden[]>([]);
@@ -50,6 +59,9 @@ export default function PlantsScreen() {
 
   // Refresh on focus (catches plants added from garden view on mobile)
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  // Sync plants added from garden tab (works on native where WebSocket realtime may be unavailable)
+  useEffect(() => subscribe('plants:changed', () => loadData()), [loadData]);
 
   // Realtime subscription — catches plants added from garden view on desktop
   useEffect(() => {
@@ -127,7 +139,7 @@ export default function PlantsScreen() {
   const addModal = (
     <Modal visible={showAdd} transparent animationType="slide">
       <View style={styles.modalBackdrop}>
-        <View style={styles.modal}>
+        <View style={[styles.modal, { backgroundColor: cardBg }]}>
           <ScrollView
             style={styles.modalScroll}
             contentContainerStyle={styles.modalContent}
@@ -135,11 +147,11 @@ export default function PlantsScreen() {
             bounces={false}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.modalTitle}>🌱 Add Plant</Text>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>🌱 Add Plant</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
               placeholder="Plant name (e.g. Tomato) *"
-              placeholderTextColor={G.stone}
+              placeholderTextColor={textSec}
               value={form.name}
               onChangeText={onNameChange}
               autoFocus
@@ -238,7 +250,7 @@ export default function PlantsScreen() {
   const plantCards = plants.map((plant, i) => (
     <FadeInView key={plant.id} delay={i * 40} from="bottom" style={isDesktop ? styles.desktopCardWrap : undefined}>
       <PressableScale
-        style={isDesktop ? styles.desktopCard : styles.card}
+        style={[isDesktop ? styles.desktopCard : styles.card, { backgroundColor: cardBg }]}
         onPress={() => router.push(`/plant/${plant.id}`)}
       >
         <View style={[styles.cardAccent, { backgroundColor: HEALTH_COLORS[plant.health_status] }]} />
@@ -246,7 +258,7 @@ export default function PlantsScreen() {
           <PlantAvatar name={plant.name} size={isDesktop ? 44 : 52} />
           <View style={styles.cardContent}>
             <View style={styles.cardHeader}>
-              <Text style={styles.plantName} numberOfLines={1}>{plant.name}</Text>
+              <Text style={[styles.plantName, { color: textPrim }]} numberOfLines={1}>{plant.name}</Text>
               <View style={styles.cardBadges}>
                 {plant.sun_requirement && (
                   <Text style={styles.sunBadge}>{SUN_EMOJIS[plant.sun_requirement as SunRequirement]}</Text>
@@ -273,11 +285,11 @@ export default function PlantsScreen() {
 
   if (isDesktop) {
     return (
-      <View style={styles.container}>
-        <View style={styles.desktopTopBar}>
+      <View style={[styles.container, { backgroundColor: bg }]}>
+        <View style={[styles.desktopTopBar, { backgroundColor: bg, borderBottomColor: border }]}>
           <View>
-            <Text style={styles.desktopPageTitle}>🌿 Plants</Text>
-            <Text style={styles.desktopPageSub}>{plants.length} plant{plants.length !== 1 ? 's' : ''} in your collection</Text>
+            <Text style={[styles.desktopPageTitle, { color: textPrim }]}>🌿 Plants</Text>
+            <Text style={[styles.desktopPageSub, { color: textSec }]}>{plants.length} plant{plants.length !== 1 ? 's' : ''} in your collection</Text>
           </View>
           <PressableScale onPress={() => setShowAdd(true)} style={styles.desktopAddBtn}>
             <LinearGradient
@@ -304,7 +316,7 @@ export default function PlantsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: bg }]}>
       <PressableScale onPress={() => setShowAdd(true)} style={styles.addButton}>
         <LinearGradient
           colors={[G.sage, G.hunter]}

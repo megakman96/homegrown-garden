@@ -58,10 +58,15 @@ export default function LoginScreen() {
       }
     } catch (e: any) {
       const msg: string = e?.response?.message ?? e?.message ?? 'Something went wrong';
-      // If they tried to sign up with an existing email, nudge them to sign in
-      const alreadyExists = msg.toLowerCase().includes('already exists') ||
-        msg.toLowerCase().includes('email') && msg.toLowerCase().includes('unique');
-      if (isSignUp && alreadyExists) {
+      // PocketBase returns field-level validation errors in e.data or e.response.data
+      const fieldErrors = e?.data ?? e?.response?.data ?? {};
+      const emailError = fieldErrors?.email;
+      const isEmailTaken =
+        emailError?.code === 'validation_not_unique' ||
+        emailError?.message?.toLowerCase().includes('already in use') ||
+        msg.toLowerCase().includes('already exists') ||
+        (msg.toLowerCase().includes('email') && msg.toLowerCase().includes('unique'));
+      if (isSignUp && isEmailTaken) {
         setErrorMsg('An account with that email already exists. Try signing in instead.');
         setIsSignUp(false);
       } else {
