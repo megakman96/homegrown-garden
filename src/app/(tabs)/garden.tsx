@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Modal, TextInput, Alert,
+  Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -307,9 +307,24 @@ export default function GardenScreen() {
 
       {/* Place Plant Modal */}
       <Modal visible={!!placement} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
-            <View style={styles.modal}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          {/* Tap-to-dismiss area above the card */}
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlacement(null)} />
+
+          <View style={styles.modal}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+
+            {/* Scrollable content */}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+              style={styles.modalScroll}
+            >
               <View style={styles.modalTitleRow}>
                 <Text style={styles.modalTitle}>Plant Here</Text>
                 <Text style={styles.modalTileSun}>
@@ -492,33 +507,35 @@ export default function GardenScreen() {
                 </View>
               )}
 
-              <View style={[styles.modalButtons, { marginTop: 16 }]}>
-                <TouchableOpacity onPress={() => setPlacement(null)}>
-                  <Text style={styles.cancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    !placeName.trim() && styles.buttonDisabled,
-                    compatSummary?.sunCompat === 'mismatch' || compatSummary?.overall === 'stop'
-                      ? styles.buttonDanger
-                      : compatSummary?.sunCompat === 'tolerable'
-                      ? styles.buttonWarn
-                      : null,
-                  ]}
-                  onPress={placePlant}
-                  disabled={!placeName.trim()}
-                >
-                  <Text style={styles.buttonText}>
-                    {compatSummary?.sunCompat === 'mismatch' || compatSummary?.overall === 'stop'
-                      ? 'Plant Anyway ⚠️'
-                      : 'Plant It ✓'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+            </ScrollView>
+
+            {/* Buttons pinned outside scroll — always visible above keyboard */}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity onPress={() => setPlacement(null)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  !placeName.trim() && styles.buttonDisabled,
+                  compatSummary?.sunCompat === 'mismatch' || compatSummary?.overall === 'stop'
+                    ? styles.buttonDanger
+                    : compatSummary?.sunCompat === 'tolerable'
+                    ? styles.buttonWarn
+                    : null,
+                ]}
+                onPress={placePlant}
+                disabled={!placeName.trim()}
+              >
+                <Text style={styles.buttonText}>
+                  {compatSummary?.sunCompat === 'mismatch' || compatSummary?.overall === 'stop'
+                    ? 'Plant Anyway ⚠️'
+                    : 'Plant It ✓'}
+                </Text>
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -582,9 +599,26 @@ const styles = StyleSheet.create({
   },
   warnBannerText: { fontSize: 13, color: '#7d5a00', fontWeight: '600', lineHeight: 18 },
   // Modals
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalScroll: { justifyContent: 'flex-end', flexGrow: 1 },
-  modal: { backgroundColor: '#fff', borderRadius: 20, padding: 24, margin: 16 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modal: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 20,
+    paddingTop: 12,
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#d0d8d4',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  modalScroll: { maxHeight: 460 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#2d6a4f' },
   input: {
     backgroundColor: '#f0f7ee', borderRadius: 12, padding: 14, fontSize: 16,
@@ -598,7 +632,15 @@ const styles = StyleSheet.create({
   },
   sunChipActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
   sunChipText: { color: '#2d6a4f', fontSize: 12, fontWeight: '500' },
-  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 14,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f7ee',
+  },
   cancelText: { color: '#52796f', fontSize: 16 },
   // Analysis
   analysisBox: {
