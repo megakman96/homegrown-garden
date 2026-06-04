@@ -38,6 +38,7 @@ export default function ProfileScreen() {
   const [wipingData, setWipingData] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const isAdmin = user?.email === ADMIN_EMAIL && Platform.OS === 'web';
 
   useEffect(() => { checkPremium().then(setIsPremium); }, []);
@@ -471,9 +472,25 @@ export default function ProfileScreen() {
       {showNotifications && <NotificationSettingsUI />}
 
       {sharesSection}
-      {settingsSection}
-      {tempSection}
-      {waterTimeSection}
+
+      {/* Profile & Settings — collapsed behind a button */}
+      <TouchableOpacity
+        style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
+        onPress={() => setShowSettings(v => !v)}
+      >
+        <Text style={styles.collapsibleEmoji}>⚙️</Text>
+        <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>Profile & Settings</Text>
+        <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
+          {showSettings ? '▲' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {showSettings && (
+        <>
+          {settingsSection}
+          {tempSection}
+          {waterTimeSection}
+        </>
+      )}
       <TouchableOpacity style={styles.wipeButton} onPress={confirmWipeData} disabled={wipingData}>
         <Text style={styles.wipeButtonText}>{wipingData ? 'Resetting…' : '🔄 Reset All Garden Data'}</Text>
       </TouchableOpacity>
