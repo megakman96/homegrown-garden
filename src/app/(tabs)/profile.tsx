@@ -37,6 +37,7 @@ export default function ProfileScreen() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [wipingData, setWipingData] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const isAdmin = user?.email === ADMIN_EMAIL && Platform.OS === 'web';
 
   useEffect(() => { checkPremium().then(setIsPremium); }, []);
@@ -456,8 +457,18 @@ export default function ProfileScreen() {
         <Text style={{ fontSize: 18, color: isPremium ? '#52b788' : '#e67700' }}>›</Text>
       </TouchableOpacity>
 
-      {/* Notifications */}
-      <NotificationSettingsUI />
+      {/* Notifications — collapsed behind a button */}
+      <TouchableOpacity
+        style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
+        onPress={() => setShowNotifications(v => !v)}
+      >
+        <Text style={styles.collapsibleEmoji}>🔔</Text>
+        <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>Notification Settings</Text>
+        <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
+          {showNotifications ? '▲' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {showNotifications && <NotificationSettingsUI />}
 
       {sharesSection}
       {settingsSection}
@@ -599,6 +610,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#e8f5e9', borderWidth: 1.5, borderColor: '#a5d6a7',
   },
   venmoText:    { color: '#2d6a4f', fontWeight: '700', fontSize: 15 },
+  collapsibleBtn:     { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 8 },
+  collapsibleEmoji:   { fontSize: 18 },
+  collapsibleLabel:   { flex: 1, fontSize: 15, fontWeight: '600' },
+  collapsibleChevron: { fontSize: 12, fontWeight: '600' },
   subCard:      { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 16 },
   subCardEmoji: { fontSize: 26 },
   subCardTitle: { fontSize: 15, fontWeight: '700' },
