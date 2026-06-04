@@ -518,39 +518,46 @@ export default function GardenScreen() {
         contentContainerStyle={styles.gridContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Garden header */}
+        {/* Garden header — title row, then buttons below */}
         <View style={styles.gardenHeader}>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Text style={[styles.gardenName, { color: textPrim }]}>{garden.name}</Text>
-              <View style={[styles.yearBadge, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}>
-                <Text style={[styles.yearBadgeText, { color: textPrim }]}>{garden.year ?? new Date().getFullYear()}</Text>
-              </View>
-              {sharedEntry && (
-                <View style={styles.sharedBadge}>
-                  <Text style={styles.sharedBadgeText}>🤝 Shared</Text>
-                </View>
-              )}
-            </View>
-            <Text style={[styles.gardenMeta, { color: textSec }]}>
-              {SUN_EMOJIS[garden.sun_exposure as SunRequirement]}{' '}
-              {SUN_LABELS[garden.sun_exposure as SunRequirement]} · {garden.rows}×{garden.cols}
-              {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
+          {/* Title row: full width, never truncated */}
+          <View style={styles.gardenTitleRow}>
+            <Text style={[styles.gardenName, { color: textPrim }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              {garden.name}
             </Text>
-          </View>
-          <View style={styles.headerActions}>
-            <GardenBtn emoji="📋" label="History" onPress={openHistory} />
-            <GardenBtn emoji="🗓️" label="Plan" onPress={() => setShowPlan(true)} />
-            <GardenBtn emoji="📄" label="Report"
-              onPress={() => setReportPreview({ garden, plants: pagePlants, layout: pageGardenLayout })}
-            />
-            {isOwned && (
-              <>
-                <GardenBtn emoji="✏️" label="Edit" onPress={openEditGarden} />
-                <GardenBtn emoji="🗑" label="Delete" danger onPress={confirmDeleteGarden} />
-              </>
+            <View style={[styles.yearBadge, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}>
+              <Text style={[styles.yearBadgeText, { color: textPrim }]}>{garden.year ?? new Date().getFullYear()}</Text>
+            </View>
+            {sharedEntry && (
+              <View style={styles.sharedBadge}>
+                <Text style={styles.sharedBadgeText}>🤝 Shared</Text>
+              </View>
             )}
           </View>
+
+          {/* Meta line */}
+          <Text style={[styles.gardenMeta, { color: textSec, marginBottom: 10 }]}>
+            {SUN_EMOJIS[garden.sun_exposure as SunRequirement]}{' '}
+            {SUN_LABELS[garden.sun_exposure as SunRequirement]} · {garden.rows}×{garden.cols}
+            {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
+          </Text>
+
+          {/* Buttons row: always on its own line, scrolls if needed */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerActionsScroll}>
+            <View style={styles.headerActions}>
+              <GardenBtn emoji="📋" label="History" onPress={openHistory} />
+              <GardenBtn emoji="🗓️" label="Plan" onPress={() => setShowPlan(true)} />
+              <GardenBtn emoji="📄" label="Report"
+                onPress={() => setReportPreview({ garden, plants: pagePlants, layout: pageGardenLayout })}
+              />
+              {isOwned && (
+                <>
+                  <GardenBtn emoji="✏️" label="Edit" onPress={openEditGarden} />
+                  <GardenBtn emoji="🗑" label="Delete" danger onPress={confirmDeleteGarden} />
+                </>
+              )}
+            </View>
+          </ScrollView>
         </View>
 
         {/* Grid — tiles scale to fill screen width, no horizontal scroll needed */}
@@ -1465,10 +1472,12 @@ const styles = StyleSheet.create({
   editYearValue:  { fontSize: 22, fontWeight: '800', minWidth: 56, textAlign: 'center' },
   gridContainer:  { padding: 16, paddingBottom: 40 },
   gridWrapper:    { alignItems: 'center', marginBottom: 12 },
-  gardenHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  gardenName: { fontSize: 20, fontWeight: '700', color: '#2d6a4f' },
+  gardenHeader:   { flexDirection: 'column', marginBottom: 16 },
+  gardenTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  headerActionsScroll: { flexGrow: 0 },
+  gardenName: { fontSize: 24, fontWeight: '800', color: '#2d6a4f', flex: 1, letterSpacing: -0.3 },
   gardenMeta: { fontSize: 13, color: '#52796f', marginTop: 2 },
-  headerActions: { flexDirection: 'row', gap: 5, marginLeft: 4, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  headerActions: { flexDirection: 'row', gap: 6 },
   headerBtn: { borderRadius: R.sm, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: G.dew, borderWidth: 1, borderColor: G.mist },
   headerBtnText: { fontSize: 12, fontWeight: '600', color: G.hunter },
   headerBtnDanger: { backgroundColor: '#fff5f5', borderColor: '#ffc9c9' },
