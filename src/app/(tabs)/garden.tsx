@@ -492,7 +492,7 @@ export default function GardenScreen() {
       </ScrollView>
 
       {selectedGarden ? (
-        <ScrollView contentContainerStyle={styles.gridContainer}>
+        <ScrollView contentContainerStyle={styles.gridContainer} showsVerticalScrollIndicator={false}>
           {(() => {
             const sharedEntry = sharedEntries.find(e => e.garden.id === selectedGarden.id);
             const isOwned = !sharedEntry;
@@ -535,7 +535,11 @@ export default function GardenScreen() {
             );
           })()}
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.gridScroll}
+          >
             <View>
               {Array.from({ length: selectedGarden.rows }).map((_, row) => (
                   <View key={row} style={styles.gridRow}>
@@ -1260,6 +1264,7 @@ const styles = StyleSheet.create({
   sharedBadge: { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   sharedBadgeText: { fontSize: 11, color: '#1971c2', fontWeight: '600' },
   gridContainer: { padding: 16 },
+  gridScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 8 },
   gardenHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   gardenName: { fontSize: 20, fontWeight: '700', color: '#2d6a4f' },
   gardenMeta: { fontSize: 13, color: '#52796f', marginTop: 2 },

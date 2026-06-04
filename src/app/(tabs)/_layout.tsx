@@ -71,6 +71,7 @@ function MobileTabs() {
         tabBarLabelStyle: styles.tabLabel,
         tabBarActiveTintColor: isDark ? colors.tint : G.hunter,
         tabBarInactiveTintColor: isDark ? colors.textSec : G.stone,
+        animation: 'fade',
       }}
     >
       {TABS.map(tab => (

@@ -14,11 +14,27 @@ import { pb } from '@/lib/pb';
 import { G, Spring, Shadow, R } from '@/constants/theme';
 import { saveBirthday } from '@/contexts/theme-context';
 
+const TAGLINES = [
+  'Grow something beautiful 🌸',
+  'Every seed is a promise 🌱',
+  'Your garden, your story 🌿',
+  'Good things grow here 🍅',
+  'Dig in, grow up 🪴',
+  'Bloom where you\'re planted 🌻',
+  'Roots down, spirits up 🌾',
+  'Sow today, feast tomorrow 🧺',
+  'Life is better with dirt on your hands 🤎',
+  'Green thumb loading… 🌿',
+  'Gardens don\'t grow overnight, but they\'re worth it 🥕',
+  'Be the gardener of your own joy 🌼',
+];
+
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [taglineIdx] = useState(() => Math.floor(Math.random() * TAGLINES.length));
   const [firstName, setFirstName] = useState('');
   const [birthday, setBirthday] = useState(''); // MM/DD
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -103,7 +119,7 @@ export default function LoginScreen() {
 
           <FadeInView delay={120} style={styles.brandWrap}>
             <Text style={styles.brandName}>GardenGrid</Text>
-            <Text style={styles.tagline}>Grow something beautiful 🌸</Text>
+            <Text style={styles.tagline}>{TAGLINES[taglineIdx]}</Text>
           </FadeInView>
 
           <FadeInView delay={240} style={styles.card}>

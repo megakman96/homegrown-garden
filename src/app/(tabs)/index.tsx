@@ -162,19 +162,30 @@ export default function DashboardScreen() {
   // Stats row
   const statsRow = (
     <View style={[styles.statsRow, isDesktop && styles.statsRowDesktop]}>
-      {[
-        { label: 'Plants', value: plants.length, emoji: '🌱', color: G.sage },
-        { label: 'Thirsty', value: needsWater.length, emoji: '💧', color: needsWater.length > 0 ? G.bloom : G.sage },
-        { label: 'Harvested', value: plants.filter(p => p.health_status === 'harvested').length, emoji: '🧺', color: G.sun },
-      ].map(({ label, value, emoji, color }) => (
-        <FadeInView key={label} style={styles.statWrap}>
-          <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
-            <Text style={styles.statEmoji}>{emoji}</Text>
-            <Text style={[styles.statValue, { color }]}>{value}</Text>
-            <Text style={[styles.statLabel, { color: textSecondary }]}>{label}</Text>
-          </View>
-        </FadeInView>
-      ))}
+      <FadeInView style={styles.statWrap}>
+        <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+          <Text style={styles.statEmoji}>🌱</Text>
+          <Text style={[styles.statValue, { color: G.sage }]}>{plants.length}</Text>
+          <Text style={[styles.statLabel, { color: textSecondary }]}>Plants</Text>
+        </View>
+      </FadeInView>
+      <FadeInView style={styles.statWrap}>
+        <PressableScale
+          style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}
+          onPress={() => router.push('/(tabs)/schedule')}
+        >
+          <Text style={styles.statEmoji}>💧</Text>
+          <Text style={[styles.statValue, { color: needsWater.length > 0 ? G.bloom : G.sage }]}>{needsWater.length}</Text>
+          <Text style={[styles.statLabel, { color: textSecondary }]}>Thirsty</Text>
+        </PressableScale>
+      </FadeInView>
+      <FadeInView style={styles.statWrap}>
+        <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+          <Text style={styles.statEmoji}>🌿</Text>
+          <Text style={[styles.statValue, { color: G.sage }]}>{plants.filter(p => p.health_status === 'healthy').length}</Text>
+          <Text style={[styles.statLabel, { color: textSecondary }]}>Healthy</Text>
+        </View>
+      </FadeInView>
     </View>
   );
 

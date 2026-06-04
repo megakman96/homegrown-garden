@@ -63,12 +63,18 @@ function ThemedApp() {
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AuthGuard>
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: 'fade',
+            animationDuration: 180,
+          }}
+        >
           <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="plant/[id]" options={{ headerShown: true, title: 'Plant Detail' }} />
-          <Stack.Screen name="new-garden" />
-          <Stack.Screen name="admin" />
+          <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+          <Stack.Screen name="plant/[id]" options={{ headerShown: true, title: 'Plant Detail', animation: 'slide_from_right', animationDuration: 220 }} />
+          <Stack.Screen name="new-garden" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
+          <Stack.Screen name="admin" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
         </Stack>
       </AuthGuard>
     </ThemeProvider>
