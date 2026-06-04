@@ -47,6 +47,8 @@ function DesktopTabsWrapper() {
           {TABS.map(tab => (
             <Tabs.Screen key={tab.name} name={tab.name} options={{ title: tab.label }} />
           ))}
+          <Tabs.Screen name="history" options={{ href: null }} />
+          <Tabs.Screen name="plan" options={{ href: null }} />
         </Tabs>
       </View>
     </View>
@@ -81,6 +83,9 @@ function MobileTabs() {
           }}
         />
       ))}
+      {/* Hide unused route files from the tab bar */}
+      <Tabs.Screen name="history" options={{ href: null }} />
+      <Tabs.Screen name="plan" options={{ href: null }} />
     </Tabs>
   );
 }

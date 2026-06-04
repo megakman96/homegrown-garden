@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, Alert,
+  TextInput, Modal, Alert, Platform,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit, type WaterTime } from '@/contexts/theme-context';
+import { clearActivityLogAsync } from '@/lib/activity-log';
 import type { Garden, GardenShare } from '@/lib/types';
+
+const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { isDesktop } = useBreakpoint();
+  const router = useRouter();
   const { mode, setMode, isDark, colors, tempUnit, setTempUnit, waterTime, setWaterTime } = useAppTheme();
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [shares, setShares] = useState<GardenShare[]>([]);
@@ -19,6 +24,8 @@ export default function ProfileScreen() {
   const [shareGardenId, setShareGardenId] = useState('');
   const [shareEmail, setShareEmail] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [wipingData, setWipingData] = useState(false);
+  const isAdmin = user?.email === ADMIN_EMAIL && Platform.OS === 'web';
 
   // Settings edit state
   const displayName = (pb.authStore.model as any)?.name ?? user?.email?.split('@')[0] ?? '';
@@ -117,6 +124,45 @@ export default function ProfileScreen() {
     }
   }
 
+  function confirmWipeData() {
+    Alert.alert(
+      'Reset All Garden Data',
+      'This will delete all your gardens, plants, harvests, and history. Your profile (name, email, settings) will be kept. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset Everything', style: 'destructive', onPress: wipeAllData },
+      ],
+    );
+  }
+
+  async function wipeAllData() {
+    if (!user) return;
+    setWipingData(true);
+    try {
+      const plants = await pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` });
+      await Promise.all(plants.map(p => pb.collection('plants').delete(p.id).catch(() => {})));
+
+      const harvests = await pb.collection('harvests').getFullList({ filter: `user_id = "${user.id}"` }).catch(() => [] as any[]);
+      await Promise.all((harvests as any[]).map((h: any) => pb.collection('harvests').delete(h.id).catch(() => {})));
+
+      const gardenList = await pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` });
+      await Promise.all(gardenList.map(g => pb.collection('gardens').delete(g.id).catch(() => {})));
+
+      const shareList = await pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` });
+      await Promise.all(shareList.map(s => pb.collection('garden_shares').delete(s.id).catch(() => {})));
+
+      await clearActivityLogAsync(user.id);
+
+      setGardens([]);
+      setShares([]);
+      Alert.alert('Done', 'All garden data has been cleared. Your account and profile are intact.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not wipe data. Please try again.');
+    } finally {
+      setWipingData(false);
+    }
+  }
+
   const shareModal = (
     <Modal visible={showShare} transparent animationType="slide">
       <View style={styles.modalBackdrop}>
@@ -147,7 +193,7 @@ export default function ProfileScreen() {
             autoFocus
           />
           <View style={styles.modalButtons}>
-            <TouchableOpacity onPress={() => setShowShare(false)}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowShare(false)}>
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.button} onPress={shareGarden}>
@@ -339,6 +385,14 @@ export default function ProfileScreen() {
                   <Text style={styles.statLab}>Shared</Text>
                 </View>
               </View>
+              <TouchableOpacity style={styles.desktopWipeBtn} onPress={confirmWipeData} disabled={wipingData}>
+                <Text style={styles.desktopWipeText}>{wipingData ? 'Resetting…' : '🔄 Reset All Data'}</Text>
+              </TouchableOpacity>
+              {isAdmin && (
+                <TouchableOpacity style={styles.desktopAdminBtn} onPress={() => router.push('/admin' as any)}>
+                  <Text style={styles.desktopAdminText}>⚙️ Admin Panel</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity style={styles.desktopSignOut} onPress={signOut}>
                 <Text style={styles.desktopSignOutText}>Sign out</Text>
               </TouchableOpacity>
@@ -372,6 +426,14 @@ export default function ProfileScreen() {
       {settingsSection}
       {tempSection}
       {waterTimeSection}
+      <TouchableOpacity style={styles.wipeButton} onPress={confirmWipeData} disabled={wipingData}>
+        <Text style={styles.wipeButtonText}>{wipingData ? 'Resetting…' : '🔄 Reset All Garden Data'}</Text>
+      </TouchableOpacity>
+      {isAdmin && (
+        <TouchableOpacity style={styles.adminButton} onPress={() => router.push('/admin' as any)}>
+          <Text style={styles.adminButtonText}>⚙️ Admin: Plant Catalogue</Text>
+        </TouchableOpacity>
+      )}
       <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
@@ -490,6 +552,14 @@ const styles = StyleSheet.create({
   deleteButtonText: { color: '#adb5bd', fontSize: 13 },
   desktopDeleteBtn: { marginTop: 6, alignItems: 'center', paddingVertical: 6 },
   desktopDeleteText: { color: '#adb5bd', fontSize: 12 },
+  desktopWipeBtn: { marginTop: 12, backgroundColor: '#fff3e0', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ffcc80' },
+  desktopWipeText: { color: '#e65100', fontWeight: '600', fontSize: 13 },
+  desktopAdminBtn: { marginTop: 8, backgroundColor: '#e8f5e9', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7' },
+  desktopAdminText: { color: '#2d6a4f', fontWeight: '600', fontSize: 13 },
+  wipeButton: { backgroundColor: '#fff3e0', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#ffcc80', marginBottom: 10 },
+  wipeButtonText: { color: '#e65100', fontWeight: '600', fontSize: 14 },
+  adminButton: { backgroundColor: '#e8f5e9', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7', marginBottom: 10 },
+  adminButtonText: { color: '#2d6a4f', fontWeight: '700', fontSize: 14 },
 
   // Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -518,7 +588,8 @@ const styles = StyleSheet.create({
   gardenChipText: { color: '#2d6a4f', fontWeight: '500' },
   gardenChipTextActive: { color: '#fff' },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cancelText: { color: '#52796f', fontSize: 16 },
+  cancelBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9' },
+  cancelText: { color: '#e03131', fontSize: 15, fontWeight: '700' },
   button: { backgroundColor: '#2d6a4f', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   buttonText: { color: '#fff', fontWeight: '600' },
 });

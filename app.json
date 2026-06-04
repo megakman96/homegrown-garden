@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "HomeGrown",
+    "name": "GardenGrid",
     "slug": "homegrown-garden",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -28,8 +28,8 @@
     "web": {
       "output": "single-page",
       "favicon": "./assets/images/favicon.png",
-      "name": "HomeGrown",
-      "shortName": "HomeGrown",
+      "name": "GardenGrid",
+      "shortName": "GardenGrid",
       "description": "Plan your garden, track your plants, harvest more.",
       "themeColor": "#1b4332",
       "backgroundColor": "#f0f7ee",
@@ -59,7 +59,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow HomeGrown to access your photos to add plant progress pictures."
+          "photosPermission": "Allow GardenGrid to access your photos to add plant progress pictures."
         }
       ],
       [

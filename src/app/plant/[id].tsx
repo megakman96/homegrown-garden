@@ -53,8 +53,8 @@ export default function PlantDetailScreen() {
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [showHarvest, setShowHarvest] = useState(false);
-  const [harvestUnit, setHarvestUnit] = useState<'grams' | 'quantity'>('grams');
-  const [harvestValue, setHarvestValue] = useState(100);
+  const [harvestUnit, setHarvestUnit] = useState<'grams' | 'quantity'>('quantity');
+  const [harvestValue, setHarvestValue] = useState(1);
   const [harvestNotes, setHarvestNotes] = useState('');
 
   useEffect(() => {
@@ -359,7 +359,7 @@ export default function PlantDetailScreen() {
             />
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setShowHarvest(false)}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowHarvest(false)}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.button} onPress={logHarvest}>
@@ -532,7 +532,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  cancelText: { color: G.stone, fontSize: 16 },
+  cancelBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9' },
+  cancelText: { color: '#e03131', fontSize: 15, fontWeight: '700' },
   button: { backgroundColor: G.hunter, borderRadius: R.md, paddingHorizontal: 24, paddingVertical: 12 },
   buttonText: { color: G.cloud, fontWeight: '600' },
 });

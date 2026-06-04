@@ -226,7 +226,7 @@ export default function PlantsScreen() {
             )}
           </ScrollView>
           <View style={styles.modalButtons}>
-            <TouchableOpacity onPress={() => { setCatalogueSelected(false); setCatalogueSearch(''); setShowAdd(false); }} disabled={adding}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => { setCatalogueSelected(false); setCatalogueSearch(''); setShowAdd(false); }} disabled={adding}>
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
             <PressableScale
@@ -251,41 +251,58 @@ export default function PlantsScreen() {
     </Modal>
   );
 
-  const plantCards = plants.map((plant, i) => (
-    <FadeInView key={plant.id} delay={i * 40} from="bottom" style={isDesktop ? styles.desktopCardWrap : undefined}>
-      <PressableScale
-        style={[isDesktop ? styles.desktopCard : styles.card, { backgroundColor: cardBg }]}
-        onPress={() => router.push(`/plant/${plant.id}`)}
-      >
-        <View style={[styles.cardAccent, { backgroundColor: HEALTH_COLORS[plant.health_status] }]} />
-        <View style={isDesktop ? styles.desktopCardInner : styles.cardRow}>
-          <PlantAvatar name={plant.name} size={isDesktop ? 44 : 52} />
-          <View style={styles.cardContent}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.plantName, { color: textPrim }]} numberOfLines={1}>{plant.name}</Text>
-              <View style={styles.cardBadges}>
-                {plant.sun_requirement && (
-                  <Text style={styles.sunBadge}>{SUN_EMOJIS[plant.sun_requirement as SunRequirement]}</Text>
+  // Group plants by name to avoid duplicate cards
+  const plantsByName = plants.reduce<Record<string, Plant[]>>((acc, p) => {
+    const key = p.name.toLowerCase().trim();
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p);
+    return acc;
+  }, {});
+  const uniquePlants = Object.values(plantsByName).map(group => group[0]);
+
+  const plantCards = uniquePlants.map((plant, i) => {
+    const count = plantsByName[plant.name.toLowerCase().trim()].length;
+    return (
+      <FadeInView key={plant.id} delay={i * 40} from="bottom" style={isDesktop ? styles.desktopCardWrap : undefined}>
+        <PressableScale
+          style={[isDesktop ? styles.desktopCard : styles.card, { backgroundColor: cardBg }]}
+          onPress={() => router.push(`/plant/${plant.id}`)}
+        >
+          <View style={[styles.cardAccent, { backgroundColor: HEALTH_COLORS[plant.health_status] }]} />
+          <View style={isDesktop ? styles.desktopCardInner : styles.cardRow}>
+            <PlantAvatar name={plant.name} size={isDesktop ? 44 : 52} />
+            <View style={styles.cardContent}>
+              <View style={styles.cardHeader}>
+                <Text style={[styles.plantName, { color: textPrim }]} numberOfLines={1}>{plant.name}</Text>
+                <View style={styles.cardBadges}>
+                  {count > 1 && (
+                    <View style={[styles.countBadge, { backgroundColor: textSec }]}>
+                      <Text style={styles.countBadgeText}>×{count}</Text>
+                    </View>
+                  )}
+                  {plant.sun_requirement && (
+                    <Text style={styles.sunBadge}>{SUN_EMOJIS[plant.sun_requirement as SunRequirement]}</Text>
+                  )}
+                </View>
+              </View>
+              {plant.variety && <Text style={styles.variety} numberOfLines={1}>{plant.variety}</Text>}
+              <View style={styles.cardMeta}>
+                <Text style={styles.healthLabel}>{HEALTH_LABELS[plant.health_status]}</Text>
+                {plant.expected_harvest_date && (
+                  <Text style={styles.metaText}>
+                    🧺 {new Date(plant.expected_harvest_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </Text>
+                )}
+                {plant.total_yield_grams > 0 && (
+                  <Text style={styles.metaText}>⚖️ {plant.total_yield_grams}g</Text>
                 )}
               </View>
             </View>
-            {plant.variety && <Text style={styles.variety} numberOfLines={1}>{plant.variety}</Text>}
-            <View style={styles.cardMeta}>
-              <Text style={styles.healthLabel}>{HEALTH_LABELS[plant.health_status]}</Text>
-              {plant.expected_harvest_date && (
-                <Text style={styles.metaText}>
-                  🧺 {new Date(plant.expected_harvest_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                </Text>
-              )}
-              {plant.total_yield_grams > 0 && (
-                <Text style={styles.metaText}>⚖️ {plant.total_yield_grams}g</Text>
-              )}
-            </View>
           </View>
-        </View>
-      </PressableScale>
-    </FadeInView>
-  ));
+        </PressableScale>
+      </FadeInView>
+    );
+  });
 
   if (isDesktop) {
     return (
@@ -461,7 +478,10 @@ const styles = StyleSheet.create({
   gardenChipText:     { color: G.hunter, fontWeight: '600' },
   gardenChipTextActive: { color: G.cloud },
   modalButtons:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: G.dew },
-  cancelText:      { color: G.stone, fontSize: 16, fontWeight: '600' },
+  cancelBtn:       { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9' },
+  cancelText:      { color: '#e03131', fontSize: 15, fontWeight: '700' },
+  countBadge:      { borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, marginRight: 4 },
+  countBadgeText:  { color: '#fff', fontSize: 11, fontWeight: '700' },
   addBtn:          { borderRadius: R.lg, overflow: 'hidden', ...Shadow.soft },
   addBtnGradient:  { paddingVertical: 12, paddingHorizontal: 28 },
   addBtnText:      { color: G.cloud, fontWeight: '700', fontSize: 15 },

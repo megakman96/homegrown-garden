@@ -26,6 +26,10 @@ import {
 } from '@/lib/plant-catalog';
 import type { CatalogEntry } from '@/lib/plant-catalog';
 import { getActivityLogAsync, type ActivityEntry } from '@/lib/activity-log';
+import {
+  fetchWeather, searchCity, saveGardenLocation, saveLocation, loadGardenLocation,
+  type Location, type GeoResult,
+} from '@/lib/weather';
 
 const HEALTH_COLORS: Record<string, string> = {
   healthy:     '#52b788',  // green
@@ -84,6 +88,7 @@ export default function GardenScreen() {
   // Plan modal
   const [showPlan, setShowPlan] = useState(false);
   const [planYear, setPlanYear] = useState(new Date().getFullYear());
+
   const [planLastFrost, setPlanLastFrost] = useState('04/15');
   const [planFirstFrost, setPlanFirstFrost] = useState('10/15');
   const [planSelectedKeys, setPlanSelectedKeys] = useState<string[]>([]);
@@ -95,11 +100,15 @@ export default function GardenScreen() {
 
   // Edit garden modal
   const [showEditGarden, setShowEditGarden] = useState(false);
-  const [editStep, setEditStep] = useState<'size' | 'shape' | 'sun'>('size');
+  const [editStep, setEditStep] = useState<'size' | 'shape' | 'sun' | 'location'>('size');
   const [editRows, setEditRows] = useState(6);
   const [editCols, setEditCols] = useState(8);
   const [editLayout, setEditLayout] = useState<GardenLayout>(() => makeLayout(6, 8));
   const [editSaving, setEditSaving] = useState(false);
+  const [editLocationQuery, setEditLocationQuery] = useState('');
+  const [editLocationResults, setEditLocationResults] = useState<GeoResult[]>([]);
+  const [editLocationSearching, setEditLocationSearching] = useState(false);
+  const [editSelectedLocation, setEditSelectedLocation] = useState<Location | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -254,7 +263,33 @@ export default function GardenScreen() {
     setEditCols(selectedGarden.cols);
     setEditLayout(layoutFromGarden(selectedGarden));
     setEditStep('size');
+    setEditLocationQuery('');
+    setEditLocationResults([]);
+    const savedLoc = selectedGarden.location_json
+      ? (() => { try { return JSON.parse(selectedGarden.location_json as string); } catch { return null; } })()
+      : null;
+    setEditSelectedLocation(savedLoc);
     setShowEditGarden(true);
+  }
+
+  async function searchEditLocation(query: string) {
+    setEditLocationQuery(query);
+    if (query.length < 2) { setEditLocationResults([]); return; }
+    setEditLocationSearching(true);
+    const results = await searchCity(query);
+    setEditLocationResults(results);
+    setEditLocationSearching(false);
+  }
+
+  function selectEditLocation(r: GeoResult) {
+    const loc: Location = {
+      latitude: r.latitude,
+      longitude: r.longitude,
+      name: r.admin1 ? `${r.name}, ${r.admin1}` : `${r.name}, ${r.country}`,
+    };
+    setEditSelectedLocation(loc);
+    setEditLocationQuery('');
+    setEditLocationResults([]);
   }
 
   function handleEditSizeChange(dim: 'rows' | 'cols', delta: number) {
@@ -296,7 +331,12 @@ export default function GardenScreen() {
         rows: editRows,
         cols: editCols,
         layout: JSON.stringify(editLayout),
+        location_json: editSelectedLocation ? JSON.stringify(editSelectedLocation) : null,
       });
+      if (editSelectedLocation) {
+        await saveGardenLocation(selectedGarden.id, editSelectedLocation);
+        await saveLocation(editSelectedLocation);
+      }
       setGardens(prev => prev.map(g => g.id === selectedGarden.id ? updated as any : g));
       setSelectedGarden(updated as any);
       setShowEditGarden(false);
@@ -474,11 +514,11 @@ export default function GardenScreen() {
                   </Text>
                 </View>
                 <View style={styles.headerActions}>
-                  <TouchableOpacity style={styles.headerBtn} onPress={() => setShowPlan(true)}>
-                    <Text style={styles.headerBtnText}>🗓️ Plan</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity style={styles.headerBtn} onPress={openHistory}>
                     <Text style={styles.headerBtnText}>📋 History</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.headerBtn} onPress={() => setShowPlan(true)}>
+                    <Text style={styles.headerBtnText}>🗓️ Plan</Text>
                   </TouchableOpacity>
                   {isOwned && (
                     <>
@@ -608,13 +648,13 @@ export default function GardenScreen() {
           <View style={[styles.modal, { paddingTop: 12, maxHeight: '85%', backgroundColor: cardBg }]}>
             <View style={styles.modalHandle} />
             <View style={[styles.editStepTabs, { backgroundColor: isDark ? colors.bgElement : G.foam }]}>
-              {(['size', 'shape', 'sun'] as const).map((s, i) => (
+              {(['size', 'shape', 'sun', 'location'] as const).map((s, i) => (
                 <TouchableOpacity
                   key={s} style={[styles.editTab, editStep === s && styles.editTabActive]}
                   onPress={() => setEditStep(s)}
                 >
                   <Text style={[styles.editTabText, editStep === s && styles.editTabTextActive]}>
-                    {['📐 Size', '🗺️ Shape', '☀️ Sun'][i]}
+                    {['📐 Size', '🗺️ Shape', '☀️ Sun', '📍 Location'][i]}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -651,11 +691,56 @@ export default function GardenScreen() {
                   <EditTileGrid layout={editLayout} onTap={cycleEditSun} showSun />
                 </View>
               )}
+
+              {editStep === 'location' && (
+                <View style={styles.editSection}>
+                  <Text style={styles.editHint}>Used for weather-aware watering advice on the Schedule tab.</Text>
+                  {editSelectedLocation ? (
+                    <View style={[styles.locationConfirmed, { borderColor: G.sage }]}>
+                      <Text style={styles.locationPin}>📍</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.locationName, { color: textPrim }]}>{editSelectedLocation.name ?? 'Saved location'}</Text>
+                        <Text style={[styles.locationCoords, { color: textSec }]}>
+                          {editSelectedLocation.latitude?.toFixed(3)}, {editSelectedLocation.longitude?.toFixed(3)}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setEditSelectedLocation(null)} style={styles.changeLoc}>
+                        <Text style={styles.changeLocText}>Change</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+                        placeholder="Search city (e.g. Austin, London)"
+                        placeholderTextColor={textSec}
+                        value={editLocationQuery}
+                        onChangeText={searchEditLocation}
+                      />
+                      {editLocationSearching && (
+                        <Text style={[styles.editHint, { color: textSec }]}>Searching…</Text>
+                      )}
+                      {editLocationResults.map((r, i) => (
+                        <TouchableOpacity
+                          key={i}
+                          style={[styles.catItem, { borderBottomColor: border }]}
+                          onPress={() => selectEditLocation(r)}
+                        >
+                          <Text style={[styles.catItemName, { color: textPrim }]}>{r.name}</Text>
+                          <Text style={[styles.catItemMeta, { color: textSec }]}>
+                            {r.admin1 ? `${r.admin1}, ` : ''}{r.country}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  )}
+                </View>
+              )}
             </ScrollView>
 
             <View style={[styles.modalButtons, { paddingTop: 12, borderTopWidth: 1, borderTopColor: border }]}>
-              <TouchableOpacity onPress={() => setShowEditGarden(false)}>
-                <Text style={[styles.cancelText, { color: textSec }]}>Cancel</Text>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEditGarden(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.button, editSaving && { opacity: 0.6 }]}
@@ -695,8 +780,8 @@ export default function GardenScreen() {
               ))}
             </View>
             <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setShowNewGarden(false)}>
-                <Text style={[styles.cancelText, { color: textSec }]}>Cancel</Text>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowNewGarden(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.button} onPress={createGarden}>
                 <Text style={styles.buttonText}>Create</Text>
@@ -750,17 +835,25 @@ export default function GardenScreen() {
                     return (
                       <>
                         <Text style={[styles.catSectionLabel, { color: textSec }]}>✅ Goes well here</Text>
-                        {suggestions.map(({ key, entry }) => (
-                          <TouchableOpacity key={key} style={[styles.catItem, { borderBottomColor: border }]} onPress={() => selectCatalogueItem(entry)}>
-                            <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
-                            <View style={styles.catItemContent}>
-                              <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
-                              <Text style={[styles.catItemMeta, { color: textSec }]}>
-                                {SUN_EMOJIS[entry.sunRequirement]} · 💧 every {entry.waterIntervalDays}d
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        ))}
+                        {suggestions.map(({ key, entry }) => {
+                          const tileSun = placement?.tileSun && placement.tileSun !== 'inactive'
+                            ? placement.tileSun as SunRequirement
+                            : null;
+                          const sunCompat = tileSun ? getSunCompatibility(entry.sunRequirement, tileSun) : null;
+                          const sunBadge = sunCompat === 'match' ? '✅' : sunCompat === 'tolerable' ? '⚠️' : sunCompat === 'mismatch' ? '❌' : null;
+                          return (
+                            <TouchableOpacity key={key} style={[styles.catItem, { borderBottomColor: border }]} onPress={() => selectCatalogueItem(entry)}>
+                              <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
+                              <View style={styles.catItemContent}>
+                                <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
+                                <Text style={[styles.catItemMeta, { color: textSec }]}>
+                                  {SUN_EMOJIS[entry.sunRequirement]} needs {entry.sunRequirement.replace('_', ' ')} · 💧 every {entry.waterIntervalDays}d
+                                </Text>
+                              </View>
+                              {sunBadge && <Text style={{ fontSize: 16 }}>{sunBadge}</Text>}
+                            </TouchableOpacity>
+                          );
+                        })}
                       </>
                     );
                   })()}
@@ -769,17 +862,25 @@ export default function GardenScreen() {
                   <Text style={[styles.catSectionLabel, { color: textSec }]}>
                     {catalogueSearch.trim() ? 'Search results' : '🌱 All Plants'}
                   </Text>
-                  {getCatalogueList().map(({ key, entry }) => (
-                    <TouchableOpacity key={key} style={[styles.catItem, { borderBottomColor: border }]} onPress={() => selectCatalogueItem(entry)}>
-                      <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
-                      <View style={styles.catItemContent}>
-                        <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
-                        <Text style={[styles.catItemMeta, { color: textSec }]}>
-                          {SUN_EMOJIS[entry.sunRequirement]} · 💧 every {entry.waterIntervalDays}d · {entry.category}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                  {getCatalogueList().map(({ key, entry }) => {
+                    const tileSun = placement?.tileSun && placement.tileSun !== 'inactive'
+                      ? placement.tileSun as SunRequirement
+                      : null;
+                    const sunCompat = tileSun ? getSunCompatibility(entry.sunRequirement, tileSun) : null;
+                    const sunBadge = sunCompat === 'match' ? '✅' : sunCompat === 'tolerable' ? '⚠️' : sunCompat === 'mismatch' ? '❌' : null;
+                    return (
+                      <TouchableOpacity key={key} style={[styles.catItem, { borderBottomColor: border }]} onPress={() => selectCatalogueItem(entry)}>
+                        <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
+                        <View style={styles.catItemContent}>
+                          <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
+                          <Text style={[styles.catItemMeta, { color: textSec }]}>
+                            {SUN_EMOJIS[entry.sunRequirement]} needs {entry.sunRequirement.replace('_', ' ')} · 💧 every {entry.waterIntervalDays}d
+                          </Text>
+                        </View>
+                        {sunBadge && <Text style={{ fontSize: 16 }}>{sunBadge}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </>
               ) : (
                 <>
@@ -901,8 +1002,8 @@ export default function GardenScreen() {
             </ScrollView>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity onPress={() => setPlacement(null)}>
-                <Text style={[styles.cancelText, { color: textSec }]}>Cancel</Text>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setPlacement(null)}>
+                <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -958,7 +1059,7 @@ export default function GardenScreen() {
               ))}
             </ScrollView>
             <TouchableOpacity onPress={() => setShowHistory(false)} style={[styles.actionCancel]}>
-              <Text style={[styles.cancelText, { color: textSec }]}>Close</Text>
+              <Text style={styles.cancelText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1054,7 +1155,7 @@ export default function GardenScreen() {
             </ScrollView>
 
             <TouchableOpacity onPress={() => setShowPlan(false)} style={[styles.actionCancel]}>
-              <Text style={[styles.cancelText, { color: textSec }]}>Close</Text>
+              <Text style={styles.cancelText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1207,6 +1308,12 @@ const styles = StyleSheet.create({
   editHint: { fontSize: 13, color: G.stone, marginBottom: 14, fontStyle: 'italic' },
   editLegendRow: { flexDirection: 'row', gap: 14, marginBottom: 10 },
   editCount: { fontSize: 12, color: G.stone, marginTop: 10, textAlign: 'center' },
+  locationConfirmed: { flexDirection: 'row', alignItems: 'center', borderRadius: R.md, borderWidth: 1.5, padding: 12, gap: 10, marginBottom: 8 },
+  locationPin: { fontSize: 22 },
+  locationName: { fontSize: 14, fontWeight: '700' },
+  locationCoords: { fontSize: 11, marginTop: 2 },
+  changeLoc: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, backgroundColor: G.dew },
+  changeLocText: { fontSize: 12, color: G.hunter, fontWeight: '600' },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyEmoji: { fontSize: 56, marginBottom: 12 },
   emptyText: { fontSize: 16, color: '#52796f', marginBottom: 20 },
@@ -1270,7 +1377,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#f0f7ee',
   },
-  cancelText: { color: '#52796f', fontSize: 16 },
+  cancelBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9' },
+  cancelText: { color: '#e03131', fontSize: 15, fontWeight: '700' },
   // Analysis
   analysisBox: {
     backgroundColor: '#f8fffe', borderRadius: 12, padding: 14,

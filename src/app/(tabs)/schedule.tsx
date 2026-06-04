@@ -310,8 +310,8 @@ export default function ScheduleScreen() {
               <Text style={styles.cityRegion}>{r.admin1 ? `${r.admin1}, ` : ''}{r.country}</Text>
             </TouchableOpacity>
           ))}
-          <TouchableOpacity onPress={closeLocationModal} style={styles.skipButton}>
-            <Text style={styles.skipButtonText}>Cancel</Text>
+          <TouchableOpacity onPress={closeLocationModal} style={styles.cancelBtn}>
+            <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -336,12 +336,6 @@ export default function ScheduleScreen() {
             <Text style={[styles.gardenName, { color: textPrim }]}>🌻 {garden.name}</Text>
             {loc && <Text style={[styles.gardenLoc, { color: textSec }]}>📍 {loc.name ?? 'Saved location'}</Text>}
           </View>
-          <TouchableOpacity
-            style={styles.setLocBtn}
-            onPress={() => openLocationModal(garden.id)}
-          >
-            <Text style={styles.setLocText}>{loc ? 'Change location' : '+ Set location'}</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Weather for this garden */}
@@ -459,10 +453,9 @@ function WeatherWidget({ weather, loading, tempUnit, onSetLocation, onChangeLoca
 
   if (!weather) {
     return (
-      <TouchableOpacity style={[styles.weatherCard, styles.weatherCardEmpty, { backgroundColor: cardBg }]} onPress={onSetLocation}>
-        <Text style={[styles.weatherErrorText, { color: textSec }]}>📍 Set a location for weather-aware watering</Text>
-        <Text style={styles.retryLink}>Tap to set location →</Text>
-      </TouchableOpacity>
+      <View style={[styles.weatherCard, styles.weatherCardEmpty, { backgroundColor: cardBg }]}>
+        <Text style={[styles.weatherErrorText, { color: textSec }]}>📍 No location set — edit your garden to enable weather-aware watering</Text>
+      </View>
     );
   }
 
@@ -685,7 +678,9 @@ const styles = StyleSheet.create({
   cityName: { fontSize: 15, fontWeight: '600', color: '#1b4332' },
   cityRegion: { fontSize: 12, color: '#52796f', marginTop: 2 },
   skipButton: { marginTop: 16, alignItems: 'center' },
-  skipButtonText: { color: '#52796f', fontSize: 14 },
+  skipButtonText: { color: '#e03131', fontSize: 14, fontWeight: '600' },
+  cancelBtn: { marginTop: 16, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9', alignSelf: 'center' },
+  cancelText: { color: '#e03131', fontSize: 15, fontWeight: '700' },
 
   // Schedule items
   section: { marginBottom: 20 },

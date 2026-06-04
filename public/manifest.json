@@ -1,6 +1,6 @@
 {
-  "name": "HomeGrown",
-  "short_name": "HomeGrown",
+  "name": "GardenGrid",
+  "short_name": "GardenGrid",
   "description": "Plan your garden, track your plants, harvest more.",
   "start_url": "/",
   "scope": "/",

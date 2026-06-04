@@ -68,6 +68,7 @@ function ThemedApp() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="plant/[id]" options={{ headerShown: true, title: 'Plant Detail' }} />
           <Stack.Screen name="new-garden" />
+          <Stack.Screen name="admin" />
         </Stack>
       </AuthGuard>
     </ThemeProvider>

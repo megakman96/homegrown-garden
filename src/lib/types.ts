@@ -24,9 +24,11 @@ export interface Database {
           cols: number;
           sun_exposure: 'full_sun' | 'partial_sun' | 'shade';
           created_at: string;
+          layout?: string | null;
+          location_json?: string | null;
         };
-        Insert: { user_id: string; name: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade' };
-        Update: { name?: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade' };
+        Insert: { user_id: string; name: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade'; layout?: string | null; location_json?: string | null };
+        Update: { name?: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade'; layout?: string | null; location_json?: string | null };
         Relationships: [];
       };
       plants: {

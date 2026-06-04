@@ -37,7 +37,7 @@ const STEP_TITLES: Record<Step, string> = {
 };
 const STEP_SUBS: Record<Step, string> = {
   name:     "Give your garden a name you'll remember.",
-  location: 'Used for weather-aware watering advice. Required.',
+  location: 'Used for weather-aware watering advice. Optional — you can set it later in Edit.',
   size:     'Set the grid dimensions. You can adjust this later.',
   shape:    'Tap tiles to include them in your garden.',
   sun:      'Tap each tile to set its sunlight level.',
@@ -194,7 +194,7 @@ export default function NewGardenScreen() {
   const tileSize = Math.max(22, Math.min(46, Math.floor((maxGridWidth - cols * 3) / cols)));
   const activeTiles = activeCount(layout);
 
-  const canContinue = step !== 'location' || selectedLocation !== null;
+  const canContinue = true;
 
   return (
     <View style={styles.container}>
