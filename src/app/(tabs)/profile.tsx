@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, Alert, Platform,
+  TextInput, Modal, Alert, Platform, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
@@ -12,6 +12,15 @@ import { clearActivityLogAsync } from '@/lib/activity-log';
 import type { Garden, GardenShare } from '@/lib/types';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
+const VENMO_USER  = 'kaleb-ward-8';
+
+function openVenmo() {
+  const deepLink = `venmo://paycharge?txn=pay&recipients=${VENMO_USER}&note=GardenGrid%20Support`;
+  const webUrl   = `https://venmo.com/u/${VENMO_USER}`;
+  Linking.canOpenURL(deepLink)
+    .then(can => Linking.openURL(can ? deepLink : webUrl))
+    .catch(() => Linking.openURL(webUrl));
+}
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
@@ -393,6 +402,9 @@ export default function ProfileScreen() {
                   <Text style={styles.desktopAdminText}>⚙️ Admin Panel</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity style={styles.desktopVenmoBtn} onPress={openVenmo}>
+                <Text style={styles.desktopVenmoText}>💚 Support on Venmo</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.desktopSignOut} onPress={signOut}>
                 <Text style={styles.desktopSignOutText}>Sign out</Text>
               </TouchableOpacity>
@@ -434,6 +446,9 @@ export default function ProfileScreen() {
           <Text style={styles.adminButtonText}>⚙️ Admin: Plant Catalogue</Text>
         </TouchableOpacity>
       )}
+      <TouchableOpacity style={styles.venmoButton} onPress={openVenmo}>
+        <Text style={styles.venmoText}>💚 Support GardenGrid on Venmo</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
@@ -550,8 +565,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   deleteButtonText: { color: '#adb5bd', fontSize: 13 },
-  desktopDeleteBtn: { marginTop: 6, alignItems: 'center', paddingVertical: 6 },
+  desktopDeleteBtn:  { marginTop: 6, alignItems: 'center', paddingVertical: 6 },
   desktopDeleteText: { color: '#adb5bd', fontSize: 12 },
+  desktopVenmoBtn:   { marginTop: 12, backgroundColor: '#e8f5e9', borderRadius: 10, paddingVertical: 11, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7' },
+  desktopVenmoText:  { color: '#2d6a4f', fontWeight: '700', fontSize: 13 },
+  venmoButton: {
+    borderRadius: 12, padding: 15, alignItems: 'center', marginBottom: 10,
+    backgroundColor: '#e8f5e9', borderWidth: 1.5, borderColor: '#a5d6a7',
+  },
+  venmoText: { color: '#2d6a4f', fontWeight: '700', fontSize: 15 },
   desktopWipeBtn: { marginTop: 12, backgroundColor: '#fff3e0', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ffcc80' },
   desktopWipeText: { color: '#e65100', fontWeight: '600', fontSize: 13 },
   desktopAdminBtn: { marginTop: 8, backgroundColor: '#e8f5e9', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7' },
