@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
+  FlatList, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -62,10 +63,21 @@ export default function GardenScreen() {
   const border     = isDark ? colors.border    : '#b7e4c7';
   const inputBg    = isDark ? colors.bgElement : '#f0f7ee';
   const router = useRouter();
-  const [gardens, setGardens] = useState<Garden[]>([]);        // owned
-  const [sharedEntries, setSharedEntries] = useState<SharedEntry[]>([]); // shared with me
-  const [selectedGarden, setSelectedGarden] = useState<Garden | null>(null);
-  const [plants, setPlants] = useState<Plant[]>([]);
+  const { width: screenWidth } = useWindowDimensions();
+  const flatListRef = useRef<FlatList>(null);
+
+  const [gardens, setGardens] = useState<Garden[]>([]);
+  const [sharedEntries, setSharedEntries] = useState<SharedEntry[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  // Cache plants per garden so swiping back is instant
+  const [plantsMap, setPlantsMap] = useState<Record<string, Plant[]>>({});
+
+  const allGardens = useMemo(
+    () => [...gardens, ...sharedEntries.map(e => e.garden)],
+    [gardens, sharedEntries],
+  );
+  const selectedGarden = allGardens[currentIndex] ?? null;
+  const plants = plantsMap[selectedGarden?.id ?? ''] ?? [];
 
   // New garden modal
   const [showNewGarden, setShowNewGarden] = useState(false);
@@ -118,7 +130,12 @@ export default function GardenScreen() {
       .getFullList({ filter: `user_id = "${user.id}"` })
       .then((list) => {
         setGardens(list as any);
-        if (list.length > 0) setSelectedGarden(list[0] as any);
+        // Load plants for the first garden immediately
+        if (list.length > 0) {
+          pb.collection('plants').getFullList({ filter: `garden_id = "${list[0].id}"` })
+            .then(data => setPlantsMap(prev => ({ ...prev, [list[0].id]: data as any })))
+            .catch(() => {});
+        }
       })
       .catch(() => {});
 
@@ -142,19 +159,30 @@ export default function GardenScreen() {
       .catch(() => {});
   }, [user]);
 
-  useEffect(() => {
-    if (!selectedGarden) return;
-    pb.collection('plants').getFullList({ filter: `garden_id = "${selectedGarden.id}"` })
-      .then((data) => setPlants(data as any));
-  }, [selectedGarden]);
+  // Load plants for a garden the first time it's visited
+  const loadPlantsForGarden = useCallback((garden: Garden) => {
+    if (plantsMap[garden.id]) return; // already cached
+    pb.collection('plants').getFullList({ filter: `garden_id = "${garden.id}"` })
+      .then(data => setPlantsMap(prev => ({ ...prev, [garden.id]: data as any })))
+      .catch(() => {});
+  }, [plantsMap]);
 
   async function createGarden() {
     if (!user || !newName.trim()) return;
     const data = await pb.collection('gardens').create({
       user_id: user.id, name: newName.trim(), rows: 6, cols: 8, sun_exposure: newSun,
     });
-    setGardens((g) => [...g, data as any]);
-    setSelectedGarden(data as any);
+    setGardens(prev => {
+      const next = [...prev, data as any];
+      // Scroll to the new garden after state settles
+      const newIdx = next.length - 1 + sharedEntries.length;
+      setTimeout(() => {
+        setCurrentIndex(newIdx);
+        flatListRef.current?.scrollToIndex({ index: newIdx, animated: true });
+      }, 50);
+      return next;
+    });
+    setPlantsMap(prev => ({ ...prev, [(data as any).id]: [] }));
     setShowNewGarden(false);
     setNewName('');
     setNewSun('full_sun');
@@ -238,7 +266,12 @@ export default function GardenScreen() {
       water_interval_days: placeWaterDays,
       total_yield_grams: 0,
     });
-    setPlants((p) => [...p, data as any]);
+    if (selectedGarden) {
+      setPlantsMap(prev => ({
+        ...prev,
+        [selectedGarden.id]: [...(prev[selectedGarden.id] ?? []), data as any],
+      }));
+    }
     emit('plants:changed');
     setPlacement(null);
     setPlaceSelected(false);
@@ -248,9 +281,10 @@ export default function GardenScreen() {
   // ── Plant action handlers ─────────────────────────────────────────────────
 
   async function unplantPlant() {
-    if (!plantAction) return;
+    if (!plantAction || !selectedGarden) return;
     await pb.collection('plants').update(plantAction.id, { row: null, col: null });
-    setPlants(prev => prev.filter(p => p.id !== plantAction.id));
+    const gid = selectedGarden.id;
+    setPlantsMap(prev => ({ ...prev, [gid]: (prev[gid] ?? []).filter(p => p.id !== plantAction.id) }));
     setPlantAction(null);
     emit('plants:changed');
   }
@@ -338,7 +372,6 @@ export default function GardenScreen() {
         await saveLocation(editSelectedLocation);
       }
       setGardens(prev => prev.map(g => g.id === selectedGarden.id ? updated as any : g));
-      setSelectedGarden(updated as any);
       setShowEditGarden(false);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save changes');
@@ -357,12 +390,12 @@ export default function GardenScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: async () => {
+          const gardenId = selectedGarden.id;
           await Promise.all(plants.map(p => pb.collection('plants').delete(p.id).catch(() => {})));
-          await pb.collection('gardens').delete(selectedGarden.id).catch(() => {});
-          const remaining = gardens.filter(g => g.id !== selectedGarden.id);
-          setGardens(remaining);
-          setSelectedGarden(remaining[0] ?? null);
-          setPlants([]);
+          await pb.collection('gardens').delete(gardenId).catch(() => {});
+          setPlantsMap(prev => { const n = { ...prev }; delete n[gardenId]; return n; });
+          setGardens(prev => prev.filter(g => g.id !== gardenId));
+          setCurrentIndex(i => Math.max(0, i - 1));
         }},
       ],
     );
@@ -457,152 +490,129 @@ export default function GardenScreen() {
 
   const compatSummary = buildCompatSummary();
 
+  // Render a single garden page inside the pager
+  function renderGardenPage(garden: Garden) {
+    const pageGardenLayout = layoutFromGarden(garden);
+    const pagePlants = plantsMap[garden.id] ?? [];
+    const sharedEntry = sharedEntries.find(e => e.garden.id === garden.id);
+    const isOwned = !sharedEntry;
+    const tileSize = Math.max(30, Math.min(58, Math.floor((screenWidth - 32) / garden.cols)));
+
+    function getPagePlantAt(row: number, col: number) {
+      return pagePlants.find(p => p.row === row && p.col === col);
+    }
+
+    return (
+      <ScrollView
+        style={{ width: screenWidth }}
+        contentContainerStyle={styles.gridContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Garden header */}
+        <View style={styles.gardenHeader}>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Text style={[styles.gardenName, { color: textPrim }]}>{garden.name}</Text>
+              {sharedEntry && (
+                <View style={styles.sharedBadge}>
+                  <Text style={styles.sharedBadgeText}>🤝 Shared</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.gardenMeta, { color: textSec }]}>
+              {SUN_EMOJIS[garden.sun_exposure as SunRequirement]}{' '}
+              {SUN_LABELS[garden.sun_exposure as SunRequirement]} · {garden.rows}×{garden.cols}
+              {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
+            </Text>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.headerBtn} onPress={openHistory}>
+              <Text style={styles.headerBtnText}>📋</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerBtn} onPress={() => setShowPlan(true)}>
+              <Text style={styles.headerBtnText}>🗓️</Text>
+            </TouchableOpacity>
+            {isOwned && (
+              <>
+                <TouchableOpacity style={styles.headerBtn} onPress={openEditGarden}>
+                  <Text style={styles.headerBtnText}>✏️</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.headerBtn, styles.headerBtnDanger]} onPress={confirmDeleteGarden}>
+                  <Text style={styles.headerBtnDangerText}>🗑</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* Grid — tiles scale to fill screen width, no horizontal scroll needed */}
+        <View style={styles.gridWrapper}>
+          {Array.from({ length: garden.rows }).map((_, row) => (
+            <View key={row} style={styles.gridRow}>
+              {Array.from({ length: garden.cols }).map((_, col) => {
+                const plant = getPagePlantAt(row, col);
+                const tileState = pageGardenLayout?.[row]?.[col] ?? 'inactive';
+                const isInactive = tileState === 'inactive';
+                const tileBg = plant
+                  ? HEALTH_COLORS[plant.health_status]
+                  : isInactive ? '#e0e6e3' : TILE_COLORS[tileState];
+                return (
+                  <TouchableOpacity
+                    key={col}
+                    style={[styles.cell, { width: tileSize, height: tileSize, backgroundColor: tileBg }, isInactive && styles.inactiveCell]}
+                    onPress={() => !isInactive && handleCellTap(row, col)}
+                    disabled={isInactive}
+                  >
+                    {plant ? (
+                      <>
+                        <Text style={[styles.cellEmoji, { fontSize: tileSize * 0.42 }]}>{getPlantIcon(plant.name).emoji}</Text>
+                        {tileState !== 'inactive' && (
+                          <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>
+                        )}
+                      </>
+                    ) : !isInactive ? (
+                      <Text style={[styles.cellPlus, { fontSize: tileSize * 0.35 }]}>+</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+
+        {/* Legend */}
+        <View style={styles.legendSection}>
+          <Text style={styles.legendHeading}>Health</Text>
+          <View style={styles.legend}>
+            {Object.entries(HEALTH_COLORS).map(([status, color]) => (
+              <View key={status} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: color }]} />
+                <Text style={[styles.legendLabel, { color: textSec }]}>{status.replace('_', ' ')}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+        <View style={styles.legendSection}>
+          <Text style={styles.legendHeading}>Sunlight</Text>
+          <View style={styles.legend}>
+            {SUN_CYCLE.map(s => (
+              <View key={s} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: TILE_COLORS[s] }]} />
+                <Text style={styles.legendLabel}>{TILE_LABELS[s]}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+        <Text style={styles.hint}>Tap empty cell to plant · Tap plant for options</Text>
+      </ScrollView>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: bg }]}>
-      {/* Garden selector */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
-        {gardens.map((g) => (
-          <TouchableOpacity
-            key={g.id}
-            style={[styles.gardenChip, { backgroundColor: isDark ? colors.bgCard : '#fff', borderColor: border }, selectedGarden?.id === g.id && styles.gardenChipActive]}
-            onPress={() => setSelectedGarden(g)}
-          >
-            <Text style={[styles.gardenChipText, selectedGarden?.id === g.id && styles.gardenChipTextActive]}>
-              {SUN_EMOJIS[g.sun_exposure as SunRequirement] ?? '☀️'} {g.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        {sharedEntries.map(({ garden: g, ownerEmail }) => (
-          <TouchableOpacity
-            key={g.id}
-            style={[styles.gardenChip, styles.gardenChipShared, { borderColor: isDark ? colors.border : '#a5d8ff' }, selectedGarden?.id === g.id && styles.gardenChipActive]}
-            onPress={() => setSelectedGarden(g)}
-          >
-            <Text style={[styles.gardenChipText, selectedGarden?.id === g.id && styles.gardenChipTextActive]}>
-              🤝 {g.name}
-            </Text>
-            <Text style={styles.gardenChipOwner} numberOfLines={1}>
-              {ownerEmail.split('@')[0]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity style={[styles.gardenChip, { backgroundColor: isDark ? colors.bgCard : '#fff', borderColor: border }]} onPress={() => router.push('/new-garden')}>
-          <Text style={[styles.gardenChipText, { color: textPrim }]}>+ New</Text>
-        </TouchableOpacity>
-      </ScrollView>
 
-      {selectedGarden ? (
-        <ScrollView contentContainerStyle={styles.gridContainer} showsVerticalScrollIndicator={false}>
-          {(() => {
-            const sharedEntry = sharedEntries.find(e => e.garden.id === selectedGarden.id);
-            const isOwned = !sharedEntry;
-            return (
-              <View style={styles.gardenHeader}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <Text style={[styles.gardenName, { color: textPrim }]}>{selectedGarden.name}</Text>
-                    {sharedEntry && (
-                      <View style={styles.sharedBadge}>
-                        <Text style={styles.sharedBadgeText}>🤝 Shared</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[styles.gardenMeta, { color: textSec }]}>
-                    {SUN_EMOJIS[selectedGarden.sun_exposure as SunRequirement]}{' '}
-                    {SUN_LABELS[selectedGarden.sun_exposure as SunRequirement]} · {selectedGarden.rows}×{selectedGarden.cols}
-                    {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
-                  </Text>
-                </View>
-                <View style={styles.headerActions}>
-                  <TouchableOpacity style={styles.headerBtn} onPress={openHistory}>
-                    <Text style={styles.headerBtnText}>📋 History</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.headerBtn} onPress={() => setShowPlan(true)}>
-                    <Text style={styles.headerBtnText}>🗓️ Plan</Text>
-                  </TouchableOpacity>
-                  {isOwned && (
-                    <>
-                      <TouchableOpacity style={styles.headerBtn} onPress={openEditGarden}>
-                        <Text style={styles.headerBtnText}>✏️ Edit</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.headerBtn, styles.headerBtnDanger]} onPress={confirmDeleteGarden}>
-                        <Text style={styles.headerBtnDangerText}>🗑</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              </View>
-            );
-          })()}
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.gridScroll}
-          >
-            <View>
-              {Array.from({ length: selectedGarden.rows }).map((_, row) => (
-                  <View key={row} style={styles.gridRow}>
-                    {Array.from({ length: selectedGarden.cols }).map((_, col) => {
-                      const plant = getPlantAt(row, col);
-                      const tileState = gardenLayout?.[row]?.[col] ?? 'inactive';
-                      const isInactive = tileState === 'inactive';
-                      // Planted tiles: health color bg + tile-sun dot overlay
-                      // Empty tiles: tile-sun color bg (no overlap with health)
-                      const tileBg = plant
-                        ? HEALTH_COLORS[plant.health_status]
-                        : isInactive ? '#e0e6e3' : TILE_COLORS[tileState];
-                      return (
-                        <TouchableOpacity
-                          key={col}
-                          style={[styles.cell, { backgroundColor: tileBg }, isInactive && styles.inactiveCell]}
-                          onPress={() => !isInactive && handleCellTap(row, col)}
-                          disabled={isInactive}
-                        >
-                          {plant ? (
-                            <>
-                              <Text style={styles.cellEmoji}>{getPlantIcon(plant.name).emoji}</Text>
-                              {tileState !== 'inactive' && (
-                                <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>
-                              )}
-                            </>
-                          ) : !isInactive ? (
-                            <Text style={styles.cellPlus}>+</Text>
-                          ) : null}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ))}
-            </View>
-          </ScrollView>
-
-          {/* Legend */}
-          <View style={styles.legendSection}>
-            <Text style={styles.legendHeading}>Plant health (cell color)</Text>
-            <View style={styles.legend}>
-              {Object.entries(HEALTH_COLORS).map(([status, color]) => (
-                <View key={status} style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: color }]} />
-                  <Text style={[styles.legendLabel, { color: textSec }]}>{status.replace('_', ' ')}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-          <View style={styles.legendSection}>
-            <Text style={styles.legendHeading}>Tile sunlight (emoji in corner)</Text>
-            <View style={styles.legend}>
-              {SUN_CYCLE.map(s => (
-                <View key={s} style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: TILE_COLORS[s] }]} />
-                  <Text style={styles.legendLabel}>{TILE_LABELS[s]}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-          <Text style={styles.hint}>Tap empty cell to plant · Tap plant for options</Text>
-        </ScrollView>
-      ) : (
+      {allGardens.length === 0 ? (
+        // ── Empty state ───────────────────────────────────────────────────────
         <FadeInView style={styles.empty} from="scale">
           <Text style={styles.emptyEmoji}>🌻</Text>
           <Text style={styles.emptyTitle}>No garden yet</Text>
@@ -613,6 +623,52 @@ export default function GardenScreen() {
             </LinearGradient>
           </PressableScale>
         </FadeInView>
+      ) : (
+        <>
+          {/* ── Page indicator bar ─────────────────────────────────────────── */}
+          <View style={[styles.pageBar, { backgroundColor: isDark ? colors.bgCard : '#fff', borderBottomColor: border }]}>
+            <View style={styles.pageDots}>
+              {allGardens.map((g, i) => (
+                <TouchableOpacity
+                  key={g.id}
+                  onPress={() => {
+                    setCurrentIndex(i);
+                    loadPlantsForGarden(allGardens[i]);
+                    flatListRef.current?.scrollToIndex({ index: i, animated: true });
+                  }}
+                >
+                  <View style={[styles.pageDot, i === currentIndex && styles.pageDotActive]} />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={styles.newGardenBtn} onPress={() => router.push('/new-garden')}>
+              <Text style={[styles.newGardenText, { color: textPrim }]}>＋ New</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Horizontal garden pager ────────────────────────────────────── */}
+          <FlatList
+            ref={flatListRef}
+            data={allGardens}
+            keyExtractor={g => g.id}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            initialNumToRender={1}
+            maxToRenderPerBatch={1}
+            windowSize={3}
+            getItemLayout={(_, index) => ({ length: screenWidth, offset: screenWidth * index, index })}
+            onMomentumScrollEnd={e => {
+              const i = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+              if (i !== currentIndex) {
+                setCurrentIndex(i);
+                loadPlantsForGarden(allGardens[i]);
+              }
+            }}
+            renderItem={({ item: garden }) => renderGardenPage(garden)}
+          />
+        </>
       )}
 
       {/* ── Plant Action Sheet ─────────────────────────────────────────── */}
@@ -1244,28 +1300,31 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: G.foam },
-  emptyTitle:  { fontSize: 22, fontWeight: '800', color: G.forest, marginBottom: 8, marginTop: 8 },
-  emptySub:    { fontSize: 15, color: G.stone, textAlign: 'center', marginBottom: 28, lineHeight: 22 },
-  emptyBtn:    { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  container:    { flex: 1, backgroundColor: G.foam },
+  emptyTitle:   { fontSize: 22, fontWeight: '800', color: G.forest, marginBottom: 8, marginTop: 8 },
+  emptySub:     { fontSize: 15, color: G.stone, textAlign: 'center', marginBottom: 28, lineHeight: 22 },
+  emptyBtn:     { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   emptyBtnGradient: { paddingVertical: 15, paddingHorizontal: 28 },
   emptyBtnText: { color: G.cloud, fontWeight: '700', fontSize: 16 },
-  inactiveCell: { opacity: 0.45 },
-  gardenPicker: { flexGrow: 0, paddingHorizontal: 16, paddingVertical: 12 },
-  gardenChip: {
-    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8,
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#b7e4c7',
+  inactiveCell: { opacity: 0.35 },
+
+  // Page indicator bar
+  pageBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderBottomWidth: 1,
   },
-  gardenChipShared: { borderColor: '#a5d8ff', backgroundColor: '#f0f8ff', borderStyle: 'dashed' },
-  gardenChipActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
-  gardenChipText: { color: '#2d6a4f', fontWeight: '500' },
-  gardenChipTextActive: { color: '#fff' },
-  gardenChipOwner: { fontSize: 10, color: '#74c0fc', marginTop: 1 },
-  sharedBadge: { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  sharedBadgeText: { fontSize: 11, color: '#1971c2', fontWeight: '600' },
-  gridContainer: { padding: 16 },
-  gridScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 8 },
-  gardenHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  pageDots:     { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  pageDot:      { width: 7, height: 7, borderRadius: 4, backgroundColor: G.mist },
+  pageDotActive:{ width: 18, height: 7, borderRadius: 4, backgroundColor: G.hunter },
+  newGardenBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: R.full, backgroundColor: G.dew, borderWidth: 1, borderColor: G.mist },
+  newGardenText:{ fontSize: 13, fontWeight: '700' },
+
+  sharedBadge:    { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  sharedBadgeText:{ fontSize: 11, color: '#1971c2', fontWeight: '600' },
+  gridContainer:  { padding: 16, paddingBottom: 40 },
+  gridWrapper:    { alignItems: 'center', marginBottom: 12 },
+  gardenHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   gardenName: { fontSize: 20, fontWeight: '700', color: '#2d6a4f' },
   gardenMeta: { fontSize: 13, color: '#52796f', marginTop: 2 },
   headerActions: { flexDirection: 'row', gap: 6, marginLeft: 8 },
