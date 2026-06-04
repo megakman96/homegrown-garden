@@ -27,6 +27,7 @@ import {
 } from '@/lib/plant-catalog';
 import type { CatalogEntry } from '@/lib/plant-catalog';
 import { getActivityLogAsync, type ActivityEntry } from '@/lib/activity-log';
+import { generateGardenPdf } from '@/lib/garden-pdf';
 import {
   fetchWeather, searchCity, saveGardenLocation, saveLocation, loadGardenLocation,
   type Location, type GeoResult,
@@ -531,6 +532,12 @@ export default function GardenScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerBtn} onPress={() => setShowPlan(true)}>
               <Text style={styles.headerBtnText}>🗓️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={() => generateGardenPdf(garden, pagePlants, pageGardenLayout)}
+            >
+              <Text style={styles.headerBtnText}>📄</Text>
             </TouchableOpacity>
             {isOwned && (
               <>
