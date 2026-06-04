@@ -494,6 +494,12 @@ export default function GardenScreen() {
 
   const compatSummary = buildCompatSummary();
 
+  // Report preview state — set to show the preview modal before generating
+  const [reportPreview, setReportPreview] = useState<{
+    garden: Garden; plants: Plant[]; layout: GardenLayout | null;
+  } | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+
   // Render a single garden page inside the pager
   function renderGardenPage(garden: Garden) {
     const pageGardenLayout = layoutFromGarden(garden);
@@ -529,31 +535,19 @@ export default function GardenScreen() {
             <Text style={[styles.gardenMeta, { color: textSec }]}>
               {SUN_EMOJIS[garden.sun_exposure as SunRequirement]}{' '}
               {SUN_LABELS[garden.sun_exposure as SunRequirement]} · {garden.rows}×{garden.cols}
-              {` · ${garden.year ?? new Date().getFullYear()}`}
               {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
             </Text>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerBtn} onPress={openHistory}>
-              <Text style={styles.headerBtnText}>📋</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => setShowPlan(true)}>
-              <Text style={styles.headerBtnText}>🗓️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerBtn}
-              onPress={() => generateGardenPdf(garden, pagePlants, pageGardenLayout)}
-            >
-              <Text style={styles.headerBtnText}>📄</Text>
-            </TouchableOpacity>
+            <GardenBtn emoji="📋" label="History" onPress={openHistory} />
+            <GardenBtn emoji="🗓️" label="Plan" onPress={() => setShowPlan(true)} />
+            <GardenBtn emoji="📄" label="Report"
+              onPress={() => setReportPreview({ garden, plants: pagePlants, layout: pageGardenLayout })}
+            />
             {isOwned && (
               <>
-                <TouchableOpacity style={styles.headerBtn} onPress={openEditGarden}>
-                  <Text style={styles.headerBtnText}>✏️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.headerBtn, styles.headerBtnDanger]} onPress={confirmDeleteGarden}>
-                  <Text style={styles.headerBtnDangerText}>🗑</Text>
-                </TouchableOpacity>
+                <GardenBtn emoji="✏️" label="Edit" onPress={openEditGarden} />
+                <GardenBtn emoji="🗑" label="Delete" danger onPress={confirmDeleteGarden} />
               </>
             )}
           </View>
@@ -691,6 +685,87 @@ export default function GardenScreen() {
           />
         </>
       )}
+
+      {/* ── Report Preview Modal ──────────────────────────────────────── */}
+      <Modal visible={!!reportPreview} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setReportPreview(null)} />
+          <View style={[styles.modal, { paddingTop: 12, maxHeight: '88%', backgroundColor: cardBg }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: textPrim }]}>📄 Garden Report Preview</Text>
+            <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 12 }]}>
+              {reportPreview?.garden.name} · {reportPreview?.garden.year ?? new Date().getFullYear()}
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1 }}>
+              {/* Page structure */}
+              {[
+                {
+                  page: 1,
+                  title: 'Garden Grid',
+                  desc: `Full ${reportPreview?.garden.rows}×${reportPreview?.garden.cols} grid with every plant in its tile — health colors, sun indicators, and a legend.`,
+                  icon: '🗺️',
+                  accent: '#52b788',
+                },
+                {
+                  page: 2,
+                  title: 'Plant Summary Table',
+                  desc: `Quick-reference table of all ${(reportPreview?.plants ?? []).filter(p => p.row != null).length} placed plants — position, health, water interval, sun, harvest date.`,
+                  icon: '📋',
+                  accent: '#339af0',
+                },
+                ...(reportPreview?.plants ?? []).filter(p => p.row != null).map((p, i) => ({
+                  page: i + 3,
+                  title: p.name + (p.variety ? ` — ${p.variety}` : ''),
+                  desc: `Sowing guide · sun & water needs · ${(PLANT_CATALOG[findPlantKey(p.name) ?? '']?.goodCompanions?.length ?? 0)} beneficial companions · keep-away list · growing tips`,
+                  icon: '🌱',
+                  accent: '#a9e34b',
+                })),
+              ].map(({ page, title, desc, icon, accent }) => (
+                <View key={page} style={[styles.previewPageRow, { borderLeftColor: accent }]}>
+                  <View style={[styles.previewPageNum, { backgroundColor: accent }]}>
+                    <Text style={styles.previewPageNumText}>{page}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.previewPageTitle, { color: textPrim }]}>{icon}  {title}</Text>
+                    <Text style={[styles.previewPageDesc, { color: textSec }]}>{desc}</Text>
+                  </View>
+                </View>
+              ))}
+
+              {(reportPreview?.plants ?? []).filter(p => p.row != null).length === 0 && (
+                <View style={[styles.previewPageRow, { borderLeftColor: G.stone }]}>
+                  <Text style={[styles.previewPageDesc, { color: textSec }]}>
+                    No plants are placed in the grid yet. Add plants to get detailed per-plant pages.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={[styles.modalButtons, { marginTop: 12 }]}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setReportPreview(null)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, generatingReport && { opacity: 0.6 }]}
+                disabled={generatingReport}
+                onPress={async () => {
+                  if (!reportPreview) return;
+                  setGeneratingReport(true);
+                  try {
+                    await generateGardenPdf(reportPreview.garden, reportPreview.plants, reportPreview.layout);
+                  } finally {
+                    setGeneratingReport(false);
+                    setReportPreview(null);
+                  }
+                }}
+              >
+                <Text style={styles.buttonText}>{generatingReport ? 'Generating…' : '📄 Generate Report'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Plant Action Sheet ─────────────────────────────────────────── */}
       <Modal visible={!!plantAction} transparent animationType="slide">
@@ -1333,6 +1408,28 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
+function GardenBtn({ emoji, label, onPress, danger = false }: {
+  emoji: string; label: string; onPress: () => void; danger?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      style={[gardenBtnStyles.btn, danger && gardenBtnStyles.danger]}
+      onPress={onPress}
+    >
+      <Text style={gardenBtnStyles.emoji}>{emoji}</Text>
+      <Text style={[gardenBtnStyles.label, danger && gardenBtnStyles.dangerLabel]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const gardenBtnStyles = StyleSheet.create({
+  btn:         { alignItems: 'center', paddingHorizontal: 9, paddingVertical: 6, borderRadius: R.sm, backgroundColor: G.dew, borderWidth: 1, borderColor: G.mist, minWidth: 48 },
+  danger:      { backgroundColor: '#fff5f5', borderColor: '#ffc9c9' },
+  emoji:       { fontSize: 14, lineHeight: 18 },
+  label:       { fontSize: 9, fontWeight: '700', color: G.hunter, marginTop: 1, textTransform: 'uppercase', letterSpacing: 0.3 },
+  dangerLabel: { color: '#e03131' },
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -1371,11 +1468,17 @@ const styles = StyleSheet.create({
   gardenHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   gardenName: { fontSize: 20, fontWeight: '700', color: '#2d6a4f' },
   gardenMeta: { fontSize: 13, color: '#52796f', marginTop: 2 },
-  headerActions: { flexDirection: 'row', gap: 6, marginLeft: 8 },
+  headerActions: { flexDirection: 'row', gap: 5, marginLeft: 4, flexWrap: 'wrap', justifyContent: 'flex-end' },
   headerBtn: { borderRadius: R.sm, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: G.dew, borderWidth: 1, borderColor: G.mist },
   headerBtnText: { fontSize: 12, fontWeight: '600', color: G.hunter },
   headerBtnDanger: { backgroundColor: '#fff5f5', borderColor: '#ffc9c9' },
   headerBtnDangerText: { fontSize: 14 },
+  // Report preview
+  previewPageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12, paddingLeft: 12, borderLeftWidth: 3, borderRadius: 2 },
+  previewPageNum: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', flexShrink: 0, marginTop: 2 },
+  previewPageNumText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  previewPageTitle: { fontSize: 14, fontWeight: '700', marginBottom: 3 },
+  previewPageDesc: { fontSize: 12, lineHeight: 17 },
   gridRow: { flexDirection: 'row' },
   cell: {
     width: 56, height: 56, margin: 2, borderRadius: 8,
