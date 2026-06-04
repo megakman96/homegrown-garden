@@ -19,6 +19,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/use-auth';
 import { pb } from '@/lib/pb';
 import { AppThemeProvider, useAppTheme } from '@/contexts/theme-context';
+import { setupNotificationChannel } from '@/lib/notifications';
+import { initPurchases } from '@/lib/subscription';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, user, loading } = useAuth();
@@ -52,12 +54,19 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 function ThemedApp() {
   const { isDark } = useAppTheme();
+  const { user } = useAuth();
 
   useEffect(() => {
     if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
+    // Notifications + RevenueCat init (native only)
+    setupNotificationChannel();
   }, []);
+
+  useEffect(() => {
+    if (user?.id) initPurchases(user.id);
+  }, [user?.id]);
 
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
@@ -75,6 +84,7 @@ function ThemedApp() {
           <Stack.Screen name="plant/[id]" options={{ headerShown: true, title: 'Plant Detail', headerBackTitle: 'Back', animation: 'slide_from_right', animationDuration: 220 }} />
           <Stack.Screen name="new-garden" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
           <Stack.Screen name="admin" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
+          <Stack.Screen name="subscription" options={{ headerShown: false, animation: 'slide_from_bottom', animationDuration: 300 }} />
         </Stack>
       </AuthGuard>
     </ThemeProvider>

@@ -9,6 +9,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit, type WaterTime } from '@/contexts/theme-context';
 import { clearActivityLogAsync } from '@/lib/activity-log';
+import { checkPremium } from '@/lib/subscription';
+import NotificationSettingsUI from '@/components/ui/NotificationSettings';
 import type { Garden, GardenShare } from '@/lib/types';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
@@ -34,7 +36,10 @@ export default function ProfileScreen() {
   const [shareEmail, setShareEmail] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [wipingData, setWipingData] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
   const isAdmin = user?.email === ADMIN_EMAIL && Platform.OS === 'web';
+
+  useEffect(() => { checkPremium().then(setIsPremium); }, []);
 
   // Settings edit state
   const displayName = (pb.authStore.model as any)?.name ?? user?.email?.split('@')[0] ?? '';
@@ -434,6 +439,26 @@ export default function ProfileScreen() {
           <Text style={[styles.email, { color: textPrimary, fontWeight: '700', marginTop: 2 }]}>{displayName}</Text>
         )}
       </View>
+      {/* Subscription card */}
+      <TouchableOpacity
+        style={[styles.subCard, { backgroundColor: isPremium ? '#e8f5e9' : '#fff9db', borderColor: isPremium ? '#a5d6a7' : '#ffe066' }]}
+        onPress={() => router.push('/subscription' as any)}
+      >
+        <Text style={styles.subCardEmoji}>{isPremium ? '🌟' : '🌱'}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.subCardTitle, { color: isPremium ? '#2d6a4f' : '#7d5a00' }]}>
+            {isPremium ? 'GardenGrid Pro — Active' : 'Upgrade to Pro'}
+          </Text>
+          <Text style={[styles.subCardSub, { color: isPremium ? '#52796f' : '#9c6f00' }]}>
+            {isPremium ? 'All features unlocked. Thank you! 🙏' : '7-day free trial · Unlimited gardens & more'}
+          </Text>
+        </View>
+        <Text style={{ fontSize: 18, color: isPremium ? '#52b788' : '#e67700' }}>›</Text>
+      </TouchableOpacity>
+
+      {/* Notifications */}
+      <NotificationSettingsUI />
+
       {sharesSection}
       {settingsSection}
       {tempSection}
@@ -573,7 +598,11 @@ const styles = StyleSheet.create({
     borderRadius: 12, padding: 15, alignItems: 'center', marginBottom: 10,
     backgroundColor: '#e8f5e9', borderWidth: 1.5, borderColor: '#a5d6a7',
   },
-  venmoText: { color: '#2d6a4f', fontWeight: '700', fontSize: 15 },
+  venmoText:    { color: '#2d6a4f', fontWeight: '700', fontSize: 15 },
+  subCard:      { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1.5, padding: 14, marginBottom: 16 },
+  subCardEmoji: { fontSize: 26 },
+  subCardTitle: { fontSize: 15, fontWeight: '700' },
+  subCardSub:   { fontSize: 12, marginTop: 2 },
   desktopWipeBtn: { marginTop: 12, backgroundColor: '#fff3e0', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ffcc80' },
   desktopWipeText: { color: '#e65100', fontWeight: '600', fontSize: 13 },
   desktopAdminBtn: { marginTop: 8, backgroundColor: '#e8f5e9', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7' },
