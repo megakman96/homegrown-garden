@@ -72,7 +72,7 @@ function ThemedApp() {
         >
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
-          <Stack.Screen name="plant/[id]" options={{ headerShown: true, title: 'Plant Detail', animation: 'slide_from_right', animationDuration: 220 }} />
+          <Stack.Screen name="plant/[id]" options={{ headerShown: true, title: 'Plant Detail', headerBackTitle: 'Back', animation: 'slide_from_right', animationDuration: 220 }} />
           <Stack.Screen name="new-garden" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
           <Stack.Screen name="admin" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
         </Stack>
