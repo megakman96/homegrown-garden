@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
-  FlatList, useWindowDimensions,
+  FlatList, useWindowDimensions, Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -66,6 +66,7 @@ export default function GardenScreen() {
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const flatListRef = useRef<FlatList>(null);
+  const arrowPulse = useRef(new Animated.Value(1)).current;
 
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [sharedEntries, setSharedEntries] = useState<SharedEntry[]>([]);
@@ -79,6 +80,23 @@ export default function GardenScreen() {
   );
   const selectedGarden = allGardens[currentIndex] ?? null;
   const plants = plantsMap[selectedGarden?.id ?? ''] ?? [];
+
+  // Pulse the arrows once when multiple gardens are loaded, to hint at swiping
+  useEffect(() => {
+    if (allGardens.length < 2) return;
+    const seq = Animated.sequence([
+      Animated.delay(600),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(arrowPulse, { toValue: 0.35, duration: 500, useNativeDriver: true }),
+          Animated.timing(arrowPulse, { toValue: 1, duration: 500, useNativeDriver: true }),
+        ]),
+        { iterations: 3 },
+      ),
+    ]);
+    seq.start();
+    return () => seq.stop();
+  }, [allGardens.length]);
 
   // New garden modal
   const [showNewGarden, setShowNewGarden] = useState(false);
@@ -642,23 +660,31 @@ export default function GardenScreen() {
         <>
           {/* ── Page indicator bar ─────────────────────────────────────────── */}
           <View style={[styles.pageBar, { backgroundColor: isDark ? colors.bgCard : '#fff', borderBottomColor: border }]}>
-            <View style={styles.pageDots}>
-              {allGardens.map((g, i) => (
-                <TouchableOpacity
-                  key={g.id}
-                  onPress={() => {
-                    setCurrentIndex(i);
-                    loadPlantsForGarden(allGardens[i]);
-                    flatListRef.current?.scrollToIndex({ index: i, animated: true });
-                  }}
-                >
-                  <View style={[
-                    styles.pageDot,
-                    { backgroundColor: isDark ? colors.border : G.mist },
-                    i === currentIndex && styles.pageDotActive,
-                  ]} />
-                </TouchableOpacity>
-              ))}
+            <View style={{ flex: 1 }}>
+              <View style={styles.pageDots}>
+                {allGardens.map((g, i) => (
+                  <TouchableOpacity
+                    key={g.id}
+                    onPress={() => {
+                      setCurrentIndex(i);
+                      loadPlantsForGarden(allGardens[i]);
+                      flatListRef.current?.scrollToIndex({ index: i, animated: true });
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                  >
+                    <View style={[
+                      styles.pageDot,
+                      { backgroundColor: isDark ? colors.border : G.mist },
+                      i === currentIndex && styles.pageDotActive,
+                    ]} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {allGardens.length > 1 && (
+                <Text style={[styles.swipeHint, { color: textSec }]}>
+                  Swipe to switch gardens
+                </Text>
+              )}
             </View>
             <TouchableOpacity
               style={[styles.newGardenBtn, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}
@@ -668,7 +694,8 @@ export default function GardenScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── Horizontal garden pager ────────────────────────────────────── */}
+          {/* ── Horizontal garden pager + edge arrows ──────────────────────── */}
+          <View style={{ flex: 1 }}>
           <FlatList
             ref={flatListRef}
             data={allGardens}
@@ -690,6 +717,43 @@ export default function GardenScreen() {
             }}
             renderItem={({ item: garden }) => renderGardenPage(garden)}
           />
+
+          {/* Left arrow — shown when not on first garden */}
+          {currentIndex > 0 && (
+            <Animated.View style={[styles.swipeArrow, styles.swipeArrowLeft, { opacity: arrowPulse }]}
+              pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.swipeArrowBtn}
+                onPress={() => {
+                  const i = currentIndex - 1;
+                  setCurrentIndex(i);
+                  loadPlantsForGarden(allGardens[i]);
+                  flatListRef.current?.scrollToIndex({ index: i, animated: true });
+                }}
+              >
+                <Text style={styles.swipeArrowText}>‹</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* Right arrow — shown when not on last garden */}
+          {currentIndex < allGardens.length - 1 && (
+            <Animated.View style={[styles.swipeArrow, styles.swipeArrowRight, { opacity: arrowPulse }]}
+              pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.swipeArrowBtn}
+                onPress={() => {
+                  const i = currentIndex + 1;
+                  setCurrentIndex(i);
+                  loadPlantsForGarden(allGardens[i]);
+                  flatListRef.current?.scrollToIndex({ index: i, animated: true });
+                }}
+              >
+                <Text style={styles.swipeArrowText}>›</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+          </View>
         </>
       )}
 
@@ -1454,11 +1518,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  pageDots:     { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  pageDot:      { width: 7, height: 7, borderRadius: 4, backgroundColor: G.mist },
-  pageDotActive:{ width: 18, height: 7, borderRadius: 4, backgroundColor: G.hunter },
-  newGardenBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: R.full, backgroundColor: G.dew, borderWidth: 1, borderColor: G.mist },
-  newGardenText:{ fontSize: 13, fontWeight: '700' },
+  pageDots:      { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  pageDot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: G.mist },
+  pageDotActive: { width: 22, height: 8, borderRadius: 4, backgroundColor: G.hunter },
+  swipeHint:     { fontSize: 10, fontWeight: '500', marginTop: 4, letterSpacing: 0.2 },
+  newGardenBtn:  { paddingHorizontal: 12, paddingVertical: 6, borderRadius: R.full, backgroundColor: G.dew, borderWidth: 1, borderColor: G.mist },
+  newGardenText: { fontSize: 13, fontWeight: '700' },
+  // Swipe arrows
+  swipeArrow:      { position: 'absolute', top: 0, bottom: 0, justifyContent: 'center', pointerEvents: 'box-none' } as any,
+  swipeArrowLeft:  { left: 0 },
+  swipeArrowRight: { right: 0 },
+  swipeArrowBtn:   { backgroundColor: 'rgba(45,106,79,0.12)', borderRadius: 24, width: 36, height: 72, justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
+  swipeArrowText:  { fontSize: 30, color: G.hunter, fontWeight: '300', lineHeight: 34 },
 
   sharedBadge:    { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   sharedBadgeText:{ fontSize: 11, color: '#1971c2', fontWeight: '600' },
