@@ -102,7 +102,7 @@ export default function LoginScreen() {
           </FadeInView>
 
           <FadeInView delay={120} style={styles.brandWrap}>
-            <Text style={styles.brandName}>HomeGrown</Text>
+            <Text style={styles.brandName}>GardenGrid</Text>
             <Text style={styles.tagline}>Grow something beautiful 🌸</Text>
           </FadeInView>
 
