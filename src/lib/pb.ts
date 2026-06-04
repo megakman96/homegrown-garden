@@ -1,6 +1,10 @@
 import PocketBase, { AsyncAuthStore, LocalAuthStore } from 'pocketbase';
 import { Platform } from 'react-native';
 
+// PocketBase realtime uses EventSource (SSE) which doesn't exist in React Native.
+// This no-op stub prevents crashes on native; pull-based refresh still works via useFocusEffect.
+
+
 const PB_URL = process.env.EXPO_PUBLIC_PB_URL!;
 const STORE_KEY = 'pb_auth';
 

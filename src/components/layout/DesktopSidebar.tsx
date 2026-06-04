@@ -9,8 +9,6 @@ const TABS = [
   { name: '(tabs)/garden',   route: '/(tabs)/garden',    label: 'Garden',   emoji: '🌻' },
   { name: '(tabs)/plants',   route: '/(tabs)/plants',    label: 'Plants',   emoji: '🌿' },
   { name: '(tabs)/schedule', route: '/(tabs)/schedule',  label: 'Schedule', emoji: '📅' },
-  { name: '(tabs)/history',  route: '/(tabs)/history',   label: 'History',  emoji: '📋' },
-  { name: '(tabs)/plan',     route: '/(tabs)/plan',      label: 'Plan',     emoji: '🗓️' },
   { name: '(tabs)/profile',  route: '/(tabs)/profile',   label: 'Profile',  emoji: '👤' },
 ];
 

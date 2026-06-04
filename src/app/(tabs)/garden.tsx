@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
@@ -25,6 +25,7 @@ import {
   PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS, searchPlants,
 } from '@/lib/plant-catalog';
 import type { CatalogEntry } from '@/lib/plant-catalog';
+import { getActivityLogAsync, type ActivityEntry } from '@/lib/activity-log';
 
 const HEALTH_COLORS: Record<string, string> = {
   healthy:     '#52b788',  // green
@@ -80,6 +81,18 @@ export default function GardenScreen() {
   // Plant action sheet (tap on planted tile)
   const [plantAction, setPlantAction] = useState<Plant | null>(null);
 
+  // Plan modal
+  const [showPlan, setShowPlan] = useState(false);
+  const [planYear, setPlanYear] = useState(new Date().getFullYear());
+  const [planLastFrost, setPlanLastFrost] = useState('04/15');
+  const [planFirstFrost, setPlanFirstFrost] = useState('10/15');
+  const [planSelectedKeys, setPlanSelectedKeys] = useState<string[]>([]);
+  const [planSearch, setPlanSearch] = useState('');
+
+  // History modal
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLog, setHistoryLog] = useState<ActivityEntry[]>([]);
+
   // Edit garden modal
   const [showEditGarden, setShowEditGarden] = useState(false);
   const [editStep, setEditStep] = useState<'size' | 'shape' | 'sun'>('size');
@@ -97,7 +110,8 @@ export default function GardenScreen() {
       .then((list) => {
         setGardens(list as any);
         if (list.length > 0) setSelectedGarden(list[0] as any);
-      });
+      })
+      .catch(() => {});
 
     // Gardens shared with me via my email
     pb.collection('garden_shares')
@@ -314,6 +328,67 @@ export default function GardenScreen() {
     );
   }
 
+  // ── History ───────────────────────────────────────────────────────────────
+
+  async function openHistory() {
+    if (!user || !selectedGarden) return;
+    const all = await getActivityLogAsync(user.id);
+    const gardenPlantIds = new Set(plants.map(p => p.id));
+    setHistoryLog(all.filter(e => e.gardenId === selectedGarden.id || gardenPlantIds.has(e.plantId)));
+    setShowHistory(true);
+  }
+
+  // ── Plan ──────────────────────────────────────────────────────────────────
+
+  const COOL_SEASON_KEYS = new Set([
+    'lettuce','spinach','kale','broccoli','cabbage','cauliflower',
+    'brussels_sprouts','pea','carrot','radish','beet','turnip','parsnip',
+    'chard','arugula','bok_choy','collard_greens',
+  ]);
+
+  const planItems = useMemo(() => {
+    if (!planSelectedKeys.length) return [];
+    function parseMMDD(mmdd: string, year: number): Date | null {
+      const [m, d] = mmdd.split('/').map(Number);
+      if (isNaN(m) || isNaN(d)) return null;
+      return new Date(year, m - 1, d);
+    }
+    const lastFrost = parseMMDD(planLastFrost, planYear);
+    const firstFrost = parseMMDD(planFirstFrost, planYear);
+    if (!lastFrost || !firstFrost) return [];
+    return planSelectedKeys.map(key => {
+      const entry = PLANT_CATALOG[key];
+      if (!entry) return null;
+      const matMin = entry.daysToMaturity?.min ?? 60;
+      const matMax = entry.daysToMaturity?.max ?? 90;
+      const isCool = COOL_SEASON_KEYS.has(key);
+      const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+      const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      let directSow: Date;
+      let seedStart: Date | null = null;
+      let transplant: Date | null = null;
+      if (isCool) {
+        directSow = addDays(lastFrost, -42);
+      } else {
+        directSow = lastFrost;
+        if (matMin >= 60) { seedStart = addDays(lastFrost, -56); transplant = lastFrost; }
+      }
+      return {
+        key, entry,
+        seedStart: seedStart ? fmt(seedStart) : null,
+        transplant: transplant ? fmt(transplant) : null,
+        directSow: fmt(directSow),
+        harvestRange: `${fmt(addDays(directSow, matMin))} – ${fmt(addDays(directSow, matMax))}`,
+      };
+    }).filter(Boolean) as NonNullable<typeof planSelectedKeys>[number] extends string ? any[] : any[];
+  }, [planSelectedKeys, planYear, planLastFrost, planFirstFrost]);
+
+  const planCatalogueList = useMemo(() => {
+    if (planSearch.trim()) return searchPlants(planSearch, 60);
+    return Object.entries(PLANT_CATALOG).map(([key, entry]) => ({ key, entry }))
+      .sort((a, b) => a.entry.name.localeCompare(b.entry.name));
+  }, [planSearch]);
+
   // Build compatibility summary for placement modal
   function buildCompatSummary() {
     if (!placement || !placeName.trim()) return null;
@@ -398,16 +473,24 @@ export default function GardenScreen() {
                     {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
                   </Text>
                 </View>
-                {isOwned && (
-                  <View style={styles.headerActions}>
-                    <TouchableOpacity style={styles.headerBtn} onPress={openEditGarden}>
-                      <Text style={styles.headerBtnText}>✏️ Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.headerBtn, styles.headerBtnDanger]} onPress={confirmDeleteGarden}>
-                      <Text style={styles.headerBtnDangerText}>🗑</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                <View style={styles.headerActions}>
+                  <TouchableOpacity style={styles.headerBtn} onPress={() => setShowPlan(true)}>
+                    <Text style={styles.headerBtnText}>🗓️ Plan</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.headerBtn} onPress={openHistory}>
+                    <Text style={styles.headerBtnText}>📋 History</Text>
+                  </TouchableOpacity>
+                  {isOwned && (
+                    <>
+                      <TouchableOpacity style={styles.headerBtn} onPress={openEditGarden}>
+                        <Text style={styles.headerBtnText}>✏️ Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.headerBtn, styles.headerBtnDanger]} onPress={confirmDeleteGarden}>
+                        <Text style={styles.headerBtnDangerText}>🗑</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
               </View>
             );
           })()}
@@ -844,6 +927,138 @@ export default function GardenScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── History Modal ─────────────────────────────────────────────── */}
+      <Modal visible={showHistory} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowHistory(false)} />
+          <View style={[styles.modal, { paddingTop: 12, maxHeight: '80%', backgroundColor: cardBg }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: textPrim }]}>📋 History — {selectedGarden?.name}</Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
+              {historyLog.length === 0 ? (
+                <Text style={[styles.analysisSub, { textAlign: 'center', paddingVertical: 24 }]}>
+                  No events yet. Water or harvest a plant to start logging.
+                </Text>
+              ) : historyLog.map(entry => (
+                <View key={entry.id} style={[styles.historyRow, { borderBottomColor: border }]}>
+                  <View style={[styles.historyDot, { backgroundColor: entry.type === 'water' ? '#74c0fc' : '#a9e34b' }]} />
+                  <Text style={styles.historyEmoji}>{getPlantIcon(entry.plantName).emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.catItemName, { color: textPrim }]}>{entry.plantName}</Text>
+                    <Text style={[styles.catItemMeta, { color: textSec }]}>
+                      {entry.type === 'water' ? '💧 Watered' : `🧺 Harvested${entry.grams ? ` · ${entry.grams}g` : ''}`}
+                      {entry.notes ? ` · ${entry.notes}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={[styles.catItemMeta, { color: textSec }]}>
+                    {new Date(entry.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity onPress={() => setShowHistory(false)} style={[styles.actionCancel]}>
+              <Text style={[styles.cancelText, { color: textSec }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Plan Modal ────────────────────────────────────────────────── */}
+      <Modal visible={showPlan} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPlan(false)} />
+          <View style={[styles.modal, { paddingTop: 12, maxHeight: '88%', backgroundColor: cardBg }]}>
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: textPrim }]}>🗓️ Season Plan — {selectedGarden?.name}</Text>
+
+            {/* Year picker */}
+            <View style={styles.planYearRow}>
+              <TouchableOpacity style={styles.planYearBtn} onPress={() => setPlanYear(y => Math.max(new Date().getFullYear() - 1, y - 1))}>
+                <Text style={[styles.stepBtnText, { color: textPrim }]}>−</Text>
+              </TouchableOpacity>
+              <Text style={[styles.planYearVal, { color: textPrim }]}>{planYear}</Text>
+              <TouchableOpacity style={styles.planYearBtn} onPress={() => setPlanYear(y => y + 1)}>
+                <Text style={[styles.stepBtnText, { color: textPrim }]}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Frost dates */}
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { color: textSec }]}>Last Spring Frost</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, marginBottom: 0 }]}
+                  value={planLastFrost} onChangeText={setPlanLastFrost}
+                  placeholder="MM/DD" placeholderTextColor={textSec} maxLength={5}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { color: textSec }]}>First Fall Frost</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, marginBottom: 0 }]}
+                  value={planFirstFrost} onChangeText={setPlanFirstFrost}
+                  placeholder="MM/DD" placeholderTextColor={textSec} maxLength={5}
+                />
+              </View>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Plant picker */}
+              <TextInput
+                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+                placeholder="Search plants to add to plan..."
+                placeholderTextColor={textSec}
+                value={planSearch} onChangeText={setPlanSearch}
+              />
+              {planCatalogueList.slice(0, planSearch.trim() ? 60 : 20).map(({ key, entry }) => {
+                const sel = planSelectedKeys.includes(key);
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.catItem, { borderBottomColor: border, backgroundColor: sel ? (isDark ? colors.bgElement : '#d8f3dc') : undefined }]}
+                    onPress={() => setPlanSelectedKeys(prev => sel ? prev.filter(k => k !== key) : [...prev, key])}
+                  >
+                    <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
+                      <Text style={[styles.catItemMeta, { color: textSec }]}>
+                        {entry.daysToMaturity?.min ?? '?'}–{entry.daysToMaturity?.max ?? '?'} days
+                      </Text>
+                    </View>
+                    {sel && <Text style={{ fontSize: 16 }}>✅</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* Schedule */}
+              {planItems.length > 0 && (
+                <>
+                  <Text style={[styles.catSectionLabel, { color: textSec, marginTop: 16 }]}>
+                    📅 {planYear} Planting Schedule
+                  </Text>
+                  {planItems.map((item: any) => (
+                    <View key={item.key} style={[styles.planCard, { backgroundColor: isDark ? colors.bgElement : '#f8fffe', borderColor: border }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <Text style={{ fontSize: 22 }}>{getPlantIcon(item.entry.name).emoji}</Text>
+                        <Text style={[styles.catItemName, { color: textPrim, fontSize: 16 }]}>{item.entry.name}</Text>
+                      </View>
+                      {item.seedStart && <Text style={[styles.catItemMeta, { color: textSec }]}>🏠 Start seeds indoors: {item.seedStart}</Text>}
+                      {item.transplant && <Text style={[styles.catItemMeta, { color: textSec }]}>🌱 Transplant outside: {item.transplant}</Text>}
+                      {!item.seedStart && <Text style={[styles.catItemMeta, { color: textSec }]}>🌱 Direct sow: {item.directSow}</Text>}
+                      <Text style={[styles.catItemMeta, { color: textSec }]}>🧺 Expected harvest: {item.harvestRange}</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity onPress={() => setShowPlan(false)} style={[styles.actionCancel]}>
+              <Text style={[styles.cancelText, { color: textSec }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1075,6 +1290,13 @@ const styles = StyleSheet.create({
   neighbourCompat: { fontSize: 12, color: '#52796f' },
   verdict: { borderRadius: 10, padding: 12, marginTop: 8 },
   verdictText: { fontSize: 13, fontWeight: '600', color: '#1b4332' },
+  historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, gap: 8 },
+  historyDot: { width: 8, height: 8, borderRadius: 4 },
+  historyEmoji: { fontSize: 20, width: 28, textAlign: 'center' },
+  planYearRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 12 },
+  planYearBtn: { width: 36, height: 36, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
+  planYearVal: { fontSize: 26, fontWeight: '800', minWidth: 70, textAlign: 'center' },
+  planCard: { borderRadius: R.md, padding: 12, marginBottom: 8, borderWidth: 1, gap: 4 },
   catSectionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 12, marginBottom: 4 },
   catItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 2, borderBottomWidth: 1, gap: 10 },
   catItemEmoji: { fontSize: 24, width: 34, textAlign: 'center' },

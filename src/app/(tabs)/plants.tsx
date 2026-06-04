@@ -15,6 +15,7 @@ import { G, Shadow, R } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import type { Plant, Garden, HealthStatus } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
+import { Platform } from 'react-native';
 import { PLANT_CATALOG, SUN_EMOJIS, searchPlants } from '@/lib/plant-catalog';
 import { subscribe } from '@/lib/events';
 import type { CatalogEntry } from '@/lib/plant-catalog';
@@ -49,12 +50,13 @@ export default function PlantsScreen() {
   const loadData = useCallback(async () => {
     if (!user) return;
     const [plantsData, gardensData] = await Promise.all([
-      pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"`, sort: '-created' }),
+      pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` }),
       pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }),
-    ]);
+    ]).catch(() => [null, null] as const);
+    if (!plantsData) return;
     setPlants(plantsData as any);
-    setGardens(gardensData as any);
-    if (gardensData.length) setForm((f) => ({ ...f, gardenId: f.gardenId || gardensData[0].id }));
+    setGardens(gardensData as any ?? []);
+    if ((gardensData as any)?.length) setForm((f) => ({ ...f, gardenId: f.gardenId || (gardensData as any)[0].id }));
   }, [user]);
 
   // Refresh on focus (catches plants added from garden view on mobile)
@@ -63,9 +65,9 @@ export default function PlantsScreen() {
   // Sync plants added from garden tab (works on native where WebSocket realtime may be unavailable)
   useEffect(() => subscribe('plants:changed', () => loadData()), [loadData]);
 
-  // Realtime subscription — catches plants added from garden view on desktop
+  // Realtime subscription — web only (native lacks EventSource/SSE; useFocusEffect handles refresh)
   useEffect(() => {
-    if (!user) return;
+    if (!user || Platform.OS !== 'web') return;
     let cancel: (() => void) | null = null;
     pb.collection('plants').subscribe('*', (e) => {
       if ((e.record as any).user_id !== user.id) return;

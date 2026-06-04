@@ -1,7 +1,20 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+
+// On native, PocketBase ClientResponseErrors from unhandled async chains crash
+// the app via ErrorUtils. Filter them out — individual screens handle errors via try/catch.
+if (Platform.OS !== 'web') {
+  const EU = (global as any).ErrorUtils;
+  if (EU?.setGlobalHandler) {
+    const prev = EU.getGlobalHandler();
+    EU.setGlobalHandler((error: any, isFatal: boolean) => {
+      if (error?.name === 'ClientResponseError') return;
+      prev?.(error, isFatal);
+    });
+  }
+}
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/use-auth';
 import { pb } from '@/lib/pb';

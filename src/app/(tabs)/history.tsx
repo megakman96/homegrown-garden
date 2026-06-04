@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAppTheme } from '@/contexts/theme-context';
 import { G, R, Shadow } from '@/constants/theme';
-import { getActivityLog, type ActivityEntry } from '@/lib/activity-log';
+import { getActivityLogAsync, type ActivityEntry } from '@/lib/activity-log';
 import { getPlantIcon } from '@/lib/plant-icons';
 
 const TYPE_LABEL: Record<ActivityEntry['type'], string> = {
@@ -58,7 +58,7 @@ export default function HistoryScreen() {
   const [log, setLog] = useState<ActivityEntry[]>([]);
 
   useFocusEffect(useCallback(() => {
-    if (user) setLog(getActivityLog(user.id));
+    if (user) getActivityLogAsync(user.id).then(setLog);
   }, [user]));
 
   const groups = groupByDate(log);

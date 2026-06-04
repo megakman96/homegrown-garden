@@ -14,7 +14,7 @@ import {
   searchCity, saveLocation, saveGardenLocation, loadGardenLocation,
   type WeatherData, type WateringAdvice, type GeoResult, type Location,
 } from '@/lib/weather';
-import { addActivityEntry } from '@/lib/activity-log';
+import { addActivityEntryAsync } from '@/lib/activity-log';
 
 interface PlantWithAdvice {
   plant: Plant;
@@ -158,7 +158,7 @@ export default function ScheduleScreen() {
     const now = new Date().toISOString();
     await pb.collection('plants').update(plant.id, { last_watered: now });
     if (user) {
-      addActivityEntry(user.id, { type: 'water', plantId: plant.id, plantName: plant.name, gardenId: plant.garden_id });
+      addActivityEntryAsync(user.id, { type: 'water', plantId: plant.id, plantName: plant.name, gardenId: plant.garden_id });
     }
     const updated = plants.map(p => p.id === plant.id ? { ...p, last_watered: now } : p);
     setPlants(updated);

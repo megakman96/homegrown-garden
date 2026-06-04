@@ -12,7 +12,7 @@ import PlantAvatar from '@/components/PlantAvatar';
 import { G, R, Shadow } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import type { Plant, Harvest, PlantPhoto, HealthStatus } from '@/lib/types';
-import { addActivityEntry } from '@/lib/activity-log';
+import { addActivityEntryAsync } from '@/lib/activity-log';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const HERO_HEIGHT = 260;
@@ -113,7 +113,7 @@ export default function PlantDetailScreen() {
       harvested_at: new Date().toISOString(),
     });
     setHarvests((h) => [data as any, ...h]);
-    addActivityEntry(user.id, {
+    addActivityEntryAsync(user.id, {
       type: 'harvest', plantId: plant.id, plantName: plant.name,
       gardenId: plant.garden_id, grams: yieldGrams || undefined, notes: notes || undefined,
     });

@@ -12,8 +12,6 @@ const TABS = [
   { name: 'garden',   label: 'Garden',   emoji: '🌻' },
   { name: 'plants',   label: 'Plants',   emoji: '🌿' },
   { name: 'schedule', label: 'Schedule', emoji: '📅' },
-  { name: 'history',  label: 'History',  emoji: '📋' },
-  { name: 'plan',     label: 'Plan',     emoji: '🗓️' },
   { name: 'profile',  label: 'Profile',  emoji: '👤' },
 ];
 
