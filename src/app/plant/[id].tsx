@@ -13,6 +13,7 @@ import { G, R, Shadow } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import type { Plant, Harvest, PlantPhoto, HealthStatus } from '@/lib/types';
 import { addActivityEntryAsync } from '@/lib/activity-log';
+import { generateSinglePlantPdf } from '@/lib/garden-pdf';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const HERO_HEIGHT = 260;
@@ -281,6 +282,10 @@ export default function PlantDetailScreen() {
         <TouchableOpacity style={styles.actionButton} onPress={() => setShowHarvest(true)}>
           <Text style={styles.actionEmoji}>🧺</Text>
           <Text style={styles.actionText}>Log Harvest</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton} onPress={() => generateSinglePlantPdf(plant)}>
+          <Text style={styles.actionEmoji}>📄</Text>
+          <Text style={styles.actionText}>Print Report</Text>
         </TouchableOpacity>
         {photos.length === 0 && (
           <TouchableOpacity style={styles.actionButton} onPress={addPhoto} disabled={uploading}>

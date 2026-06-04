@@ -55,7 +55,9 @@ function sowingGuide(key: string | null): string {
   return `Direct sow after last frost · ${min}–${max} days to harvest`;
 }
 
-function buildGridPage(garden: Garden, plants: Plant[], layout: GardenLayout | null): string {
+function buildGridPage(garden: Garden, allPlants: Plant[], layout: GardenLayout | null): string {
+  // Only render plants that are actually placed in the grid
+  const plants = allPlants.filter(p => p.row != null && p.col != null);
   const cellSize = Math.min(80, Math.floor(680 / garden.cols));
 
   const rows = Array.from({ length: garden.rows }, (_, r) =>
@@ -98,15 +100,13 @@ function buildGridPage(garden: Garden, plants: Plant[], layout: GardenLayout | n
     </span>`
   ).join('');
 
-  const planted = plants.filter(p => p.row != null && p.col != null);
-
   return `
   <div style="page-break-after:always;padding:32px 40px;">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
       <div>
         <h1 style="margin:0;font-size:30px;color:${GREEN};letter-spacing:-0.5px">${garden.name}</h1>
         <p style="margin:4px 0 0;font-size:13px;color:${STONE}">
-          Garden Grid Report &nbsp;·&nbsp; ${garden.rows} × ${garden.cols} tiles &nbsp;·&nbsp; ${planted.length} plant${planted.length !== 1 ? 's' : ''} &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString()}
+          Garden Grid Report &nbsp;·&nbsp; ${garden.rows} × ${garden.cols} tiles &nbsp;·&nbsp; ${plants.length} plant${plants.length !== 1 ? 's' : ''} placed &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString()}
         </p>
       </div>
       <div style="font-size:36px;line-height:1">🌱</div>
@@ -114,7 +114,7 @@ function buildGridPage(garden: Garden, plants: Plant[], layout: GardenLayout | n
 
     <div style="height:1px;background:${MIST};margin:16px 0 24px"></div>
 
-    <div style="overflow-x:auto">
+    <div style="display:flex;justify-content:center;overflow-x:auto">
       <table style="border-collapse:collapse;border-spacing:0;">${rows}</table>
     </div>
 
@@ -328,6 +328,53 @@ export function buildGardenReportHtml(garden: Garden, plants: Plant[], layout: G
   ${plantPages}
 </body>
 </html>`;
+}
+
+function buildSinglePlantHtml(plant: Plant): string {
+  const page = buildPlantPage(plant, 0, 1);
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${plant.name} — GardenGrid Plant Report</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: white; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    @page { margin: 0; size: A4 portrait; }
+  </style>
+</head>
+<body>${page}</body>
+</html>`;
+}
+
+export async function generateSinglePlantPdf(plant: Plant): Promise<void> {
+  const html = buildSinglePlantHtml(plant);
+
+  if (Platform.OS === 'web') {
+    const win = window.open('', '_blank');
+    if (!win) { Alert.alert('Blocked', 'Allow popups to open the plant report.'); return; }
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 400);
+    return;
+  }
+
+  try {
+    const Print = await import('expo-print');
+    const Sharing = await import('expo-sharing');
+    const { uri } = await Print.printToFileAsync({ html, base64: false });
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(uri, { UTI: 'com.adobe.pdf', mimeType: 'application/pdf' });
+    } else {
+      await Print.printAsync({ uri });
+    }
+  } catch (e: any) {
+    Alert.alert('PDF Error', e?.message ?? 'Could not generate plant report.');
+  }
 }
 
 export async function generateGardenPdf(
