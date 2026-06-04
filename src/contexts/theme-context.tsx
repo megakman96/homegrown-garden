@@ -3,6 +3,7 @@ import { useColorScheme } from 'react-native';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type TempUnit = 'C' | 'F';
+export type WaterTime = 'morning' | 'afternoon' | 'evening';
 
 const DARK_COLORS = {
   bg:        '#0d2018',
@@ -33,6 +34,8 @@ interface AppThemeCtx {
   colors: typeof LIGHT_COLORS;
   tempUnit: TempUnit;
   setTempUnit: (u: TempUnit) => void;
+  waterTime: WaterTime;
+  setWaterTime: (t: WaterTime) => void;
 }
 
 export function formatTemp(celsius: number, unit: TempUnit): string {
@@ -65,12 +68,15 @@ const AppThemeContext = createContext<AppThemeCtx>({
   colors: LIGHT_COLORS,
   tempUnit: 'C',
   setTempUnit: () => {},
+  waterTime: 'morning',
+  setWaterTime: () => {},
 });
 
 export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>('system');
   const [tempUnit, setTempUnitState] = useState<TempUnit>('C');
+  const [waterTime, setWaterTimeState] = useState<WaterTime>('morning');
 
   useEffect(() => {
     (async () => {
@@ -80,6 +86,10 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
       }
       const savedUnit = await loadPref('hg_temp_unit');
       if (savedUnit === 'C' || savedUnit === 'F') setTempUnitState(savedUnit);
+      const savedWaterTime = await loadPref('hg_water_time');
+      if (savedWaterTime === 'morning' || savedWaterTime === 'afternoon' || savedWaterTime === 'evening') {
+        setWaterTimeState(savedWaterTime);
+      }
     })();
   }, []);
 
@@ -93,11 +103,16 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
     savePref('hg_temp_unit', u);
   }
 
+  function setWaterTime(t: WaterTime) {
+    setWaterTimeState(t);
+    savePref('hg_water_time', t);
+  }
+
   const isDark = mode === 'dark' || (mode === 'system' && system === 'dark');
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
 
   return (
-    <AppThemeContext.Provider value={{ mode, setMode, isDark, colors, tempUnit, setTempUnit }}>
+    <AppThemeContext.Provider value={{ mode, setMode, isDark, colors, tempUnit, setTempUnit, waterTime, setWaterTime }}>
       {children}
     </AppThemeContext.Provider>
   );

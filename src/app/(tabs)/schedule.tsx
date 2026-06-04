@@ -14,6 +14,7 @@ import {
   searchCity, saveLocation, saveGardenLocation, loadGardenLocation,
   type WeatherData, type WateringAdvice, type GeoResult, type Location,
 } from '@/lib/weather';
+import { addActivityEntry } from '@/lib/activity-log';
 
 interface PlantWithAdvice {
   plant: Plant;
@@ -156,6 +157,9 @@ export default function ScheduleScreen() {
   async function markWatered(plant: Plant) {
     const now = new Date().toISOString();
     await pb.collection('plants').update(plant.id, { last_watered: now });
+    if (user) {
+      addActivityEntry(user.id, { type: 'water', plantId: plant.id, plantName: plant.name, gardenId: plant.garden_id });
+    }
     const updated = plants.map(p => p.id === plant.id ? { ...p, last_watered: now } : p);
     setPlants(updated);
     buildSchedule(updated, gardenWeather);
@@ -193,7 +197,11 @@ export default function ScheduleScreen() {
     if (!garden) return;
 
     await saveGardenLocation(locationGardenId, loc);
-    await saveLocation(loc); // update global fallback too
+    await saveLocation(loc);
+    // Persist to PocketBase so location survives cache clears / new devices
+    pb.collection('gardens').update(locationGardenId, { location_json: JSON.stringify(loc) })
+      .then(updated => setGardens(prev => prev.map(g => g.id === locationGardenId ? { ...g, ...(updated as any) } : g)))
+      .catch(() => {});
     setGardenLocations(prev => ({ ...prev, [locationGardenId]: loc }));
     loadGardenWeather(garden, loc);
   }
@@ -215,8 +223,13 @@ export default function ScheduleScreen() {
     try {
       const loc = await getBrowserLocation();
       await applyLocation(loc);
-    } catch {
-      setGpsError('Permission denied. Search for your city below.');
+    } catch (e: any) {
+      const msg = e?.message ?? '';
+      if (msg.includes('not available') || msg.includes('secure')) {
+        setGpsError('GPS requires HTTPS. Search for your city below.');
+      } else {
+        setGpsError('Location access denied. Search for your city below.');
+      }
     } finally {
       setGpsLoading(false);
     }

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
@@ -10,6 +11,7 @@ import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
 import { useAppTheme, isBirthdayToday, loadBirthday, formatTemp } from '@/contexts/theme-context';
 import { fetchWeather, loadSavedLocation, type WeatherData } from '@/lib/weather';
+import { subscribe } from '@/lib/events';
 import type { Plant } from '@/lib/types';
 
 function greeting() {
@@ -36,20 +38,22 @@ export default function DashboardScreen() {
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const firstName = user?.name?.split(' ')?.[0]
-    ?? user?.email?.split('@')[0]
-    ?? 'Gardener';
+  const firstName = user?.name?.split(' ')?.[0] || 'Gardener';
   const birthday = user ? loadBirthday(user.id) : null;
   const isToday = isBirthdayToday(birthday);
   const bdayMsg = isToday ? BIRTHDAY_MSGS[new Date().getDate() % BIRTHDAY_MSGS.length] : null;
 
-  useEffect(() => {
+  const loadPlants = useCallback(async () => {
     if (!user) return;
     pb.collection('plants')
       .getFullList({ filter: `user_id = "${user.id}"` })
       .then((data) => { setPlants(data as any); setLoading(false); })
       .catch(() => setLoading(false));
   }, [user]);
+
+  useFocusEffect(useCallback(() => { loadPlants(); }, [loadPlants]));
+
+  useEffect(() => subscribe('plants:changed', () => loadPlants()), [loadPlants]);
 
   useEffect(() => {
     setWeatherLoading(true);

@@ -5,11 +5,13 @@ import { G, Spring, R } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 
 const TABS = [
-  { name: '(tabs)/index',    route: '/(tabs)',          label: 'Home',     emoji: '🏡' },
-  { name: '(tabs)/garden',   route: '/(tabs)/garden',   label: 'Garden',   emoji: '🌻' },
-  { name: '(tabs)/plants',   route: '/(tabs)/plants',   label: 'Plants',   emoji: '🌿' },
-  { name: '(tabs)/schedule', route: '/(tabs)/schedule', label: 'Schedule', emoji: '📅' },
-  { name: '(tabs)/profile',  route: '/(tabs)/profile',  label: 'Profile',  emoji: '👤' },
+  { name: '(tabs)/index',    route: '/(tabs)',           label: 'Home',     emoji: '🏡' },
+  { name: '(tabs)/garden',   route: '/(tabs)/garden',    label: 'Garden',   emoji: '🌻' },
+  { name: '(tabs)/plants',   route: '/(tabs)/plants',    label: 'Plants',   emoji: '🌿' },
+  { name: '(tabs)/schedule', route: '/(tabs)/schedule',  label: 'Schedule', emoji: '📅' },
+  { name: '(tabs)/history',  route: '/(tabs)/history',   label: 'History',  emoji: '📋' },
+  { name: '(tabs)/plan',     route: '/(tabs)/plan',      label: 'Plan',     emoji: '🗓️' },
+  { name: '(tabs)/profile',  route: '/(tabs)/profile',   label: 'Profile',  emoji: '👤' },
 ];
 
 function NavItem({ tab, active }: { tab: typeof TABS[0]; active: boolean }) {

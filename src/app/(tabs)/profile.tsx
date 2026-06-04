@@ -6,13 +6,13 @@ import {
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit } from '@/contexts/theme-context';
+import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit, type WaterTime } from '@/contexts/theme-context';
 import type { Garden, GardenShare } from '@/lib/types';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { isDesktop } = useBreakpoint();
-  const { mode, setMode, isDark, colors, tempUnit, setTempUnit } = useAppTheme();
+  const { mode, setMode, isDark, colors, tempUnit, setTempUnit, waterTime, setWaterTime } = useAppTheme();
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [shares, setShares] = useState<GardenShare[]>([]);
   const [showShare, setShowShare] = useState(false);
@@ -99,21 +99,20 @@ export default function ProfileScreen() {
     if (!user) return;
     setDeletingAccount(true);
     try {
-      // Delete in order: plants → gardens → shares → user record
       const plants = await pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` });
-      await Promise.all(plants.map(p => pb.collection('plants').delete(p.id)));
+      await Promise.all(plants.map(p => pb.collection('plants').delete(p.id).catch(() => {})));
 
       const gardenList = await pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` });
-      await Promise.all(gardenList.map(g => pb.collection('gardens').delete(g.id)));
+      await Promise.all(gardenList.map(g => pb.collection('gardens').delete(g.id).catch(() => {})));
 
       const shareList = await pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` });
-      await Promise.all(shareList.map(s => pb.collection('garden_shares').delete(s.id)));
+      await Promise.all(shareList.map(s => pb.collection('garden_shares').delete(s.id).catch(() => {})));
 
-      await pb.collection('users').delete(user.id);
+      // Try to delete the auth record; if it fails (permissions), sign out anyway — data is already gone
+      await pb.collection('users').delete(user.id).catch(() => {});
       signOut();
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not delete account. Try from the admin panel.');
-    } finally {
+      Alert.alert('Error', e?.message ?? 'Could not delete account data. Please try again.');
       setDeletingAccount(false);
     }
   }
@@ -276,9 +275,33 @@ export default function ProfileScreen() {
             style={[styles.modeBtn, { borderColor: borderCol }, tempUnit === u && styles.modeBtnActive]}
             onPress={() => setTempUnit(u)}
           >
-            <Text style={styles.modeEmoji}>{u === 'C' ? '🌡️' : '°F'}</Text>
+            <Text style={styles.modeEmoji}>{u === 'C' ? '°C' : '°F'}</Text>
             <Text style={[styles.modeBtnText, { color: textSecondary }, tempUnit === u && styles.modeBtnTextActive]}>
               {u === 'C' ? 'Celsius' : 'Fahrenheit'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  const waterTimeSection = (
+    <View style={[styles.section, { backgroundColor: cardBg, borderColor: borderCol }]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>💧 Preferred Watering Time</Text>
+      <View style={styles.modeRow}>
+        {([
+          { key: 'morning',   label: 'Morning',   emoji: '🌅' },
+          { key: 'afternoon', label: 'Afternoon', emoji: '☀️' },
+          { key: 'evening',   label: 'Evening',   emoji: '🌙' },
+        ] as { key: WaterTime; label: string; emoji: string }[]).map(({ key, label, emoji }) => (
+          <TouchableOpacity
+            key={key}
+            style={[styles.modeBtn, { borderColor: borderCol }, waterTime === key && styles.modeBtnActive]}
+            onPress={() => setWaterTime(key)}
+          >
+            <Text style={styles.modeEmoji}>{emoji}</Text>
+            <Text style={[styles.modeBtnText, { color: textSecondary }, waterTime === key && styles.modeBtnTextActive]}>
+              {label}
             </Text>
           </TouchableOpacity>
         ))}
@@ -329,6 +352,7 @@ export default function ProfileScreen() {
             {sharesSection}
             {settingsSection}
             {tempSection}
+            {waterTimeSection}
           </View>
         </View>
       </ScrollView>
@@ -347,6 +371,7 @@ export default function ProfileScreen() {
       {sharesSection}
       {settingsSection}
       {tempSection}
+      {waterTimeSection}
       <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>

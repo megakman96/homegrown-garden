@@ -15,10 +15,11 @@ import { G, Shadow, R } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import type { Plant, Garden, HealthStatus } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
-import { findPlantKey, PLANT_CATALOG, SUN_EMOJIS, searchPlants } from '@/lib/plant-catalog';
+import { PLANT_CATALOG, SUN_EMOJIS, searchPlants } from '@/lib/plant-catalog';
 import { subscribe } from '@/lib/events';
 import type { CatalogEntry } from '@/lib/plant-catalog';
 import PlantAvatar from '@/components/PlantAvatar';
+import { getPlantIcon } from '@/lib/plant-icons';
 
 const HEALTH_LABELS: Record<HealthStatus, string> = {
   healthy: '🟢 Healthy',
@@ -44,7 +45,6 @@ export default function PlantsScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: '', variety: '', gardenId: '', sunRequirement: 'full_sun' as SunRequirement, waterIntervalDays: 3 });
-  const [suggestions, setSuggestions] = useState<Array<{ key: string; entry: CatalogEntry }>>([]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -80,26 +80,25 @@ export default function PlantsScreen() {
     return () => { cancel?.(); };
   }, [user]);
 
-  function onNameChange(name: string) {
-    const key = findPlantKey(name);
-    const entry = key ? PLANT_CATALOG[key] : null;
-    setSuggestions(name.length > 1 ? searchPlants(name, 6) : []);
-    setForm((f) => ({
-      ...f,
-      name,
-      sunRequirement: entry?.sunRequirement ?? f.sunRequirement,
-      waterIntervalDays: entry?.waterIntervalDays ?? f.waterIntervalDays,
-    }));
-  }
+  const [catalogueSelected, setCatalogueSelected] = useState(false);
+  const [catalogueSearch, setCatalogueSearch] = useState('');
 
-  function selectSuggestion(key: string, entry: CatalogEntry) {
-    setSuggestions([]);
+  function selectFromCatalogue(key: string, entry: CatalogEntry) {
+    setCatalogueSelected(true);
+    setCatalogueSearch('');
     setForm((f) => ({
       ...f,
       name: entry.name,
       sunRequirement: entry.sunRequirement,
       waterIntervalDays: entry.waterIntervalDays,
     }));
+  }
+
+  function getCatalogueItems(): Array<{ key: string; entry: CatalogEntry }> {
+    if (catalogueSearch.trim()) return searchPlants(catalogueSearch, 60);
+    return Object.entries(PLANT_CATALOG)
+      .map(([key, entry]) => ({ key, entry }))
+      .sort((a, b) => a.entry.name.localeCompare(b.entry.name));
   }
 
   async function addPlant() {
@@ -126,8 +125,9 @@ export default function PlantsScreen() {
         total_yield_grams: 0,
       });
       setPlants((p) => [data as any, ...p]);
-      setSuggestions([]);
-      setShowAdd(false);
+        setShowAdd(false);
+      setCatalogueSelected(false);
+      setCatalogueSearch('');
       setForm((f) => ({ ...f, name: '', variety: '', sunRequirement: 'full_sun', waterIntervalDays: 3 }));
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not add plant');
@@ -148,87 +148,89 @@ export default function PlantsScreen() {
             showsVerticalScrollIndicator={false}
           >
             <Text style={[styles.modalTitle, { color: textPrim }]}>🌱 Add Plant</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
-              placeholder="Plant name (e.g. Tomato) *"
-              placeholderTextColor={textSec}
-              value={form.name}
-              onChangeText={onNameChange}
-              autoFocus
-            />
-            {suggestions.length > 0 && (
-              <View style={styles.suggestions}>
-                {suggestions.slice(0, 4).map(({ key, entry }) => (
+
+            {!catalogueSelected ? (
+              <>
+                {/* Search — no autoFocus */}
+                <TextInput
+                  style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+                  placeholder="Search plants..."
+                  placeholderTextColor={textSec}
+                  value={catalogueSearch}
+                  onChangeText={setCatalogueSearch}
+                />
+                <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 6 }]}>Choose from catalogue</Text>
+                {getCatalogueItems().map(({ key, entry }) => (
                   <TouchableOpacity
                     key={key}
-                    style={styles.suggestionRow}
-                    onPress={() => selectSuggestion(key, entry)}
+                    style={[styles.catItem, { borderBottomColor: border }]}
+                    onPress={() => selectFromCatalogue(key, entry)}
                   >
-                    <Text style={styles.suggestionName}>{entry.name}</Text>
-                    <Text style={styles.suggestionMeta}>
-                      {SUN_EMOJIS[entry.sunRequirement]} · 💧 every {entry.waterIntervalDays}d · {entry.category}
-                    </Text>
+                    <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
+                      <Text style={[styles.catItemMeta, { color: textSec }]}>
+                        {SUN_EMOJIS[entry.sunRequirement]} · 💧 every {entry.waterIntervalDays}d · {entry.category}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
-              </View>
-            )}
-            <TextInput
-              style={styles.input}
-              placeholder="Variety (optional)"
-              placeholderTextColor={G.stone}
-              value={form.variety}
-              onChangeText={(v) => setForm((f) => ({ ...f, variety: v }))}
-            />
-            <Text style={styles.fieldLabel}>Sun requirement</Text>
-            <View style={styles.sunRow}>
-              {(['full_sun', 'partial_sun', 'shade'] as SunRequirement[]).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.sunChip, form.sunRequirement === s && styles.sunChipActive]}
-                  onPress={() => setForm((f) => ({ ...f, sunRequirement: s }))}
-                >
-                  <Text style={[styles.sunChipText, form.sunRequirement === s && styles.sunChipTextActive]}>
-                    {SUN_EMOJIS[s]} {s.replace('_', ' ')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.waterRow}>
-              <Text style={styles.fieldLabel}>Water every</Text>
-              <View style={styles.waterStepper}>
-                <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.max(1, f.waterIntervalDays - 1) }))}>
-                  <Text style={styles.stepBtnText}>−</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepValue}>{form.waterIntervalDays} days</Text>
-                <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.min(30, f.waterIntervalDays + 1) }))}>
-                  <Text style={styles.stepBtnText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            {gardens.length > 1 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
-                {gardens.map((g) => (
-                  <TouchableOpacity
-                    key={g.id}
-                    style={[styles.gardenChip, form.gardenId === g.id && styles.gardenChipActive]}
-                    onPress={() => setForm((f) => ({ ...f, gardenId: g.id }))}
-                  >
-                    <Text style={[styles.gardenChipText, form.gardenId === g.id && styles.gardenChipTextActive]}>
-                      {g.name}
-                    </Text>
+              </>
+            ) : (
+              <>
+                {/* Selected plant */}
+                <View style={[styles.selectedRow, { borderBottomColor: border }]}>
+                  <Text style={{ fontSize: 26 }}>{getPlantIcon(form.name).emoji}</Text>
+                  <Text style={[styles.catItemName, { color: textPrim, flex: 1, fontSize: 18 }]}>{form.name}</Text>
+                  <TouchableOpacity onPress={() => { setCatalogueSelected(false); setForm(f => ({ ...f, name: '' })); }}>
+                    <Text style={{ color: textSec, fontSize: 13, fontWeight: '600' }}>✕ Change</Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                </View>
+                <TextInput
+                  style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, marginTop: 12 }]}
+                  placeholder="Variety (optional)"
+                  placeholderTextColor={textSec}
+                  value={form.variety}
+                  onChangeText={(v) => setForm((f) => ({ ...f, variety: v }))}
+                />
+                <View style={styles.waterRow}>
+                  <Text style={styles.fieldLabel}>Water every</Text>
+                  <View style={styles.waterStepper}>
+                    <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.max(1, f.waterIntervalDays - 1) }))}>
+                      <Text style={styles.stepBtnText}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.stepValue}>{form.waterIntervalDays} days</Text>
+                    <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.min(30, f.waterIntervalDays + 1) }))}>
+                      <Text style={styles.stepBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {gardens.length > 1 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
+                    {gardens.map((g) => (
+                      <TouchableOpacity
+                        key={g.id}
+                        style={[styles.gardenChip, form.gardenId === g.id && styles.gardenChipActive]}
+                        onPress={() => setForm((f) => ({ ...f, gardenId: g.id }))}
+                      >
+                        <Text style={[styles.gardenChipText, form.gardenId === g.id && styles.gardenChipTextActive]}>
+                          {g.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </>
             )}
           </ScrollView>
           <View style={styles.modalButtons}>
-            <TouchableOpacity onPress={() => { setSuggestions([]); setShowAdd(false); }} disabled={adding}>
+            <TouchableOpacity onPress={() => { setCatalogueSelected(false); setCatalogueSearch(''); setShowAdd(false); }} disabled={adding}>
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
             <PressableScale
-              style={[styles.addBtn, adding && { opacity: 0.6 }]}
+              style={[styles.addBtn, (!catalogueSelected || adding) && { opacity: 0.4 }]}
               onPress={addPlant}
-              disabled={adding}
+              disabled={adding || !catalogueSelected}
             >
               <LinearGradient
                 colors={[G.sage, G.hunter]}
@@ -421,10 +423,11 @@ const styles = StyleSheet.create({
   sunChipActive:   { backgroundColor: G.hunter, borderColor: G.hunter },
   sunChipText:     { color: G.hunter, fontSize: 12, fontWeight: '600' },
   sunChipTextActive: { color: G.cloud },
-  suggestions:     { backgroundColor: G.cloud, borderRadius: R.md, borderWidth: 1, borderColor: G.mist, marginBottom: 12, overflow: 'hidden', ...Shadow.soft },
-  suggestionRow:   { padding: 12, borderBottomWidth: 1, borderBottomColor: G.foam },
-  suggestionName:  { fontSize: 15, fontWeight: '700', color: G.forest },
-  suggestionMeta:  { fontSize: 12, color: G.stone, marginTop: 2 },
+  catItem:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 2, borderBottomWidth: 1, gap: 10 },
+  catItemEmoji:    { fontSize: 24, width: 34, textAlign: 'center' },
+  catItemName:     { fontSize: 15, fontWeight: '600', color: G.forest },
+  catItemMeta:     { fontSize: 12, color: G.stone, marginTop: 1 },
+  selectedRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, marginBottom: 4, borderBottomWidth: 1, gap: 8 },
   waterRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   waterStepper:    { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepBtn:         { width: 34, height: 34, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
