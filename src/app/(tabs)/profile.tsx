@@ -451,7 +451,7 @@ export default function ProfileScreen() {
             {isPremium ? 'GardenGrid Pro — Active' : 'Upgrade to Pro'}
           </Text>
           <Text style={[styles.subCardSub, { color: isPremium ? '#52796f' : '#9c6f00' }]}>
-            {isPremium ? 'All features unlocked. Thank you! 🙏' : '7-day free trial · Unlimited gardens & more'}
+            {isPremium ? 'All features unlocked. Thank you! 🙏' : '14-day free trial · Unlimited gardens & more'}
           </Text>
         </View>
         <Text style={{ fontSize: 18, color: isPremium ? '#52b788' : '#e67700' }}>›</Text>

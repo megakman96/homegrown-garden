@@ -144,7 +144,7 @@ export default function SubscriptionScreen() {
         <View style={styles.headerContent}>
           <Text style={styles.headerEmoji}>🌱</Text>
           <Text style={styles.headerTitle}>GardenGrid Pro</Text>
-          <Text style={styles.headerSub}>Try free for 7 days, then choose a plan</Text>
+          <Text style={styles.headerSub}>Try free for 14 days, then choose a plan</Text>
         </View>
       </LinearGradient>
 
@@ -174,7 +174,7 @@ export default function SubscriptionScreen() {
               <Text style={[styles.planName, { color: textPrim }]}>Annual</Text>
               <View style={styles.saveBadge}><Text style={styles.saveBadgeText}>SAVE 44%</Text></View>
             </View>
-            <Text style={[styles.planPrice, { color: textSec }]}>{annualPrice}/year · after 7-day free trial</Text>
+            <Text style={[styles.planPrice, { color: textSec }]}>{annualPrice}/year · after 14-day free trial</Text>
           </View>
           <Text style={[styles.planPriceRight, { color: G.hunter }]}>
             {annualPrice === '$19.99' ? '$1.67' : ''}/mo
@@ -188,7 +188,7 @@ export default function SubscriptionScreen() {
           <View style={[styles.planRadio, selectedPkg === 'monthly' && styles.planRadioActive]} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.planName, { color: textPrim }]}>Monthly</Text>
-            <Text style={[styles.planPrice, { color: textSec }]}>{monthlyPrice}/month · after 7-day free trial</Text>
+            <Text style={[styles.planPrice, { color: textSec }]}>{monthlyPrice}/month · after 14-day free trial</Text>
           </View>
           <Text style={[styles.planPriceRight, { color: textSec }]}>{monthlyPrice}/mo</Text>
         </TouchableOpacity>
@@ -244,7 +244,7 @@ export default function SubscriptionScreen() {
         </TouchableOpacity>
 
         <Text style={[styles.legalText, { color: textSec }]}>
-          Payment charged to your App Store / Google Play account after the 7-day trial.
+          Payment charged to your App Store / Google Play account after the 14-day trial.
           Subscription auto-renews unless cancelled 24h before renewal.
         </Text>
         <View style={{ height: 40 }} />
