@@ -156,7 +156,7 @@ export default function ScheduleScreen() {
     buildSchedule(updated, gardenWeather);
   }
 
-  // ── Grouping by schedule items ───────────────────────────────────────────
+  // ── Build schedule map ────────────────────────────────────────────────────
 
   const itemsByGarden: Record<string, PlantWithAdvice[]> = {};
   for (const item of items) {
@@ -165,36 +165,111 @@ export default function ScheduleScreen() {
     itemsByGarden[gid].push(item);
   }
 
-  const activeGardens = gardens.filter(g => (itemsByGarden[g.id]?.length ?? 0) > 0);
-  const inactiveGardens = gardens.filter(g => !((itemsByGarden[g.id]?.length ?? 0) > 0));
-
   const totalItems = items.length;
   const totalOverdue = items.filter(i => i.overdue).length;
 
+  // ── Group gardens by location ────────────────────────────────────────────
+
+  function locationKey(loc: Location): string {
+    if (loc.name) return loc.name.toLowerCase().trim();
+    return `${loc.latitude.toFixed(1)},${loc.longitude.toFixed(1)}`;
+  }
+
+  type LocationGroup = {
+    key: string;
+    locationName: string;
+    gardens: Garden[];
+    weather: WeatherData | null;
+    loading: boolean;
+  };
+
+  const groupMap = new Map<string, LocationGroup>();
+  for (const g of gardens) {
+    const loc = gardenLocations[g.id];
+    if (!loc) continue;
+    const key = locationKey(loc);
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        key,
+        locationName: loc.name ?? `${loc.latitude.toFixed(1)}, ${loc.longitude.toFixed(1)}`,
+        gardens: [],
+        weather: gardenWeather[g.id] ?? null,
+        loading: gardenWeatherLoading[g.id] ?? false,
+      });
+    }
+    groupMap.get(key)!.gardens.push(g);
+  }
+
+  const locationGroups = Array.from(groupMap.values());
+  const noLocationGardens = gardens.filter(g => !gardenLocations[g.id]);
+
   // ── Render helpers ────────────────────────────────────────────────────────
 
-  function renderGardenSection(garden: Garden, isDesktopLayout: boolean) {
+  // Renders just a garden's name + its task items (no weather)
+  function renderGardenItems(garden: Garden) {
     const gItems = itemsByGarden[garden.id] ?? [];
-    const wx = gardenWeather[garden.id] ?? null;
-    const loc = gardenLocations[garden.id] ?? null;
-    const wxLoading = gardenWeatherLoading[garden.id] ?? false;
+    const overdue = gItems.filter(i => i.overdue);
+    const upcoming = gItems.filter(i => !i.overdue);
+
+    return (
+      <View key={garden.id}>
+        <Text style={[styles.gardenName, { color: textPrim, marginTop: 10, marginBottom: 6 }]}>
+          🌻 {garden.name}
+        </Text>
+        {overdue.length > 0 && (
+          <Section title={`🔴 Overdue (${overdue.length})`}>
+            {overdue.map((item, i) => (
+              <ScheduleCard key={i} item={item} onWater={markWatered}
+                onPress={() => router.push(`/plant/${item.plant.id}`)} />
+            ))}
+          </Section>
+        )}
+        {upcoming.length > 0 && (
+          <Section title="📋 Upcoming">
+            {upcoming.map((item, i) => (
+              <ScheduleCard key={i} item={item} onWater={markWatered}
+                onPress={() => router.push(`/plant/${item.plant.id}`)} />
+            ))}
+          </Section>
+        )}
+        {gItems.length === 0 && (
+          <View style={styles.gardenEmpty}>
+            <Text style={styles.gardenEmptyText}>No upcoming tasks</Text>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // Renders a location group: one weather card + all gardens in that location
+  function renderLocationGroup(group: LocationGroup, isDesktopLayout: boolean) {
+    return (
+      <View key={group.key} style={isDesktopLayout ? styles.desktopGardenSection : styles.gardenSection}>
+        <View style={[styles.gardenHeader, { marginBottom: 8 }]}>
+          <Text style={[styles.gardenLoc, { color: textSec, fontSize: 13, fontWeight: '700' }]}>
+            📍 {group.locationName}
+          </Text>
+        </View>
+        <WeatherWidget weather={group.weather} loading={group.loading} tempUnit={tempUnit} />
+        {group.gardens.map(g => renderGardenItems(g))}
+      </View>
+    );
+  }
+
+  // Renders a garden that has no location set (no weather widget)
+  function renderNoLocationGarden(garden: Garden, isDesktopLayout: boolean) {
+    const gItems = itemsByGarden[garden.id] ?? [];
     const overdue = gItems.filter(i => i.overdue);
     const upcoming = gItems.filter(i => !i.overdue);
 
     return (
       <View key={garden.id} style={isDesktopLayout ? styles.desktopGardenSection : styles.gardenSection}>
-        {/* Garden header */}
         <View style={styles.gardenHeader}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.gardenName, { color: textPrim }]}>🌻 {garden.name}</Text>
-            {loc && <Text style={[styles.gardenLoc, { color: textSec }]}>📍 {loc.name ?? 'Saved location'}</Text>}
           </View>
         </View>
-
-        {/* Weather for this garden */}
-        <WeatherWidget weather={wx} loading={wxLoading} tempUnit={tempUnit} />
-
-        {/* Schedule items */}
+        <WeatherWidget weather={null} loading={false} tempUnit={tempUnit} />
         {overdue.length > 0 && (
           <Section title={`🔴 Overdue (${overdue.length})`}>
             {overdue.map((item, i) => (
@@ -246,7 +321,8 @@ export default function ScheduleScreen() {
           </View>
         ) : (
           <View style={styles.desktopGrid}>
-            {[...activeGardens, ...inactiveGardens].map(g => renderGardenSection(g, true))}
+            {locationGroups.map(g => renderLocationGroup(g, true))}
+            {noLocationGardens.map(g => renderNoLocationGarden(g, true))}
           </View>
         )}
       </ScrollView>
@@ -266,7 +342,10 @@ export default function ScheduleScreen() {
           <Text style={styles.emptyHint}>Create a garden to start tracking your schedule</Text>
         </View>
       ) : (
-        [...activeGardens, ...inactiveGardens].map(g => renderGardenSection(g, false))
+        <>
+          {locationGroups.map(g => renderLocationGroup(g, false))}
+          {noLocationGardens.map(g => renderNoLocationGarden(g, false))}
+        </>
       )}
     </ScrollView>
   );

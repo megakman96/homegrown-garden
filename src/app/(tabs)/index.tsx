@@ -163,11 +163,14 @@ export default function DashboardScreen() {
   const statsRow = (
     <View style={[styles.statsRow, isDesktop && styles.statsRowDesktop]}>
       <FadeInView style={styles.statWrap}>
-        <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+        <PressableScale
+          style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}
+          onPress={() => router.push('/(tabs)/plants')}
+        >
           <Text style={styles.statEmoji}>🌱</Text>
           <Text style={[styles.statValue, { color: G.sage }]}>{plants.length}</Text>
           <Text style={[styles.statLabel, { color: textSecondary }]}>Plants</Text>
-        </View>
+        </PressableScale>
       </FadeInView>
       <FadeInView style={styles.statWrap}>
         <PressableScale

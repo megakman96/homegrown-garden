@@ -637,12 +637,19 @@ export default function GardenScreen() {
                     flatListRef.current?.scrollToIndex({ index: i, animated: true });
                   }}
                 >
-                  <View style={[styles.pageDot, i === currentIndex && styles.pageDotActive]} />
+                  <View style={[
+                    styles.pageDot,
+                    { backgroundColor: isDark ? colors.border : G.mist },
+                    i === currentIndex && styles.pageDotActive,
+                  ]} />
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={styles.newGardenBtn} onPress={() => router.push('/new-garden')}>
-              <Text style={[styles.newGardenText, { color: textPrim }]}>＋ New</Text>
+            <TouchableOpacity
+              style={[styles.newGardenBtn, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}
+              onPress={() => router.push('/new-garden')}
+            >
+              <Text style={[styles.newGardenText, { color: isDark ? colors.text : G.forest }]}>＋ New</Text>
             </TouchableOpacity>
           </View>
 
