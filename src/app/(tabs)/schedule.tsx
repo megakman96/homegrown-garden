@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  ActivityIndicator, RefreshControl, TextInput, Modal,
+  ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
@@ -10,9 +10,9 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAppTheme, formatTemp, type TempUnit } from '@/contexts/theme-context';
 import type { Plant, Garden } from '@/lib/types';
 import {
-  fetchWeather, getBrowserLocation, calculateWateringAdvice, formatDateShort,
-  searchCity, saveLocation, saveGardenLocation, loadGardenLocation,
-  type WeatherData, type WateringAdvice, type GeoResult, type Location,
+  fetchWeather, calculateWateringAdvice, formatDateShort,
+  loadGardenLocation,
+  type WeatherData, type WateringAdvice, type Location,
 } from '@/lib/weather';
 import { addActivityEntryAsync } from '@/lib/activity-log';
 
@@ -33,7 +33,6 @@ export default function ScheduleScreen() {
   const textPrim= isDark ? colors.text      : '#1b4332';
   const textSec = isDark ? colors.textSec   : '#52796f';
   const border  = isDark ? colors.border    : '#e8f5e9';
-  const inputBg = isDark ? colors.bgElement : '#f0f7ee';
   const router = useRouter();
 
   const [plants, setPlants] = useState<Plant[]>([]);
@@ -43,14 +42,6 @@ export default function ScheduleScreen() {
   const [gardenWeatherLoading, setGardenWeatherLoading] = useState<Record<string, boolean>>({});
   const [items, setItems] = useState<PlantWithAdvice[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Location modal — tracks which garden we're setting location for
-  const [locationGardenId, setLocationGardenId] = useState<string | null>(null);
-  const [cityQuery, setCityQuery] = useState('');
-  const [cityResults, setCityResults] = useState<GeoResult[]>([]);
-  const [citySearching, setCitySearching] = useState(false);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError] = useState<string | null>(null);
 
   // ── Data loading ─────────────────────────────────────────────────────────
 
@@ -165,77 +156,7 @@ export default function ScheduleScreen() {
     buildSchedule(updated, gardenWeather);
   }
 
-  // ── Location modal ────────────────────────────────────────────────────────
-
-  function openLocationModal(gardenId: string) {
-    setLocationGardenId(gardenId);
-    setCityQuery('');
-    setCityResults([]);
-    setGpsError(null);
-  }
-
-  function closeLocationModal() {
-    setLocationGardenId(null);
-    setCityQuery('');
-    setCityResults([]);
-    setGpsError(null);
-  }
-
-  async function searchCities(query: string) {
-    setCityQuery(query);
-    if (query.length < 2) { setCityResults([]); return; }
-    setCitySearching(true);
-    const results = await searchCity(query);
-    setCityResults(results);
-    setCitySearching(false);
-  }
-
-  async function applyLocation(loc: Location) {
-    if (!locationGardenId) return;
-    closeLocationModal();
-    const garden = gardens.find(g => g.id === locationGardenId);
-    if (!garden) return;
-
-    await saveGardenLocation(locationGardenId, loc);
-    await saveLocation(loc);
-    // Persist to PocketBase so location survives cache clears / new devices
-    pb.collection('gardens').update(locationGardenId, { location_json: JSON.stringify(loc) })
-      .then(updated => setGardens(prev => prev.map(g => g.id === locationGardenId ? { ...g, ...(updated as any) } : g)))
-      .catch(() => {});
-    setGardenLocations(prev => ({ ...prev, [locationGardenId]: loc }));
-    loadGardenWeather(garden, loc);
-  }
-
-  async function selectCity(result: GeoResult) {
-    const loc: Location = {
-      latitude: result.latitude,
-      longitude: result.longitude,
-      name: result.admin1
-        ? `${result.name}, ${result.admin1}`
-        : `${result.name}, ${result.country}`,
-    };
-    await applyLocation(loc);
-  }
-
-  async function useMyLocation() {
-    setGpsError(null);
-    setGpsLoading(true);
-    try {
-      const loc = await getBrowserLocation();
-      await applyLocation(loc);
-    } catch (e: any) {
-      const msg = e?.message ?? '';
-      if (msg.includes('not available') || msg.includes('secure')) {
-        setGpsError('GPS requires HTTPS. Search for your city below.');
-      } else {
-        setGpsError('Location access denied. Search for your city below.');
-      }
-    } finally {
-      setGpsLoading(false);
-    }
-  }
-
-  // ── Grouping by location ─────────────────────────────────────────────────
+  // ── Grouping by schedule items ───────────────────────────────────────────
 
   const itemsByGarden: Record<string, PlantWithAdvice[]> = {};
   for (const item of items) {
@@ -244,79 +165,11 @@ export default function ScheduleScreen() {
     itemsByGarden[gid].push(item);
   }
 
-  // Two gardens share a location if their location name matches (case-insensitive)
-  // or their rounded lat/lon (0.1°) matches — whichever is available.
-  function locationKey(loc: Location): string {
-    if (loc.name) return loc.name.toLowerCase().trim();
-    return `${loc.latitude.toFixed(1)},${loc.longitude.toFixed(1)}`;
-  }
-
-  type LocationGroup = { key: string; location: Location; gardens: Garden[] };
-
-  const groupMap = new Map<string, LocationGroup>();
-  for (const g of gardens) {
-    const loc = gardenLocations[g.id];
-    if (!loc) continue;
-    const key = locationKey(loc);
-    if (!groupMap.has(key)) groupMap.set(key, { key, location: loc, gardens: [] });
-    groupMap.get(key)!.gardens.push(g);
-  }
-
-  const locationGroups = Array.from(groupMap.values());
-  const noLocationGardens = gardens.filter(g => !gardenLocations[g.id]);
-
   const activeGardens = gardens.filter(g => (itemsByGarden[g.id]?.length ?? 0) > 0);
   const inactiveGardens = gardens.filter(g => !((itemsByGarden[g.id]?.length ?? 0) > 0));
 
   const totalItems = items.length;
   const totalOverdue = items.filter(i => i.overdue).length;
-
-  // ── Location modal JSX ────────────────────────────────────────────────────
-
-  const locationModalGarden = gardens.find(g => g.id === locationGardenId);
-  const locationModal = (
-    <Modal visible={!!locationGardenId} transparent animationType="slide">
-      <View style={styles.modalBackdrop}>
-        <View style={[styles.modal, { backgroundColor: cardBg }]}>
-          <Text style={[styles.modalTitle, { color: textPrim }]}>
-            📍 {locationModalGarden ? `Location for ${locationModalGarden.name}` : 'Set Location'}
-          </Text>
-          <Text style={styles.modalSub}>Used for rain forecasts and watering advice</Text>
-
-          <TouchableOpacity style={styles.gpsButton} onPress={useMyLocation} disabled={gpsLoading}>
-            <Text style={styles.gpsButtonText}>
-              {gpsLoading ? 'Locating...' : '📡 Use my current location'}
-            </Text>
-          </TouchableOpacity>
-          {gpsError && <Text style={styles.gpsError}>{gpsError}</Text>}
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or search</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Search city (e.g. London, Austin)"
-            value={cityQuery}
-            onChangeText={searchCities}
-            autoFocus
-          />
-          {citySearching && <ActivityIndicator color="#2d6a4f" style={{ marginVertical: 8 }} />}
-          {cityResults.map((r, i) => (
-            <TouchableOpacity key={i} style={styles.cityRow} onPress={() => selectCity(r)}>
-              <Text style={styles.cityName}>{r.name}</Text>
-              <Text style={styles.cityRegion}>{r.admin1 ? `${r.admin1}, ` : ''}{r.country}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity onPress={closeLocationModal} style={styles.cancelBtn}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
 
   // ── Render helpers ────────────────────────────────────────────────────────
 
@@ -339,13 +192,7 @@ export default function ScheduleScreen() {
         </View>
 
         {/* Weather for this garden */}
-        <WeatherWidget
-          weather={wx}
-          loading={wxLoading}
-          tempUnit={tempUnit}
-          onSetLocation={() => openLocationModal(garden.id)}
-          onChangeLocation={() => openLocationModal(garden.id)}
-        />
+        <WeatherWidget weather={wx} loading={wxLoading} tempUnit={tempUnit} />
 
         {/* Schedule items */}
         {overdue.length > 0 && (
@@ -382,7 +229,6 @@ export default function ScheduleScreen() {
         contentContainerStyle={styles.desktopContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {locationModal}
         <View style={styles.desktopPageHeader}>
           <Text style={[styles.desktopPageTitle, { color: textPrim }]}>📅 Schedule</Text>
           <Text style={[styles.desktopPageSub, { color: textSec }]}>
@@ -413,7 +259,6 @@ export default function ScheduleScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      {locationModal}
       {gardens.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>📅</Text>
@@ -429,12 +274,10 @@ export default function ScheduleScreen() {
 
 // ─── WEATHER WIDGET ──────────────────────────────────────────────────────────
 
-function WeatherWidget({ weather, loading, tempUnit, onSetLocation, onChangeLocation }: {
+function WeatherWidget({ weather, loading, tempUnit }: {
   weather: WeatherData | null;
   loading: boolean;
   tempUnit: TempUnit;
-  onSetLocation: () => void;
-  onChangeLocation: () => void;
 }) {
   const { isDark, colors } = useAppTheme();
   const cardBg  = isDark ? colors.bgCard  : '#fff';
@@ -472,12 +315,9 @@ function WeatherWidget({ weather, loading, tempUnit, onSetLocation, onChangeLoca
           <Text style={[styles.weatherTitle, { color: textPrim }]}>
             {today ? `${formatTemp(today.tempMaxC, tempUnit)} / ${formatTemp(today.tempMinC, tempUnit)}` : 'Weather'}
           </Text>
-          <TouchableOpacity onPress={onChangeLocation}>
-            <Text style={[styles.weatherSub, { color: textSec }]}>
-              📍 {weather.locationName ?? `${weather.latitude.toFixed(2)}, ${weather.longitude.toFixed(2)}`}
-              {'  '}<Text style={styles.changeLink}>change</Text>
-            </Text>
-          </TouchableOpacity>
+          <Text style={[styles.weatherSub, { color: textSec }]}>
+            📍 {weather.locationName ?? `${weather.latitude.toFixed(2)}, ${weather.longitude.toFixed(2)}`}
+          </Text>
         </View>
         <View style={styles.weatherRight}>
           {today?.isRainy ? (

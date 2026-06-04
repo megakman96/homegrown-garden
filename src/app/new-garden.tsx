@@ -20,34 +20,26 @@ import {
   SUN_CYCLE, activeCount,
   type TileState, type GardenLayout,
 } from '@/lib/garden-layout';
-import {
-  searchCity, getBrowserLocation, saveLocation, saveGardenLocation,
-  type GeoResult, type Location,
-} from '@/lib/weather';
-
-type Step = 'name' | 'location' | 'size' | 'shape' | 'sun';
-const STEPS: Step[] = ['name', 'location', 'size', 'shape', 'sun'];
+type Step = 'name' | 'size' | 'shape' | 'sun';
+const STEPS: Step[] = ['name', 'size', 'shape', 'sun'];
 
 const STEP_TITLES: Record<Step, string> = {
-  name:     'Name your garden',
-  location: 'Where is your garden?',
-  size:     'How big is it?',
-  shape:    'Draw your garden',
-  sun:      'Set the sunlight',
+  name:  'Name your garden',
+  size:  'How big is it?',
+  shape: 'Draw your garden',
+  sun:   'Set the sunlight',
 };
 const STEP_SUBS: Record<Step, string> = {
-  name:     "Give your garden a name you'll remember.",
-  location: 'Used for weather-aware watering advice. Optional — you can set it later in Edit.',
-  size:     'Set the grid dimensions. You can adjust this later.',
-  shape:    'Tap tiles to include them in your garden.',
-  sun:      'Tap each tile to set its sunlight level.',
+  name:  "Give your garden a name you'll remember.",
+  size:  'Set the grid dimensions. You can adjust this later.',
+  shape: 'Tap tiles to include them in your garden.',
+  sun:   'Tap each tile to set its sunlight level.',
 };
 const STEP_EMOJIS: Record<Step, string> = {
-  name:     '🌱',
-  location: '📍',
-  size:     '📐',
-  shape:    '🗺️',
-  sun:      '☀️',
+  name:  '🌱',
+  size:  '📐',
+  shape: '🗺️',
+  sun:   '☀️',
 };
 
 const MIN_SIZE = 3;
@@ -65,14 +57,6 @@ export default function NewGardenScreen() {
   const [cols, setCols] = useState(8);
   const [layout, setLayout] = useState<GardenLayout>(() => makeLayout(6, 8));
   const [saving, setSaving] = useState(false);
-
-  // Location step state
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [cityQuery, setCityQuery] = useState('');
-  const [cityResults, setCityResults] = useState<GeoResult[]>([]);
-  const [citySearching, setCitySearching] = useState(false);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError] = useState<string | null>(null);
 
   const slideX = useSharedValue(0);
   const opacity = useSharedValue(1);
@@ -128,59 +112,18 @@ export default function NewGardenScreen() {
     });
   }
 
-  const searchCities = useCallback(async (query: string) => {
-    setCityQuery(query);
-    if (query.length < 2) { setCityResults([]); return; }
-    setCitySearching(true);
-    const results = await searchCity(query);
-    setCityResults(results);
-    setCitySearching(false);
-  }, []);
-
-  function selectCity(r: GeoResult) {
-    const loc: Location = {
-      latitude: r.latitude,
-      longitude: r.longitude,
-      name: r.admin1 ? `${r.name}, ${r.admin1}` : `${r.name}, ${r.country}`,
-    };
-    setSelectedLocation(loc);
-    setCityQuery('');
-    setCityResults([]);
-    setGpsError(null);
-  }
-
-  async function useMyLocation() {
-    setGpsError(null);
-    setGpsLoading(true);
-    try {
-      const loc = await getBrowserLocation();
-      setSelectedLocation(loc);
-      setCityQuery('');
-      setCityResults([]);
-    } catch {
-      setGpsError('Location access denied. Search for your city below.');
-    } finally {
-      setGpsLoading(false);
-    }
-  }
-
   async function save() {
     if (!user) return;
     setSaving(true);
     try {
-      const garden = await pb.collection('gardens').create({
+      await pb.collection('gardens').create({
         user_id: user.id,
         name: name.trim() || 'My Garden',
         rows,
         cols,
         sun_exposure: 'full_sun',
         layout: JSON.stringify(layout),
-        location_json: selectedLocation ? JSON.stringify(selectedLocation) : null,
       });
-      if (selectedLocation) {
-        await saveLocation(selectedLocation);
-        await saveGardenLocation(garden.id, selectedLocation);
-      }
       router.replace('/(tabs)/garden');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save garden');
@@ -194,7 +137,6 @@ export default function NewGardenScreen() {
   const tileSize = Math.max(22, Math.min(46, Math.floor((maxGridWidth - cols * 3) / cols)));
   const activeTiles = activeCount(layout);
 
-  const canContinue = true;
 
   return (
     <View style={styles.container}>
@@ -240,85 +182,8 @@ export default function NewGardenScreen() {
                 autoFocus
                 maxLength={40}
                 returnKeyType="next"
-                onSubmitEditing={() => transitionTo('location')}
+                onSubmitEditing={() => transitionTo('size')}
               />
-            </View>
-          )}
-
-          {/* ── Step: location ── */}
-          {step === 'location' && (
-            <View style={styles.locationStep}>
-              {selectedLocation ? (
-                /* Confirmed location */
-                <View style={styles.locationConfirmed}>
-                  <View style={styles.locationConfirmedInner}>
-                    <Text style={styles.locationPin}>📍</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.locationName}>{selectedLocation.name ?? 'Selected location'}</Text>
-                      <Text style={styles.locationCoords}>
-                        {selectedLocation.latitude.toFixed(3)}, {selectedLocation.longitude.toFixed(3)}
-                      </Text>
-                    </View>
-                    <TouchableOpacity onPress={() => setSelectedLocation(null)} style={styles.changeLoc}>
-                      <Text style={styles.changeLocText}>Change</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <>
-                  {/* GPS */}
-                  <TouchableOpacity
-                    style={styles.gpsBtn}
-                    onPress={useMyLocation}
-                    disabled={gpsLoading}
-                  >
-                    {gpsLoading
-                      ? <ActivityIndicator color={G.hunter} style={{ marginRight: 8 }} />
-                      : <Text style={styles.gpsBtnIcon}>📡</Text>
-                    }
-                    <Text style={styles.gpsBtnText}>
-                      {gpsLoading ? 'Locating...' : 'Use my current location'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {gpsError && <Text style={styles.gpsError}>{gpsError}</Text>}
-
-                  <View style={styles.dividerRow}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>or search</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
-
-                  <TextInput
-                    style={styles.cityInput}
-                    placeholder="Search city (e.g. Austin, London)"
-                    placeholderTextColor={G.stone}
-                    value={cityQuery}
-                    onChangeText={searchCities}
-                  />
-
-                  {citySearching && (
-                    <ActivityIndicator color={G.hunter} style={{ marginVertical: 8 }} />
-                  )}
-
-                  {cityResults.length > 0 && (
-                    <View style={styles.cityResults}>
-                      {cityResults.map((r, i) => (
-                        <TouchableOpacity
-                          key={i}
-                          style={[styles.cityRow, i < cityResults.length - 1 && styles.cityRowBorder]}
-                          onPress={() => selectCity(r)}
-                        >
-                          <Text style={styles.cityName}>{r.name}</Text>
-                          <Text style={styles.cityRegion}>
-                            {r.admin1 ? `${r.admin1}, ` : ''}{r.country}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </>
-              )}
             </View>
           )}
 
@@ -392,14 +257,12 @@ export default function NewGardenScreen() {
             <PressableScale
               onPress={() => {
                 if (step === 'name' && !name.trim()) setName('My Garden');
-                if (!canContinue) return;
                 transitionTo(STEPS[stepIndex + 1]);
               }}
-              style={[styles.nextBtn, !canContinue && styles.nextBtnDisabled]}
-              disabled={!canContinue}
+              style={styles.nextBtn}
             >
               <LinearGradient
-                colors={canContinue ? [G.sage, G.hunter] : [G.stone, G.slate]}
+                colors={[G.sage, G.hunter]}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={styles.nextBtnGradient}
               >
