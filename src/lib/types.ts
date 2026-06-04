@@ -26,9 +26,10 @@ export interface Database {
           created_at: string;
           layout?: string | null;
           location_json?: string | null;
+          year?: number | null;
         };
-        Insert: { user_id: string; name: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade'; layout?: string | null; location_json?: string | null };
-        Update: { name?: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade'; layout?: string | null; location_json?: string | null };
+        Insert: { user_id: string; name: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade'; layout?: string | null; location_json?: string | null; year?: number | null };
+        Update: { name?: string; description?: string | null; rows?: number; cols?: number; sun_exposure?: 'full_sun' | 'partial_sun' | 'shade'; layout?: string | null; location_json?: string | null; year?: number | null };
         Relationships: [];
       };
       plants: {

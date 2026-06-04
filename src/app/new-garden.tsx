@@ -123,6 +123,7 @@ export default function NewGardenScreen() {
         cols,
         sun_exposure: 'full_sun',
         layout: JSON.stringify(layout),
+        year: new Date().getFullYear(),
       });
       router.replace('/(tabs)/garden');
     } catch (e: any) {

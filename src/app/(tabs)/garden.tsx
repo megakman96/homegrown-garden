@@ -118,6 +118,7 @@ export default function GardenScreen() {
   const [editCols, setEditCols] = useState(8);
   const [editLayout, setEditLayout] = useState<GardenLayout>(() => makeLayout(6, 8));
   const [editSaving, setEditSaving] = useState(false);
+  const [editYear, setEditYear] = useState(new Date().getFullYear());
   const [editLocationQuery, setEditLocationQuery] = useState('');
   const [editLocationResults, setEditLocationResults] = useState<GeoResult[]>([]);
   const [editLocationSearching, setEditLocationSearching] = useState(false);
@@ -298,6 +299,7 @@ export default function GardenScreen() {
     setEditCols(selectedGarden.cols);
     setEditLayout(layoutFromGarden(selectedGarden));
     setEditStep('size');
+    setEditYear(selectedGarden.year ?? new Date().getFullYear());
     setEditLocationQuery('');
     setEditLocationResults([]);
     const savedLoc = selectedGarden.location_json
@@ -367,6 +369,7 @@ export default function GardenScreen() {
         cols: editCols,
         layout: JSON.stringify(editLayout),
         location_json: editSelectedLocation ? JSON.stringify(editSelectedLocation) : null,
+        year: editYear,
       });
       if (editSelectedLocation) {
         await saveGardenLocation(selectedGarden.id, editSelectedLocation);
@@ -514,6 +517,9 @@ export default function GardenScreen() {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <Text style={[styles.gardenName, { color: textPrim }]}>{garden.name}</Text>
+              <View style={[styles.yearBadge, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}>
+                <Text style={[styles.yearBadgeText, { color: textPrim }]}>{garden.year ?? new Date().getFullYear()}</Text>
+              </View>
               {sharedEntry && (
                 <View style={styles.sharedBadge}>
                   <Text style={styles.sharedBadgeText}>🤝 Shared</Text>
@@ -523,6 +529,7 @@ export default function GardenScreen() {
             <Text style={[styles.gardenMeta, { color: textSec }]}>
               {SUN_EMOJIS[garden.sun_exposure as SunRequirement]}{' '}
               {SUN_LABELS[garden.sun_exposure as SunRequirement]} · {garden.rows}×{garden.cols}
+              {` · ${garden.year ?? new Date().getFullYear()}`}
               {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
             </Text>
           </View>
@@ -721,6 +728,21 @@ export default function GardenScreen() {
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowEditGarden(false)} />
           <View style={[styles.modal, { paddingTop: 12, maxHeight: '85%', backgroundColor: cardBg }]}>
             <View style={styles.modalHandle} />
+
+            {/* Year selector — always visible at top of edit modal */}
+            <View style={[styles.editYearRow, { borderBottomColor: border }]}>
+              <Text style={[styles.editYearLabel, { color: textSec }]}>Season Year</Text>
+              <View style={styles.editYearControls}>
+                <TouchableOpacity style={styles.editYearBtn} onPress={() => setEditYear(y => y - 1)}>
+                  <Text style={[styles.stepBtnText, { color: textPrim }]}>−</Text>
+                </TouchableOpacity>
+                <Text style={[styles.editYearValue, { color: textPrim }]}>{editYear}</Text>
+                <TouchableOpacity style={styles.editYearBtn} onPress={() => setEditYear(y => y + 1)}>
+                  <Text style={[styles.stepBtnText, { color: textPrim }]}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <View style={[styles.editStepTabs, { backgroundColor: isDark ? colors.bgElement : G.foam }]}>
               {(['size', 'shape', 'sun', 'location'] as const).map((s, i) => (
                 <TouchableOpacity
@@ -1336,6 +1358,14 @@ const styles = StyleSheet.create({
 
   sharedBadge:    { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   sharedBadgeText:{ fontSize: 11, color: '#1971c2', fontWeight: '600' },
+  yearBadge:      { borderRadius: R.full, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1 },
+  yearBadgeText:  { fontSize: 13, fontWeight: '700' },
+  // Edit modal year row
+  editYearRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, marginBottom: 12, borderBottomWidth: 1 },
+  editYearLabel:  { fontSize: 14, fontWeight: '600' },
+  editYearControls:{ flexDirection: 'row', alignItems: 'center', gap: 16 },
+  editYearBtn:    { width: 34, height: 34, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
+  editYearValue:  { fontSize: 22, fontWeight: '800', minWidth: 56, textAlign: 'center' },
   gridContainer:  { padding: 16, paddingBottom: 40 },
   gridWrapper:    { alignItems: 'center', marginBottom: 12 },
   gardenHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
