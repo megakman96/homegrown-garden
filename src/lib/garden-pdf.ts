@@ -106,7 +106,7 @@ function buildGridPage(garden: Garden, allPlants: Plant[], layout: GardenLayout 
       <div>
         <h1 style="margin:0;font-size:30px;color:${GREEN};letter-spacing:-0.5px">${garden.name}</h1>
         <p style="margin:4px 0 0;font-size:13px;color:${STONE}">
-          Garden Grid Report &nbsp;·&nbsp; ${garden.rows} × ${garden.cols} tiles &nbsp;·&nbsp; ${plants.length} plant${plants.length !== 1 ? 's' : ''} placed &nbsp;·&nbsp; Generated ${new Date().toLocaleDateString()}
+          Garden Plan &nbsp;·&nbsp; ${garden.rows} × ${garden.cols} tiles &nbsp;·&nbsp; ${plants.length} plant${plants.length !== 1 ? 's' : ''} placed &nbsp;·&nbsp; Printed ${new Date().toLocaleDateString()}
         </p>
       </div>
       <div style="font-size:36px;line-height:1">🌱</div>
@@ -168,7 +168,7 @@ function buildPlantPage(plant: Plant, index: number, total: number): string {
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-size:11px;color:${STONE}">Plant ${index + 1} of ${total}</div>
-      <div style="font-size:11px;color:${STONE};font-style:italic">${plant.garden_id ? 'Garden report' : ''}</div>
+      <div style="font-size:11px;color:${STONE};font-style:italic">${plant.garden_id ? 'Plant card' : ''}</div>
     </div>
 
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
@@ -312,7 +312,7 @@ export function buildGardenReportHtml(garden: Garden, plants: Plant[], layout: G
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${garden.name} — GardenGrid Report</title>
+  <title>${garden.name} — GardenGrid Garden Plan</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: white; }
@@ -336,7 +336,7 @@ function buildSinglePlantHtml(plant: Plant): string {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${plant.name} — GardenGrid Plant Report</title>
+  <title>${plant.name} — GardenGrid Plant Card</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: white; }
@@ -355,7 +355,7 @@ export async function generateSinglePlantPdf(plant: Plant): Promise<void> {
 
   if (Platform.OS === 'web') {
     const win = window.open('', '_blank');
-    if (!win) { Alert.alert('Blocked', 'Allow popups to open the plant report.'); return; }
+    if (!win) { Alert.alert('Blocked', 'Allow popups to print the plant card.'); return; }
     win.document.write(html);
     win.document.close();
     setTimeout(() => win.print(), 400);
@@ -373,7 +373,7 @@ export async function generateSinglePlantPdf(plant: Plant): Promise<void> {
       await Print.printAsync({ uri });
     }
   } catch (e: any) {
-    Alert.alert('PDF Error', e?.message ?? 'Could not generate plant report.');
+    Alert.alert('Print Error', e?.message ?? 'Could not print plant card.');
   }
 }
 
@@ -386,7 +386,7 @@ export async function generateGardenPdf(
 
   if (Platform.OS === 'web') {
     const win = window.open('', '_blank');
-    if (!win) { Alert.alert('Blocked', 'Allow popups to open the PDF report.'); return; }
+    if (!win) { Alert.alert('Blocked', 'Allow popups to print the garden plan.'); return; }
     win.document.write(html);
     win.document.close();
     // Small delay so styles render before print dialog
@@ -405,6 +405,6 @@ export async function generateGardenPdf(
       await Print.printAsync({ uri });
     }
   } catch (e: any) {
-    Alert.alert('PDF Error', e?.message ?? 'Could not generate report.');
+    Alert.alert('Print Error', e?.message ?? 'Could not print garden plan.');
   }
 }

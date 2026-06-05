@@ -15,7 +15,7 @@ import {
 
 const FEATURES = [
   { emoji: '🌻', label: 'Unlimited gardens', sub: 'Plan as many seasons as you want' },
-  { emoji: '📄', label: 'PDF garden reports', sub: 'Detailed per-plant reports, printable' },
+  { emoji: '📄', label: 'Print garden plans', sub: 'Printable grid layout + per-plant cards' },
   { emoji: '🌦️', label: 'Weather-aware watering', sub: 'Rain forecasts adjust your schedule' },
   { emoji: '🤝', label: 'Garden sharing', sub: 'Collaborate with family & friends' },
   { emoji: '📅', label: 'Season planner', sub: 'Frost dates, sow dates, harvest calendar' },

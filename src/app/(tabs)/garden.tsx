@@ -785,7 +785,7 @@ export default function GardenScreen() {
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setReportPreview(null)} />
           <View style={[styles.modal, { paddingTop: 12, maxHeight: '88%', backgroundColor: cardBg }]}>
             <View style={styles.modalHandle} />
-            <Text style={[styles.modalTitle, { color: textPrim }]}>📄 Garden Report Preview</Text>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>📄 Print Garden Plan</Text>
             <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 12 }]}>
               {reportPreview?.garden.name} · {reportPreview?.garden.year ?? new Date().getFullYear()}
             </Text>
@@ -853,7 +853,7 @@ export default function GardenScreen() {
                   }
                 }}
               >
-                <Text style={styles.buttonText}>{generatingReport ? 'Generating…' : '📄 Generate Report'}</Text>
+                <Text style={styles.buttonText}>{generatingReport ? 'Printing…' : '📄 Print Garden Plan'}</Text>
               </TouchableOpacity>
             </View>
           </View>

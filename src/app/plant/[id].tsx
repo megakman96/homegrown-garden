@@ -285,7 +285,7 @@ export default function PlantDetailScreen() {
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionButton} onPress={() => generateSinglePlantPdf(plant)}>
           <Text style={styles.actionEmoji}>📄</Text>
-          <Text style={styles.actionText}>Print Report</Text>
+          <Text style={styles.actionText}>Print Plant Card</Text>
         </TouchableOpacity>
         {photos.length === 0 && (
           <TouchableOpacity style={styles.actionButton} onPress={addPhoto} disabled={uploading}>
