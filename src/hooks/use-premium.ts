@@ -1,31 +1,31 @@
 import { useState, useEffect } from 'react';
 import { checkPremium } from '@/lib/subscription';
+import { subscribe, emit } from '@/lib/events';
 
 export const FREE_LIMITS = {
   gardens: 1,
   plants: 15,
 };
 
-let cached: boolean | null = null;
+// Bust and re-broadcast after any successful purchase/redemption
+export function notifyPremiumChanged() {
+  emit('premium:changed');
+}
 
 export function usePremium() {
-  const [isPremium, setIsPremium] = useState<boolean>(cached ?? false);
-  const [loading, setLoading] = useState(cached === null);
+  const [isPremium, setIsPremium] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (cached !== null) { setIsPremium(cached); setLoading(false); return; }
-    checkPremium().then(p => {
-      cached = p;
-      setIsPremium(p);
-      setLoading(false);
-    });
-  }, []);
-
-  // Call after a successful purchase to bust the cache
-  function refresh() {
-    cached = null;
-    checkPremium().then(p => { cached = p; setIsPremium(p); });
+  function recheck() {
+    checkPremium().then(p => { setIsPremium(p); setLoading(false); });
   }
 
-  return { isPremium, loading, refresh };
+  useEffect(() => {
+    recheck();
+    // Re-run whenever a purchase/redemption succeeds anywhere in the app
+    const unsub = subscribe('premium:changed', recheck);
+    return unsub;
+  }, []);
+
+  return { isPremium, loading };
 }

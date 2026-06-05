@@ -12,6 +12,7 @@ import {
   getOfferings, purchasePackage, restorePurchases,
   checkPremium, redeemPromoCode,
 } from '@/lib/subscription';
+import { notifyPremiumChanged } from '@/hooks/use-premium';
 
 const FEATURES = [
   { emoji: '🌻', label: 'Unlimited gardens', sub: 'Plan as many seasons as you want' },
@@ -65,6 +66,7 @@ export default function SubscriptionScreen() {
       const success = await purchasePackage(pkg);
       if (success) {
         setIsPremium(true);
+        notifyPremiumChanged();
         Alert.alert('🎉 Welcome to GardenGrid Pro!', 'Enjoy all premium features. Happy growing!');
         router.back();
       }
@@ -81,6 +83,7 @@ export default function SubscriptionScreen() {
       const success = await restorePurchases();
       if (success) {
         setIsPremium(true);
+        notifyPremiumChanged();
         Alert.alert('Restored!', 'Your premium access has been restored.');
         router.back();
       } else {
@@ -101,6 +104,7 @@ export default function SubscriptionScreen() {
     Alert.alert(result.success ? '✅ Success' : '❌ Invalid Code', result.message);
     if (result.success) {
       setIsPremium(true);
+      notifyPremiumChanged();
       setPromoCode('');
       setShowPromo(false);
       setTimeout(() => router.back(), 800);
