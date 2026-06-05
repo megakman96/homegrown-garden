@@ -9,8 +9,9 @@ import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit, type WaterTime } from '@/contexts/theme-context';
 import { clearActivityLogAsync } from '@/lib/activity-log';
-import { checkPremium } from '@/lib/subscription';
+import { usePremium } from '@/hooks/use-premium';
 import NotificationSettingsUI from '@/components/ui/NotificationSettings';
+import UpgradePrompt from '@/components/ui/UpgradePrompt';
 import type { Garden, GardenShare } from '@/lib/types';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
@@ -36,12 +37,10 @@ export default function ProfileScreen() {
   const [shareEmail, setShareEmail] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [wipingData, setWipingData] = useState(false);
-  const [isPremium, setIsPremium] = useState(false);
+  const { isPremium } = usePremium();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const isAdmin = user?.email === ADMIN_EMAIL && Platform.OS === 'web';
-
-  useEffect(() => { checkPremium().then(setIsPremium); }, []);
 
   // Settings edit state
   const displayName = (pb.authStore.model as any)?.name ?? user?.email?.split('@')[0] ?? '';
@@ -225,8 +224,11 @@ export default function ProfileScreen() {
     <View style={isDesktop ? styles.desktopCard : styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>🌿 Shared Gardens</Text>
-        <TouchableOpacity onPress={() => setShowShare(true)}>
-          <Text style={styles.shareLink}>+ Share</Text>
+        <TouchableOpacity onPress={() => {
+          if (!isPremium) { router.push('/subscription' as any); return; }
+          setShowShare(true);
+        }}>
+          <Text style={styles.shareLink}>{isPremium ? '+ Share' : '🔒 Share'}</Text>
         </TouchableOpacity>
       </View>
       {shares.length === 0 ? (
@@ -461,15 +463,18 @@ export default function ProfileScreen() {
       {/* Notifications — collapsed behind a button */}
       <TouchableOpacity
         style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
-        onPress={() => setShowNotifications(v => !v)}
+        onPress={() => {
+          if (!isPremium) { router.push('/subscription' as any); return; }
+          setShowNotifications(v => !v);
+        }}
       >
-        <Text style={styles.collapsibleEmoji}>🔔</Text>
+        <Text style={styles.collapsibleEmoji}>{isPremium ? '🔔' : '🔒'}</Text>
         <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>Notification Settings</Text>
         <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
-          {showNotifications ? '▲' : '▼'}
+          {isPremium ? (showNotifications ? '▲' : '▼') : 'Pro'}
         </Text>
       </TouchableOpacity>
-      {showNotifications && <NotificationSettingsUI />}
+      {showNotifications && isPremium && <NotificationSettingsUI />}
 
       {sharesSection}
 

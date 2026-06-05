@@ -7,6 +7,8 @@ import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { usePremium } from '@/hooks/use-premium';
+import UpgradePrompt from '@/components/ui/UpgradePrompt';
 import { useAppTheme, formatTemp, type TempUnit } from '@/contexts/theme-context';
 import type { Plant, Garden } from '@/lib/types';
 import {
@@ -27,6 +29,7 @@ interface PlantWithAdvice {
 export default function ScheduleScreen() {
   const { user } = useAuth();
   const { isDesktop } = useBreakpoint();
+  const { isPremium } = usePremium();
   const { tempUnit, isDark, colors } = useAppTheme();
   const bg      = isDark ? colors.bg        : '#f0f7ee';
   const cardBg  = isDark ? colors.bgCard    : '#fff';
@@ -250,7 +253,10 @@ export default function ScheduleScreen() {
             📍 {group.locationName}
           </Text>
         </View>
-        <WeatherWidget weather={group.weather} loading={group.loading} tempUnit={tempUnit} />
+        {isPremium
+          ? <WeatherWidget weather={group.weather} loading={group.loading} tempUnit={tempUnit} />
+          : <UpgradePrompt compact message="Weather-aware watering is a Pro feature" />
+        }
         {group.gardens.map(g => renderGardenItems(g))}
       </View>
     );
@@ -269,7 +275,10 @@ export default function ScheduleScreen() {
             <Text style={[styles.gardenName, { color: textPrim }]}>🌻 {garden.name}</Text>
           </View>
         </View>
-        <WeatherWidget weather={null} loading={false} tempUnit={tempUnit} />
+        {isPremium
+          ? <WeatherWidget weather={null} loading={false} tempUnit={tempUnit} />
+          : <UpgradePrompt compact message="Weather-aware watering is a Pro feature" />
+        }
         {overdue.length > 0 && (
           <Section title={`🔴 Overdue (${overdue.length})`}>
             {overdue.map((item, i) => (

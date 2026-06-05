@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
+import { getPlantIcon } from '@/lib/plant-icons';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
@@ -234,6 +235,37 @@ export default function DashboardScreen() {
     </FadeInView>
   );
 
+  // Harvest summary — group harvested plants by name
+  const harvestedPlants = plants.filter(p => p.health_status === 'harvested');
+  const harvestGroups = harvestedPlants.reduce<Record<string, { count: number; totalGrams: number; emoji: string }>>((acc, p) => {
+    const key = p.name;
+    if (!acc[key]) acc[key] = { count: 0, totalGrams: 0, emoji: getPlantIcon(p.name).emoji };
+    acc[key].count++;
+    acc[key].totalGrams += p.total_yield_grams ?? 0;
+    return acc;
+  }, {});
+  const harvestSummaryItems = Object.entries(harvestGroups).sort((a, b) => b[1].count - a[1].count);
+
+  const harvestSummary = harvestSummaryItems.length > 0 && (
+    <FadeInView delay={220} from="bottom" style={[styles.section, isDesktop && styles.sectionDesktop]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>🧺 Total Harvest</Text>
+      <View style={styles.harvestGrid}>
+        {harvestSummaryItems.map(([name, { count, totalGrams, emoji }]) => (
+          <View key={name} style={[styles.harvestChip, { backgroundColor: cardBg, borderColor }]}>
+            <Text style={styles.harvestChipEmoji}>{emoji}</Text>
+            <View>
+              <Text style={[styles.harvestChipName, { color: textPrimary }]} numberOfLines={1}>{name}</Text>
+              <Text style={[styles.harvestChipSub, { color: textSecondary }]}>
+                {count === 1 ? '1 plant' : `${count} plants`}
+                {totalGrams > 0 ? ` · ${totalGrams >= 1000 ? `${(totalGrams / 1000).toFixed(1)}kg` : `${totalGrams}g`}` : ''}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </FadeInView>
+  );
+
   // Empty state
   const emptyState = !loading && plants.length === 0 && (
     <FadeInView delay={120} from="scale" style={styles.empty}>
@@ -262,6 +294,7 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.desktopCol}>
               {harvestSection}
+              {harvestSummary}
             </View>
           </View>
         </View>
@@ -277,6 +310,7 @@ export default function DashboardScreen() {
       {statsRow}
       {waterSection}
       {harvestSection}
+      {harvestSummary}
       {emptyState}
       <View style={{ height: 32 }} />
     </ScrollView>
@@ -349,6 +383,13 @@ const styles = StyleSheet.create({
   taskBadge:      { borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 5, marginRight: 12 },
   taskBadgeText:  { fontSize: 12, color: G.hunter, fontWeight: '700' },
   moreTasks:      { fontSize: 13, textAlign: 'center', marginTop: 4 },
+
+  // Harvest summary
+  harvestGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  harvestChip:      { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, padding: 10, minWidth: '47%', flex: 1 },
+  harvestChipEmoji: { fontSize: 22 },
+  harvestChipName:  { fontSize: 13, fontWeight: '700', maxWidth: 100 },
+  harvestChipSub:   { fontSize: 11, marginTop: 1 },
 
   // Empty
   empty:          { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },

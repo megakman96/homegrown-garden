@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
+import { usePremium, FREE_LIMITS } from '@/hooks/use-premium';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
@@ -64,6 +65,7 @@ export default function GardenScreen() {
   const border     = isDark ? colors.border    : '#b7e4c7';
   const inputBg    = isDark ? colors.bgElement : '#f0f7ee';
   const router = useRouter();
+  const { isPremium } = usePremium();
   const { width: screenWidth } = useWindowDimensions();
   const flatListRef = useRef<FlatList>(null);
   const arrowPulse = useRef(new Animated.Value(1)).current;
@@ -275,6 +277,12 @@ export default function GardenScreen() {
 
   async function placePlant() {
     if (!user || !selectedGarden || !placement || !placeName.trim()) return;
+    const totalPlants = Object.values(plantsMap).reduce((sum, arr) => sum + arr.length, 0);
+    if (!isPremium && totalPlants >= FREE_LIMITS.plants) {
+      setPlacement(null);
+      router.push('/subscription' as any);
+      return;
+    }
     const data = await pb.collection('plants').create({
       user_id: user.id,
       garden_id: selectedGarden.id,
@@ -564,10 +572,14 @@ export default function GardenScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerActionsScroll}>
             <View style={styles.headerActions}>
               <GardenBtn emoji="📋" label="History" onPress={openHistory} />
-              <GardenBtn emoji="🗓️" label="Plan" onPress={() => setShowPlan(true)} />
-              <GardenBtn emoji="📄" label="Report"
-                onPress={() => setReportPreview({ garden, plants: pagePlants, layout: pageGardenLayout })}
-              />
+              <GardenBtn emoji="🗓️" label="Plan" onPress={() => {
+                if (!isPremium) { router.push('/subscription' as any); return; }
+                setShowPlan(true);
+              }} />
+              <GardenBtn emoji="📄" label="Print" onPress={() => {
+                if (!isPremium) { router.push('/subscription' as any); return; }
+                setReportPreview({ garden, plants: pagePlants, layout: pageGardenLayout });
+              }} />
               {isOwned && (
                 <>
                   <GardenBtn emoji="✏️" label="Edit" onPress={openEditGarden} />
@@ -688,9 +700,17 @@ export default function GardenScreen() {
             </View>
             <TouchableOpacity
               style={[styles.newGardenBtn, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}
-              onPress={() => router.push('/new-garden')}
+              onPress={() => {
+                if (!isPremium && allGardens.length >= FREE_LIMITS.gardens) {
+                  router.push('/subscription' as any);
+                } else {
+                  router.push('/new-garden');
+                }
+              }}
             >
-              <Text style={[styles.newGardenText, { color: isDark ? colors.text : G.forest }]}>＋ New</Text>
+              <Text style={[styles.newGardenText, { color: isDark ? colors.text : G.forest }]}>
+                {!isPremium && allGardens.length >= FREE_LIMITS.gardens ? '🔒 New' : '＋ New'}
+              </Text>
             </TouchableOpacity>
           </View>
 
