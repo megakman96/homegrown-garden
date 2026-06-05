@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { getPlantIcon } from '@/lib/plant-icons';
+import ProBanner from '@/components/ui/ProBanner';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
@@ -297,6 +298,7 @@ export default function DashboardScreen() {
               {harvestSummary}
             </View>
           </View>
+          <ProBanner />
         </View>
       </ScrollView>
     );
@@ -312,6 +314,7 @@ export default function DashboardScreen() {
       {harvestSection}
       {harvestSummary}
       {emptyState}
+      <ProBanner />
       <View style={{ height: 32 }} />
     </ScrollView>
   );

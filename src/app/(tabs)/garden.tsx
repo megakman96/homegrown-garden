@@ -29,6 +29,7 @@ import {
 import type { CatalogEntry } from '@/lib/plant-catalog';
 import { getActivityLogAsync, type ActivityEntry } from '@/lib/activity-log';
 import { generateGardenPdf } from '@/lib/garden-pdf';
+import ProBanner from '@/components/ui/ProBanner';
 import {
   fetchWeather, searchCity, saveGardenLocation, saveLocation, loadGardenLocation,
   type Location, type GeoResult,
@@ -649,6 +650,7 @@ export default function GardenScreen() {
           </View>
         </View>
         <Text style={styles.hint}>Tap empty cell to plant · Tap plant for options</Text>
+        <ProBanner />
       </ScrollView>
     );
   }
