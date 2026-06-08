@@ -32,7 +32,8 @@ import {
   PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS, searchPlants,
 } from '@/lib/plant-catalog';
 import type { CatalogEntry } from '@/lib/plant-catalog';
-import { getActivityLogAsync, type ActivityEntry } from '@/lib/activity-log';
+import { getActivityLogAsync, addActivityEntryAsync, type ActivityEntry } from '@/lib/activity-log';
+import * as ImagePicker from 'expo-image-picker';
 import { generateGardenPdf } from '@/lib/garden-pdf';
 import ProBanner from '@/components/ui/ProBanner';
 import {
@@ -142,6 +143,11 @@ export default function GardenScreen() {
 
   // Plant action sheet (tap on planted tile)
   const [plantAction, setPlantAction] = useState<Plant | null>(null);
+  const [showGardenHarvest, setShowGardenHarvest] = useState(false);
+  const [gardenHarvestCount, setGardenHarvestCount] = useState(1);
+  const [gardenHarvestNotes, setGardenHarvestNotes] = useState('');
+  const [savingGardenHarvest, setSavingGardenHarvest] = useState(false);
+  const [gardenUploading, setGardenUploading] = useState(false);
 
   // Plan modal
   const [showPlan, setShowPlan] = useState(false);
@@ -390,6 +396,95 @@ export default function GardenScreen() {
     setPlacement(null);
     setPlaceSelected(false);
     setCatalogueSearch('');
+  }
+
+  // ── Plant quick actions (from grid tile) ─────────────────────────────────
+
+  async function gardenMarkWatered() {
+    if (!plantAction || !user) return;
+    const now = new Date().toISOString();
+    const id = plantAction.id;
+    const gardenId = plantAction.garden_id;
+    await offlineUpdate('plants', user.id, id, { last_watered: now });
+    setPlantsMap(prev => ({
+      ...prev,
+      [gardenId]: (prev[gardenId] ?? []).map(p => p.id === id ? { ...p, last_watered: now } : p),
+    }));
+    addActivityEntryAsync(user.id, { type: 'water', plantId: id, plantName: plantAction.name, gardenId });
+    setPlantAction(null);
+    Alert.alert('Watered! 💧', `${plantAction.name} marked as watered.`);
+  }
+
+  async function gardenLogHarvest() {
+    if (!user || !plantAction || gardenHarvestCount < 1 || savingGardenHarvest) return;
+    setSavingGardenHarvest(true);
+    const plant = plantAction;
+    try {
+      const autoNote = `${gardenHarvestCount} piece${gardenHarvestCount !== 1 ? 's' : ''} harvested`;
+      const notes = gardenHarvestNotes.trim() || autoNote;
+      await offlineCreate('harvests', user.id, {
+        plant_id: plant.id, user_id: user.id, yield_grams: gardenHarvestCount, notes,
+      });
+      addActivityEntryAsync(user.id, {
+        type: 'harvest', plantId: plant.id, plantName: plant.name,
+        gardenId: plant.garden_id, grams: gardenHarvestCount, notes,
+      });
+      setShowGardenHarvest(false);
+      setPlantAction(null);
+      setGardenHarvestCount(1);
+      setGardenHarvestNotes('');
+      Alert.alert('Logged! 🧺', `${gardenHarvestCount} piece${gardenHarvestCount !== 1 ? 's' : ''} of ${plant.name} saved.`);
+    } catch (e: any) {
+      Alert.alert('Could not save harvest', e?.message ?? 'Please try again.');
+    } finally {
+      setSavingGardenHarvest(false);
+    }
+  }
+
+  async function gardenAddPhoto() {
+    if (!user || !plantAction) return;
+    Alert.alert('Log Progress Photo', 'How would you like to add a photo?', [
+      {
+        text: '📷 Take Photo',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') { Alert.alert('Permission needed', 'Camera access is required.'); return; }
+          const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+          if (!result.canceled && result.assets[0]) gardenUploadPhoto(result.assets[0].uri);
+        },
+      },
+      {
+        text: '🖼️ Choose from Library',
+        onPress: async () => {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') { Alert.alert('Permission needed', 'Photo library access is required.'); return; }
+          const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 0.8 });
+          if (!result.canceled && result.assets[0]) gardenUploadPhoto(result.assets[0].uri);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  async function gardenUploadPhoto(uri: string) {
+    if (!user || !plantAction) return;
+    const plant = plantAction;
+    setGardenUploading(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const formData = new FormData();
+      formData.append('photo', blob as any, `photo_${Date.now()}.jpg`);
+      formData.append('plant_id', plant.id);
+      formData.append('user_id', user.id);
+      await pb.collection('plant_photos').create(formData);
+      setPlantAction(null);
+      Alert.alert('Saved! 📷', `Progress photo logged for ${plant.name}.`);
+    } catch (e: any) {
+      Alert.alert('Upload failed', e?.message ?? 'Unknown error');
+    } finally {
+      setGardenUploading(false);
+    }
   }
 
   // ── Plant action handlers ─────────────────────────────────────────────────
@@ -1095,17 +1190,36 @@ export default function GardenScreen() {
       </Modal>
 
       {/* ── Plant Action Sheet ─────────────────────────────────────────── */}
-      <Modal visible={!!plantAction} transparent animationType="slide">
+      <Modal visible={!!plantAction && !showGardenHarvest} transparent animationType="slide">
         <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
           {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlantAction(null)} />}
           <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
             {!isDesktop && <View style={styles.modalHandle} />}
             <Text style={[styles.modalTitle, { color: textPrim }]}>{plantAction?.name ?? ''}</Text>
-            <Text style={[styles.fieldLabel, { marginBottom: 16, color: textSec }]}>
+            <Text style={[styles.fieldLabel, { marginBottom: 14, color: textSec }]}>
               {plantAction?.health_status?.replace('_', ' ')} · {plantAction?.sun_requirement?.replace('_', ' ')}
+              {plantAction?.quantity != null && plantAction.quantity > 1 ? ` · ${plantAction.quantity} plants` : ''}
             </Text>
 
-            <TouchableOpacity style={[styles.actionRow, { borderBottomColor: isDark ? colors.border : undefined }]} onPress={() => {
+            {/* Quick actions — same UI as plant details screen */}
+            <View style={[styles.tileActionsBar, { borderColor: border }]}>
+              <TouchableOpacity style={styles.tileActionBtn} onPress={gardenMarkWatered}>
+                <Text style={styles.tileActionEmoji}>💧</Text>
+                <Text style={[styles.tileActionLabel, { color: textPrim }]}>Water</Text>
+              </TouchableOpacity>
+              <View style={[styles.tileActionDivider, { backgroundColor: border }]} />
+              <TouchableOpacity style={styles.tileActionBtn} onPress={() => setShowGardenHarvest(true)}>
+                <Text style={styles.tileActionEmoji}>🧺</Text>
+                <Text style={[styles.tileActionLabel, { color: textPrim }]}>Harvest</Text>
+              </TouchableOpacity>
+              <View style={[styles.tileActionDivider, { backgroundColor: border }]} />
+              <TouchableOpacity style={styles.tileActionBtn} onPress={gardenAddPhoto} disabled={gardenUploading}>
+                <Text style={styles.tileActionEmoji}>{gardenUploading ? '⏳' : '📷'}</Text>
+                <Text style={[styles.tileActionLabel, { color: textPrim }]}>Progress</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={[styles.actionRow, { borderBottomColor: isDark ? colors.border : undefined, marginTop: 8 }]} onPress={() => {
               const p = plantAction; setPlantAction(null);
               if (p) router.push(`/plant/${p.id}`);
             }}>
@@ -1120,6 +1234,51 @@ export default function GardenScreen() {
             <TouchableOpacity onPress={() => setPlantAction(null)} style={styles.actionCancel}>
               <Text style={[styles.cancelText, { color: textSec }]}>Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Garden Harvest Modal ───────────────────────────────────────── */}
+      <Modal visible={showGardenHarvest} transparent animationType="slide">
+        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowGardenHarvest(false)} />}
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
+            <Text style={[styles.modalTitle, { color: textPrim }]}>🧺 Log Harvest — {plantAction?.name ?? ''}</Text>
+
+            <View style={styles.harvestStepper}>
+              <TouchableOpacity style={styles.harvestStepBtn} onPress={() => setGardenHarvestCount(v => Math.max(1, v - 1))}>
+                <Text style={styles.harvestStepBtnText}>−</Text>
+              </TouchableOpacity>
+              <View style={styles.harvestStepValueWrap}>
+                <Text style={[styles.harvestStepValue, { color: textPrim }]}>{gardenHarvestCount}</Text>
+                <Text style={[styles.harvestStepUnit, { color: textSec }]}>{gardenHarvestCount === 1 ? 'piece' : 'pieces'}</Text>
+              </View>
+              <TouchableOpacity style={styles.harvestStepBtn} onPress={() => setGardenHarvestCount(v => v + 1)}>
+                <Text style={styles.harvestStepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+              placeholder="Notes (optional)"
+              placeholderTextColor={textSec}
+              value={gardenHarvestNotes}
+              onChangeText={setGardenHarvestNotes}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowGardenHarvest(false)} disabled={savingGardenHarvest}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, savingGardenHarvest && { opacity: 0.5 }]}
+                onPress={gardenLogHarvest}
+                disabled={savingGardenHarvest}
+              >
+                <Text style={styles.confirmBtnText}>{savingGardenHarvest ? 'Saving…' : 'Log Harvest'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -2083,4 +2242,27 @@ const styles = StyleSheet.create({
   stepBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#d8f3dc', justifyContent: 'center', alignItems: 'center' },
   stepBtnText: { fontSize: 18, fontWeight: '700', color: '#2d6a4f', lineHeight: 20 },
   stepValue: { fontSize: 15, fontWeight: '600', color: '#1b4332', minWidth: 60, textAlign: 'center' },
+
+  // Tile quick actions bar
+  tileActionsBar: {
+    flexDirection: 'row', borderRadius: R.lg, borderWidth: 1,
+    overflow: 'hidden', marginBottom: 4,
+  },
+  tileActionBtn:      { flex: 1, paddingVertical: 14, alignItems: 'center', gap: 4 },
+  tileActionDivider:  { width: 1, marginVertical: 10 },
+  tileActionEmoji:    { fontSize: 20 },
+  tileActionLabel:    { fontSize: 11, fontWeight: '600', textAlign: 'center' },
+
+  // Garden harvest modal stepper
+  harvestStepper:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 20 },
+  harvestStepBtn:     { width: 48, height: 48, borderRadius: 24, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
+  harvestStepBtnText: { fontSize: 26, fontWeight: '300', color: G.hunter, lineHeight: 30 },
+  harvestStepValueWrap:{ alignItems: 'center', minWidth: 90 },
+  harvestStepValue:   { fontSize: 36, fontWeight: '800' },
+  harvestStepUnit:    { fontSize: 13, marginTop: 2 },
+  modalInput: {
+    borderRadius: R.md, padding: 14, fontSize: 16, borderWidth: 1.5, marginBottom: 12,
+  },
+  confirmBtn:     { backgroundColor: G.hunter, borderRadius: R.md, paddingHorizontal: 24, paddingVertical: 12 },
+  confirmBtnText: { color: G.cloud, fontWeight: '600', fontSize: 15 },
 });

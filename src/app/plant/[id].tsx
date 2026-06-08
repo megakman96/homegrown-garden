@@ -57,6 +57,7 @@ export default function PlantDetailScreen() {
   const [photos, setPhotos] = useState<PlantPhoto[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
+  const [photoLoadError, setPhotoLoadError] = useState<string | null>(null);
   const [wikiImageUrl, setWikiImageUrl] = useState<string | null>(null);
   const [frostInfo, setFrostInfo] = useState<FrostInfo | null>(null);
   const [plantingWindow, setPlantingWindow] = useState<PlantingWindow | null>(null);
@@ -120,14 +121,19 @@ export default function PlantDetailScreen() {
 
     pb.collection('plant_photos')
       .getFullList({ filter: `plant_id = "${id}"`, sort: '-created' })
-      .then((ph) => setPhotos(ph as any))
-      .catch(() => {});
+      .then((ph) => { setPhotos(ph as any); setPhotoLoadError(null); })
+      .catch((e) => setPhotoLoadError(e?.message ?? 'Could not load photos'));
   }, [id]);
 
   useEffect(() => {
     photos.forEach((photo: any) => {
       if (photoUrls[photo.id]) return;
-      setPhotoUrls((prev) => ({ ...prev, [photo.id]: fileUrl(photo, photo.photo) }));
+      // photo field may be string or array (multi-file)
+      const filename: string | undefined = Array.isArray(photo.photo)
+        ? photo.photo[0]
+        : photo.photo;
+      if (!filename) return;
+      setPhotoUrls((prev) => ({ ...prev, [photo.id]: fileUrl(photo, filename) }));
     });
   }, [photos]);
 
@@ -163,7 +169,7 @@ export default function PlantDetailScreen() {
       setHarvests((h) => [data as any, ...h]);
       addActivityEntryAsync(user.id, {
         type: 'harvest', plantId: plant.id, plantName: plant.name,
-        gardenId: plant.garden_id, notes,
+        gardenId: plant.garden_id, grams: harvestCount, notes,
       });
       setShowHarvest(false);
       setHarvestCount(1);
@@ -565,7 +571,9 @@ export default function PlantDetailScreen() {
             <Text style={styles.logProgressBtnText}>{uploading ? '⏳ Uploading…' : '+ Log Progress'}</Text>
           </TouchableOpacity>
         </View>
-        {photos.length > 0 ? (
+        {photoLoadError ? (
+          <Text style={[styles.progressEmpty, { color: '#e03131' }]}>⚠️ {photoLoadError}</Text>
+        ) : photos.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
