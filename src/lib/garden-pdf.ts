@@ -330,6 +330,220 @@ export function buildGardenReportHtml(garden: Garden, plants: Plant[], layout: G
 </html>`;
 }
 
+export function buildSinglePageHtml(garden: Garden, plants: Plant[], layout: GardenLayout | null): string {
+  const placed = plants.filter(p => p.row != null && p.col != null);
+
+  // ── Grid (compact, fits left column ~340px) ────────────────────────────────
+  const cellSize = Math.max(18, Math.min(36, Math.floor(340 / garden.cols)));
+  const gridRows = Array.from({ length: garden.rows }, (_, r) =>
+    `<tr>${Array.from({ length: garden.cols }, (_, c) => {
+      const plant = placed.find(p => p.row === r && p.col === c);
+      const tileState = layout?.[r]?.[c] ?? 'inactive';
+      const isInactive = tileState === 'inactive';
+      const bg = plant ? HEALTH_CSS[plant.health_status] ?? SAGE
+                       : isInactive ? '#e9ecef' : (TILE_CSS[tileState] ?? TILE_CSS.full_sun);
+      const icon = plant ? getPlantIcon(plant.name).emoji : '';
+      return `<td style="
+        width:${cellSize}px;height:${cellSize}px;background:${bg};
+        border:1px solid ${isInactive ? 'transparent' : 'rgba(183,228,199,0.5)'};
+        text-align:center;vertical-align:middle;
+        font-size:${Math.max(9, cellSize * 0.48)}px;line-height:1;
+        opacity:${isInactive ? '0.2' : '1'};border-radius:2px;
+      ">${icon}</td>`;
+    }).join('')}</tr>`
+  ).join('');
+
+  // ── Quick plant list (right of grid) ──────────────────────────────────────
+  const quickList = placed.length
+    ? placed.map(p => {
+        const hc = HEALTH_CSS[p.health_status] ?? SAGE;
+        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid ${MIST}">
+          <span style="font-size:14px;width:18px;text-align:center;flex-shrink:0">${getPlantIcon(p.name).emoji}</span>
+          <div style="flex:1;min-width:0;font-size:11px;font-weight:600;color:${GREEN};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}${p.variety ? ` <span style="font-weight:400;color:${STONE}">${p.variety}</span>` : ''}</div>
+          <span style="font-size:8px;font-weight:700;color:white;background:${hc};border-radius:6px;padding:1px 6px;flex-shrink:0">${p.health_status.replace('_',' ')}</span>
+          <span style="font-size:9px;color:${STONE};flex-shrink:0">R${(p.row ?? 0)+1}C${(p.col ?? 0)+1}</span>
+        </div>`;
+      }).join('')
+    : `<p style="font-size:11px;color:${STONE};font-style:italic">No plants placed yet.</p>`;
+
+  // ── Detailed reference table rows ─────────────────────────────────────────
+  const SUN_ICON: Record<string, string> = { full_sun: '☀️', partial_sun: '⛅', shade: '🌑' };
+  const SUN_SHORT: Record<string, string> = { full_sun: 'Full', partial_sun: 'Partial', shade: 'Shade' };
+
+  const truncate = (names: string[], max = 4) =>
+    names.length <= max
+      ? names.join(', ')
+      : names.slice(0, max).join(', ') + ` +${names.length - max}`;
+
+  const tableRows = placed.map((p, idx) => {
+    const key = findPlantKey(p.name);
+    const info = key ? PLANT_CATALOG[key] : null;
+    const waterDays = p.water_interval_days ?? info?.waterIntervalDays ?? '—';
+    const sunReq = info?.sunRequirement ?? p.sun_requirement ?? 'full_sun';
+    const maturity = info?.daysToMaturity ? `${info.daysToMaturity.min}–${info.daysToMaturity.max}d` : '—';
+    const spacingCm = info?.spacingCm ?? null;
+    const spacingIn = spacingCm ? Math.round(spacingCm / 2.54) : null;
+    const spacing = spacingCm ? `${spacingCm}cm / ${spacingIn}"` : '—';
+    const goodNames = (info?.goodCompanions ?? []).map(keyToName);
+    const badNames  = (info?.badCompanions  ?? []).map(keyToName);
+    const notes = info?.notes ? (info.notes.length > 90 ? info.notes.slice(0, 88) + '…' : info.notes) : '—';
+    const hc = HEALTH_CSS[p.health_status] ?? SAGE;
+    const rowBg = idx % 2 === 0 ? FOAM : CLOUD;
+    const sowText = (() => {
+      if (!info?.daysToMaturity) return '—';
+      const cool = ['lettuce','spinach','kale','broccoli','cabbage','cauliflower','pea','carrot','radish','beet','chard','arugula','bok_choy','collard_greens'].includes(key ?? '');
+      if (cool) return 'Direct sow 4–6 wks before last frost';
+      if ((info.daysToMaturity.min ?? 0) >= 60) return 'Start indoors 6–8 wks before frost; transplant after';
+      return 'Direct sow after last frost';
+    })();
+    const category = info?.category ? `<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:#e9ecef;font-size:7px;text-transform:uppercase;letter-spacing:0.4px;color:${STONE}">${info.category}</span>` : '';
+
+    return `<tr style="background:${rowBg}">
+      <td style="padding:5px 6px;font-size:9px;color:${STONE};text-align:center;font-weight:600;vertical-align:top">${idx + 1}</td>
+      <td style="padding:5px 6px;vertical-align:top">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:14px;line-height:1">${getPlantIcon(p.name).emoji}</span>
+          <div>
+            <div style="font-size:10px;font-weight:700;color:${GREEN}">${p.name}</div>
+            ${p.variety ? `<div style="font-size:8px;color:${STONE}">${p.variety}</div>` : ''}
+            ${category}
+          </div>
+        </div>
+      </td>
+      <td style="padding:5px 6px;text-align:center;vertical-align:top">
+        <span style="font-size:8px;font-weight:700;color:white;background:${hc};border-radius:6px;padding:2px 6px;white-space:nowrap">${p.health_status.replace('_',' ')}</span>
+      </td>
+      <td style="padding:5px 6px;text-align:center;vertical-align:top;font-size:9px;color:${GREEN};font-weight:600">
+        ${SUN_ICON[sunReq] ?? '☀️'} ${SUN_SHORT[sunReq] ?? sunReq}
+      </td>
+      <td style="padding:5px 6px;text-align:center;vertical-align:top;font-size:9px;color:#1971c2;font-weight:600">
+        💧 every ${waterDays}d
+      </td>
+      <td style="padding:5px 6px;text-align:center;vertical-align:top;font-size:9px;color:${STONE}">
+        ${maturity}
+      </td>
+      <td style="padding:5px 6px;text-align:center;vertical-align:top;font-size:9px;color:${STONE}">
+        ${spacing}
+      </td>
+      <td style="padding:5px 6px;vertical-align:top;font-size:8px;color:${STONE}">
+        <div style="font-size:7px;font-weight:700;text-transform:uppercase;color:${STONE};margin-bottom:2px">Sowing</div>
+        ${sowText}
+      </td>
+      <td style="padding:5px 6px;vertical-align:top;font-size:8px;color:#2b8a3e">
+        ${goodNames.length ? truncate(goodNames) : '<span style="color:#adb5bd">—</span>'}
+      </td>
+      <td style="padding:5px 6px;vertical-align:top;font-size:8px;color:#c92a2a">
+        ${badNames.length ? truncate(badNames) : '<span style="color:#adb5bd">—</span>'}
+      </td>
+      <td style="padding:5px 6px;vertical-align:top;font-size:8px;color:${STONE};font-style:italic">
+        ${notes}
+      </td>
+    </tr>`;
+  }).join('');
+
+  // ── Legend ─────────────────────────────────────────────────────────────────
+  const healthLegend = Object.entries(HEALTH_CSS).map(([s, c]) =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;font-size:8px;color:${STONE}">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${c}"></span>${s.replace('_',' ')}
+    </span>`
+  ).join('');
+  const sunLegend = (['full_sun','partial_sun','shade'] as const).map(k =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;font-size:8px;color:${STONE}">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${TILE_CSS[k]}"></span>${SUN_SHORT[k]}
+    </span>`
+  ).join('');
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const healthy   = placed.filter(p => p.health_status === 'healthy').length;
+  const thirsty   = placed.filter(p => p.health_status === 'needs_water').length;
+  const harvested = placed.filter(p => p.health_status === 'harvested').length;
+
+  const th = (label: string) =>
+    `<th style="padding:5px 6px;text-align:left;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${STONE};background:${GREEN};color:white;white-space:nowrap">${label}</th>`;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${garden.name} — GardenGrid Overview</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 20px 28px; font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; background: white; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    @page { margin: 0; size: A4 landscape; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+    <span style="font-size:22px;line-height:1">🌱</span>
+    <div>
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <h1 style="margin:0;font-size:20px;font-weight:800;color:${GREEN};letter-spacing:-0.3px">${garden.name}</h1>
+        <span style="font-size:11px;font-weight:700;color:${FERN};background:${FOAM};border:1.5px solid ${MIST};border-radius:16px;padding:2px 10px">${garden.year ?? new Date().getFullYear()}</span>
+      </div>
+      <p style="margin:0;font-size:10px;color:${STONE}">${garden.rows}×${garden.cols} grid &nbsp;·&nbsp; ${placed.length} plants placed &nbsp;·&nbsp; 🟢 ${healthy} healthy &nbsp;·&nbsp; 💧 ${thirsty} thirsty &nbsp;·&nbsp; 🧺 ${harvested} harvested &nbsp;·&nbsp; Printed ${new Date().toLocaleDateString()}</p>
+    </div>
+    <div style="margin-left:auto;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${STONE}">GardenGrid</div>
+  </div>
+
+  <!-- Gradient divider -->
+  <div style="height:2px;background:linear-gradient(to right,${SAGE},${MIST},transparent);margin-bottom:12px;border-radius:1px"></div>
+
+  <!-- Top section: grid + quick list -->
+  <div style="display:flex;gap:16px;margin-bottom:12px;align-items:flex-start">
+
+    <!-- Garden grid -->
+    <div style="flex:0 0 auto">
+      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:${STONE};margin-bottom:5px">Garden Map</div>
+      <table style="border-collapse:separate;border-spacing:2px">${gridRows}</table>
+    </div>
+
+    <!-- Divider -->
+    <div style="width:1px;background:${MIST};align-self:stretch;flex-shrink:0"></div>
+
+    <!-- Quick plant list -->
+    <div style="flex:1;min-width:0">
+      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:${STONE};margin-bottom:5px">Placed Plants (${placed.length})</div>
+      <div style="columns:2;column-gap:16px">${quickList}</div>
+    </div>
+
+    <!-- Legend block -->
+    <div style="flex:0 0 auto;background:${FOAM};border-radius:8px;padding:10px 12px;border:1px solid ${MIST}">
+      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${STONE};margin-bottom:5px">Health</div>
+      <div style="margin-bottom:8px">${healthLegend}</div>
+      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${STONE};margin-bottom:5px">Sun</div>
+      <div>${sunLegend}</div>
+    </div>
+  </div>
+
+  <!-- Plant reference table -->
+  ${placed.length > 0 ? `
+  <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:${STONE};margin-bottom:5px">Plant Reference Chart</div>
+  <table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden">
+    <thead>
+      <tr>
+        ${th('#')}
+        ${th('Plant')}
+        ${th('Health')}
+        ${th('☀️ Sun')}
+        ${th('💧 Water')}
+        ${th('⏱ Maturity')}
+        ${th('📏 Spacing')}
+        ${th('🌱 Sowing Guide')}
+        ${th('✅ Plant Near')}
+        ${th('❌ Keep Away')}
+        ${th('💡 Growing Notes')}
+      </tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+  </table>` : `<p style="font-size:11px;color:${STONE};font-style:italic;text-align:center;padding:16px">No plants placed — tap tiles in the app to start planting.</p>`}
+
+</body>
+</html>`;
+}
+
 function buildSinglePlantHtml(plant: Plant): string {
   const page = buildPlantPage(plant, 0, 1);
   return `<!DOCTYPE html>
@@ -381,8 +595,11 @@ export async function generateGardenPdf(
   garden: Garden,
   plants: Plant[],
   layout: GardenLayout | null,
+  mode: 'single' | 'full' = 'full',
 ): Promise<void> {
-  const html = buildGardenReportHtml(garden, plants, layout);
+  const html = mode === 'single'
+    ? buildSinglePageHtml(garden, plants, layout)
+    : buildGardenReportHtml(garden, plants, layout);
 
   if (Platform.OS === 'web') {
     const win = window.open('', '_blank');

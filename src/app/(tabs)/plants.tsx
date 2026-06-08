@@ -1,22 +1,24 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Modal, TextInput, Alert, ActivityIndicator,
+  Modal, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
+import { offlineList, offlineOne, offlineCreate } from '@/lib/offline-db';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
+import { layoutFromGarden, TILE_COLORS, TILE_EMOJIS, type GardenLayout } from '@/lib/garden-layout';
 import { useAppTheme } from '@/contexts/theme-context';
 import type { Plant, Garden, HealthStatus } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
 import { Platform } from 'react-native';
-import { PLANT_CATALOG, SUN_EMOJIS, searchPlants } from '@/lib/plant-catalog';
+import { PLANT_CATALOG, SUN_EMOJIS, SUN_LABELS, searchPlants, getSunCompatibility } from '@/lib/plant-catalog';
 import { subscribe } from '@/lib/events';
 import type { CatalogEntry } from '@/lib/plant-catalog';
 import PlantAvatar from '@/components/PlantAvatar';
@@ -50,13 +52,12 @@ export default function PlantsScreen() {
   const loadData = useCallback(async () => {
     if (!user) return;
     const [plantsData, gardensData] = await Promise.all([
-      pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` }),
-      pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }),
-    ]).catch(() => [null, null] as const);
-    if (!plantsData) return;
+      offlineList('plants', user.id, `user_id = "${user.id}"`),
+      offlineList('gardens', user.id, `user_id = "${user.id}"`),
+    ]);
     setPlants(plantsData as any);
     setGardens(gardensData as any ?? []);
-    if ((gardensData as any)?.length) setForm((f) => ({ ...f, gardenId: f.gardenId || (gardensData as any)[0].id }));
+    if (gardensData?.length) setForm((f) => ({ ...f, gardenId: f.gardenId || gardensData[0].id }));
   }, [user]);
 
   // Refresh on focus (catches plants added from garden view on mobile)
@@ -84,6 +85,11 @@ export default function PlantsScreen() {
 
   const [catalogueSelected, setCatalogueSelected] = useState(false);
   const [catalogueSearch, setCatalogueSearch] = useState('');
+  const [step, setStep] = useState<'search' | 'details' | 'tile'>('search');
+  const [tileRow, setTileRow] = useState<number | null>(null);
+  const [tileCol, setTileCol] = useState<number | null>(null);
+  const [gardenPlants, setGardenPlants] = useState<Plant[]>([]);
+  const [gardenLayout, setGardenLayout] = useState<GardenLayout | null>(null);
 
   function selectFromCatalogue(key: string, entry: CatalogEntry) {
     setCatalogueSelected(true);
@@ -103,20 +109,34 @@ export default function PlantsScreen() {
       .sort((a, b) => a.entry.name.localeCompare(b.entry.name));
   }
 
+  async function loadGardenPlants(gardenId: string) {
+    try {
+      const [ps, garden] = await Promise.all([
+        offlineList('plants', user?.id ?? '', `garden_id = "${gardenId}"`),
+        offlineOne('gardens', gardenId),
+      ]);
+      setGardenPlants(ps as any);
+      setGardenLayout(garden ? layoutFromGarden(garden) : null);
+    } catch {
+      setGardenPlants([]);
+      setGardenLayout(null);
+    }
+  }
+
   async function addPlant() {
     if (!user || !form.name.trim()) return;
     setAdding(true);
     try {
       let gardenId = form.gardenId || gardens[0]?.id;
       if (!gardenId) {
-        const newGarden = await pb.collection('gardens').create({
+        const { record: newGarden } = await offlineCreate('gardens', user.id, {
           user_id: user.id, name: 'My Garden', sun_exposure: 'full_sun', rows: 6, cols: 8,
         });
         gardenId = newGarden.id;
         setGardens((g) => [...g, newGarden as any]);
         setForm((f) => ({ ...f, gardenId: newGarden.id }));
       }
-      const data = await pb.collection('plants').create({
+      const { record: data } = await offlineCreate('plants', user.id, {
         user_id: user.id,
         garden_id: gardenId,
         name: form.name.trim(),
@@ -125,12 +145,11 @@ export default function PlantsScreen() {
         sun_requirement: form.sunRequirement,
         water_interval_days: form.waterIntervalDays,
         total_yield_grams: 0,
+        row: tileRow,
+        col: tileCol,
       });
       setPlants((p) => [data as any, ...p]);
-        setShowAdd(false);
-      setCatalogueSelected(false);
-      setCatalogueSearch('');
-      setForm((f) => ({ ...f, name: '', variety: '', sunRequirement: 'full_sun', waterIntervalDays: 3 }));
+      closeAdd();
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not add plant');
     } finally {
@@ -138,10 +157,53 @@ export default function PlantsScreen() {
     }
   }
 
+  function closeAdd() {
+    setShowAdd(false);
+    setCatalogueSelected(false);
+    setCatalogueSearch('');
+    setStep('search');
+    setTileRow(null);
+    setTileCol(null);
+    setGardenPlants([]);
+    setGardenLayout(null);
+    setForm((f) => ({ ...f, name: '', variety: '', sunRequirement: 'full_sun', waterIntervalDays: 3 }));
+  }
+
+  const selectedGarden = gardens.find(g => g.id === form.gardenId);
+  const gridRows = selectedGarden?.rows ?? 6;
+  const gridCols = selectedGarden?.cols ?? 8;
+  const occupiedCells = new Set(
+    gardenPlants.filter(p => p.row != null && p.col != null).map(p => `${p.row},${p.col}`)
+  );
+
   const addModal = (
     <Modal visible={showAdd} transparent animationType="slide">
-      <View style={styles.modalBackdrop}>
-        <View style={[styles.modal, { backgroundColor: cardBg }]}>
+      <KeyboardAvoidingView
+        style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+      >
+        <View style={[styles.modal, { backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+
+          {/* Step indicator */}
+          <View style={styles.stepBar}>
+            {['Plant', 'Details', 'Place'].map((label, i) => {
+              const stepNames = ['search', 'details', 'tile'] as const;
+              const active = step === stepNames[i];
+              const done = (step === 'details' && i === 0) || (step === 'tile' && i <= 1);
+              return (
+                <View key={label} style={styles.stepBarItem}>
+                  <View style={[styles.stepDot, active && styles.stepDotActive, done && styles.stepDotDone]}>
+                    <Text style={[styles.stepDotText, (active || done) && styles.stepDotTextActive]}>
+                      {done ? '✓' : i + 1}
+                    </Text>
+                  </View>
+                  <Text style={[styles.stepLabel, { color: active ? textPrim : textSec }]}>{label}</Text>
+                </View>
+              );
+            })}
+          </View>
+
           <ScrollView
             style={styles.modalScroll}
             contentContainerStyle={styles.modalContent}
@@ -149,11 +211,13 @@ export default function PlantsScreen() {
             bounces={false}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={[styles.modalTitle, { color: textPrim }]}>🌱 Add Plant</Text>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>
+              {step === 'search' ? '🌱 Add Plant' : step === 'details' ? '📋 Details' : '📍 Choose a Tile'}
+            </Text>
 
-            {!catalogueSelected ? (
+            {/* ── Step 1: Catalog search ─────────────────────────────── */}
+            {step === 'search' && (
               <>
-                {/* Search — no autoFocus */}
                 <TextInput
                   style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
                   placeholder="Search plants..."
@@ -166,7 +230,7 @@ export default function PlantsScreen() {
                   <TouchableOpacity
                     key={key}
                     style={[styles.catItem, { borderBottomColor: border }]}
-                    onPress={() => selectFromCatalogue(key, entry)}
+                    onPress={() => { selectFromCatalogue(key, entry); setStep('details'); }}
                   >
                     <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
                     <View style={{ flex: 1 }}>
@@ -178,13 +242,15 @@ export default function PlantsScreen() {
                   </TouchableOpacity>
                 ))}
               </>
-            ) : (
+            )}
+
+            {/* ── Step 2: Details ───────────────────────────────────── */}
+            {step === 'details' && (
               <>
-                {/* Selected plant */}
                 <View style={[styles.selectedRow, { borderBottomColor: border }]}>
                   <Text style={{ fontSize: 26 }}>{getPlantIcon(form.name).emoji}</Text>
                   <Text style={[styles.catItemName, { color: textPrim, flex: 1, fontSize: 18 }]}>{form.name}</Text>
-                  <TouchableOpacity onPress={() => { setCatalogueSelected(false); setForm(f => ({ ...f, name: '' })); }}>
+                  <TouchableOpacity onPress={() => { setCatalogueSelected(false); setForm(f => ({ ...f, name: '' })); setStep('search'); }}>
                     <Text style={{ color: textSec, fontSize: 13, fontWeight: '600' }}>✕ Change</Text>
                   </TouchableOpacity>
                 </View>
@@ -196,58 +262,187 @@ export default function PlantsScreen() {
                   onChangeText={(v) => setForm((f) => ({ ...f, variety: v }))}
                 />
                 <View style={styles.waterRow}>
-                  <Text style={styles.fieldLabel}>Water every</Text>
+                  <Text style={[styles.fieldLabel, { color: textSec }]}>Water every</Text>
                   <View style={styles.waterStepper}>
                     <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.max(1, f.waterIntervalDays - 1) }))}>
                       <Text style={styles.stepBtnText}>−</Text>
                     </TouchableOpacity>
-                    <Text style={styles.stepValue}>{form.waterIntervalDays} days</Text>
+                    <Text style={[styles.stepValue, { color: textPrim }]}>{form.waterIntervalDays} days</Text>
                     <TouchableOpacity style={styles.stepBtn} onPress={() => setForm((f) => ({ ...f, waterIntervalDays: Math.min(30, f.waterIntervalDays + 1) }))}>
                       <Text style={styles.stepBtnText}>+</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
                 {gardens.length > 1 && (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
-                    {gardens.map((g) => (
-                      <TouchableOpacity
-                        key={g.id}
-                        style={[styles.gardenChip, form.gardenId === g.id && styles.gardenChipActive]}
-                        onPress={() => setForm((f) => ({ ...f, gardenId: g.id }))}
-                      >
-                        <Text style={[styles.gardenChipText, form.gardenId === g.id && styles.gardenChipTextActive]}>
-                          {g.name}
-                        </Text>
-                      </TouchableOpacity>
+                  <>
+                    <Text style={[styles.fieldLabel, { color: textSec }]}>Garden</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
+                      {gardens.map((g) => (
+                        <TouchableOpacity
+                          key={g.id}
+                          style={[styles.gardenChip, form.gardenId === g.id && styles.gardenChipActive]}
+                          onPress={() => setForm((f) => ({ ...f, gardenId: g.id }))}
+                        >
+                          <Text style={[styles.gardenChipText, form.gardenId === g.id && styles.gardenChipTextActive]}>
+                            {g.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* ── Step 3: Tile picker ───────────────────────────────── */}
+            {step === 'tile' && (
+              <>
+                {selectedGarden && (
+                  <Text style={[styles.tileHint, { color: textSec }]}>
+                    {selectedGarden.name} · {gridCols}×{gridRows} — tap an empty cell
+                  </Text>
+                )}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.tileScrollContent}
+                >
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.tileGrid}
+                  >
+                    {Array.from({ length: gridRows }).map((_, r) => (
+                      <View key={r} style={styles.tileRow}>
+                        {Array.from({ length: gridCols }).map((_, c) => {
+                          const key = `${r},${c}`;
+                          const tileState = gardenLayout?.[r]?.[c] ?? 'full_sun';
+                          const isPath = tileState === 'inactive';
+                          const occupied = occupiedCells.has(key);
+                          const selected = tileRow === r && tileCol === c;
+                          const oPlant = gardenPlants.find(p => p.row === r && p.col === c);
+                          const disabled = isPath || occupied;
+
+                          let bg = TILE_COLORS[tileState];
+                          if (occupied) bg = '#c8e6c9';
+                          if (selected) bg = G.hunter;
+
+                          return (
+                            <TouchableOpacity
+                              key={key}
+                              activeOpacity={disabled ? 1 : 0.65}
+                              disabled={disabled}
+                              onPress={() => { setTileRow(r); setTileCol(c); }}
+                              style={[styles.tileCell, { backgroundColor: bg }, isPath && styles.tileCellPath]}
+                            >
+                              {selected
+                                ? <Text style={styles.tileCellCheck}>✓</Text>
+                                : occupied && oPlant
+                                  ? <Text style={styles.tileCellEmoji}>{getPlantIcon(oPlant.name).emoji}</Text>
+                                  : !isPath
+                                    ? <Text style={styles.tileSunEmoji}>{TILE_EMOJIS[tileState]}</Text>
+                                    : null
+                              }
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
                     ))}
                   </ScrollView>
+                </ScrollView>
+                {/* Legend */}
+                <View style={styles.tileLegend}>
+                  {[
+                    { color: TILE_COLORS.full_sun,    emoji: TILE_EMOJIS.full_sun,    label: 'Full Sun' },
+                    { color: TILE_COLORS.partial_sun, emoji: TILE_EMOJIS.partial_sun, label: 'Partial' },
+                    { color: TILE_COLORS.shade,       emoji: TILE_EMOJIS.shade,       label: 'Shade' },
+                    { color: TILE_COLORS.inactive,    emoji: '',                      label: 'Path' },
+                  ].map(({ color, emoji, label }) => (
+                    <View key={label} style={styles.tileLegendItem}>
+                      <View style={[styles.tileLegendDot, { backgroundColor: color }]}>
+                        {emoji ? <Text style={{ fontSize: 9 }}>{emoji}</Text> : null}
+                      </View>
+                      <Text style={[styles.tileLegendLabel, { color: textSec }]}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Sun compatibility warning */}
+                {tileRow != null && tileCol != null && (() => {
+                  const tileState = gardenLayout?.[tileRow]?.[tileCol];
+                  if (!tileState || tileState === 'inactive') return null;
+                  const compat = getSunCompatibility(form.sunRequirement, tileState as any);
+                  if (compat === 'match') return (
+                    <View style={[styles.tileWarning, { backgroundColor: '#d8f3dc', borderColor: '#74c69d' }]}>
+                      <Text style={[styles.tileWarningText, { color: '#1b4332' }]}>
+                        ✅ Great match — {SUN_LABELS[tileState]} suits {form.name}
+                      </Text>
+                    </View>
+                  );
+                  if (compat === 'tolerable') return (
+                    <View style={[styles.tileWarning, { backgroundColor: '#fff3bf', borderColor: '#fcc419' }]}>
+                      <Text style={[styles.tileWarningText, { color: '#5c3d00' }]}>
+                        ⚠️ Not ideal — {form.name} prefers {SUN_LABELS[form.sunRequirement]}, this tile is {SUN_LABELS[tileState]}. It'll grow but may underperform.
+                      </Text>
+                    </View>
+                  );
+                  return (
+                    <View style={[styles.tileWarning, { backgroundColor: '#ffe3e3', borderColor: '#ff8787' }]}>
+                      <Text style={[styles.tileWarningText, { color: '#7a0000' }]}>
+                        ❌ Sun mismatch — {form.name} needs {SUN_LABELS[form.sunRequirement]} but this tile gets {SUN_LABELS[tileState]}. Consider a different tile.
+                      </Text>
+                    </View>
+                  );
+                })()}
+
+                {tileRow != null && tileCol != null && (
+                  <Text style={[styles.tileSelected, { color: textPrim }]}>
+                    {getPlantIcon(form.name).emoji} {form.name} → row {tileRow + 1}, col {tileCol + 1}
+                  </Text>
                 )}
               </>
             )}
           </ScrollView>
+
+          {/* ── Bottom buttons ──────────────────────────────────────── */}
           <View style={styles.modalButtons}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => { setCatalogueSelected(false); setCatalogueSearch(''); setShowAdd(false); }} disabled={adding}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <PressableScale
-              style={[styles.addBtn, (!catalogueSelected || adding) && { opacity: 0.4 }]}
-              onPress={addPlant}
-              disabled={adding || !catalogueSelected}
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => step === 'tile' ? setStep('details') : step === 'details' ? setStep('search') : closeAdd()}
+              disabled={adding}
             >
-              <LinearGradient
-                colors={[G.sage, G.hunter]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={styles.addBtnGradient}
+              <Text style={styles.cancelText}>{step === 'search' ? 'Cancel' : '← Back'}</Text>
+            </TouchableOpacity>
+
+            {step === 'search' ? null : step === 'details' ? (
+              <PressableScale
+                style={styles.addBtn}
+                onPress={() => {
+                  setTileRow(null); setTileCol(null);
+                  loadGardenPlants(form.gardenId || gardens[0]?.id);
+                  setStep('tile');
+                }}
               >
-                {adding
-                  ? <ActivityIndicator color={G.cloud} size="small" />
-                  : <Text style={styles.addBtnText}>Add Plant</Text>
-                }
-              </LinearGradient>
-            </PressableScale>
+                <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.addBtnGradient}>
+                  <Text style={styles.addBtnText}>Next →</Text>
+                </LinearGradient>
+              </PressableScale>
+            ) : (
+              <PressableScale
+                style={[styles.addBtn, (adding || (tileRow == null)) && { opacity: 0.4 }]}
+                onPress={addPlant}
+                disabled={adding || tileRow == null}
+              >
+                <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.addBtnGradient}>
+                  {adding
+                    ? <ActivityIndicator color={G.cloud} size="small" />
+                    : <Text style={styles.addBtnText}>Plant Here</Text>
+                  }
+                </LinearGradient>
+              </PressableScale>
+            )}
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -456,8 +651,10 @@ const styles = StyleSheet.create({
   emptyEmoji:      { fontSize: 56, marginBottom: 12 },
   emptyTitle:      { fontSize: 20, fontWeight: '800', color: G.forest, marginBottom: 8 },
   emptyText:       { fontSize: 14, color: G.stone, textAlign: 'center' },
-  modalBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modal:           { backgroundColor: G.cloud, borderTopLeftRadius: R.xl, borderTopRightRadius: R.xl, maxHeight: '88%', ...Shadow.float },
+  modalBackdrop:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalBackdropCenter: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 32 },
+  modal:               { backgroundColor: G.cloud, borderTopLeftRadius: R.xl, borderTopRightRadius: R.xl, maxHeight: '88%', ...Shadow.float },
+  modalCenter:         { width: '100%', maxWidth: 560, borderRadius: R.xl, },
   modalScroll:     { flexShrink: 1 },
   modalContent:    { padding: 24, paddingBottom: 8 },
   modalTitle:      { fontSize: 20, fontWeight: '800', color: G.forest, marginBottom: 18 },
@@ -477,6 +674,34 @@ const styles = StyleSheet.create({
   gardenChipActive:   { backgroundColor: G.hunter, borderColor: G.hunter },
   gardenChipText:     { color: G.hunter, fontWeight: '600' },
   gardenChipTextActive: { color: G.cloud },
+
+  // Step indicator
+  stepBar:            { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 32, paddingVertical: 14, paddingHorizontal: 24, borderBottomWidth: 1, borderBottomColor: G.dew },
+  stepBarItem:        { alignItems: 'center', gap: 4 },
+  stepDot:            { width: 26, height: 26, borderRadius: 13, backgroundColor: G.foam, borderWidth: 2, borderColor: G.mist, justifyContent: 'center', alignItems: 'center' },
+  stepDotActive:      { borderColor: G.hunter, backgroundColor: G.hunter },
+  stepDotDone:        { borderColor: G.sage, backgroundColor: G.sage },
+  stepDotText:        { fontSize: 12, fontWeight: '700', color: G.stone },
+  stepDotTextActive:  { color: '#fff' },
+  stepLabel:          { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // Tile picker
+  tileHint:           { fontSize: 13, marginBottom: 12, color: G.stone },
+  tileScrollContent:  { flexGrow: 1, justifyContent: 'center', alignItems: 'center', minWidth: '100%' },
+  tileGrid:           { gap: 3, paddingBottom: 4, alignItems: 'center' },
+  tileRow:            { flexDirection: 'row', gap: 3 },
+  tileCell:           { width: 36, height: 36, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center' },
+  tileCellPath:       { opacity: 0.45 },
+  tileCellEmoji:      { fontSize: 17 },
+  tileCellCheck:      { fontSize: 17, color: '#fff', fontWeight: '700' },
+  tileSunEmoji:       { fontSize: 13, opacity: 0.8 },
+  tileSelected:       { marginTop: 8, fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  tileWarning:        { borderRadius: R.md, borderWidth: 1.5, padding: 10, marginTop: 10 },
+  tileWarningText:    { fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  tileLegend:         { flexDirection: 'row', justifyContent: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap' },
+  tileLegendItem:     { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  tileLegendDot:      { width: 18, height: 18, borderRadius: 4, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
+  tileLegendLabel:    { fontSize: 11, fontWeight: '500' },
   modalButtons:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: G.dew },
   cancelBtn:       { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9' },
   cancelText:      { color: '#e03131', fontSize: 15, fontWeight: '700' },

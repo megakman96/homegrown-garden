@@ -32,6 +32,7 @@ const TAGLINES = [
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [taglineIdx] = useState(() => Math.floor(Math.random() * TAGLINES.length));
@@ -58,13 +59,18 @@ export default function LoginScreen() {
 
   async function handleAuth() {
     if (!email || !password) return;
+    if (isSignUp && password !== confirmPassword) {
+      setErrorMsg('Passwords do not match.');
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     try {
       if (isSignUp) {
         await pb.collection('users').create({
-          email, password, passwordConfirm: password,
+          email, password, passwordConfirm: confirmPassword,
           name: firstName.trim() || email.split('@')[0],
+          emailVisibility: true,
         });
         await pb.collection('users').authWithPassword(email, password);
         const uid = (pb.authStore.model as any)?.id;
@@ -187,6 +193,29 @@ export default function LoginScreen() {
               />
             </View>
 
+            {isSignUp && (
+              <View style={styles.inputWrap}>
+                <Text style={styles.label}>Confirm Password</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    confirmPassword.length > 0 && {
+                      borderColor: confirmPassword === password ? '#52b788' : '#e03131',
+                    },
+                  ]}
+                  placeholder="••••••••"
+                  placeholderTextColor={G.stone}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  autoComplete="new-password"
+                />
+                {confirmPassword.length > 0 && confirmPassword !== password && (
+                  <Text style={styles.matchError}>Passwords do not match</Text>
+                )}
+              </View>
+            )}
+
             <PressableScale onPress={handleAuth} style={styles.btn} haptic>
               <LinearGradient
                 colors={[G.sage, G.hunter]}
@@ -202,7 +231,7 @@ export default function LoginScreen() {
             </PressableScale>
 
             <PressableScale
-              onPress={() => { setIsSignUp(v => !v); setErrorMsg(null); setFirstName(''); setBirthday(''); }}
+              onPress={() => { setIsSignUp(v => !v); setErrorMsg(null); setFirstName(''); setBirthday(''); setConfirmPassword(''); }}
               style={styles.switchBtn}
               haptic={false}
             >
@@ -258,6 +287,7 @@ const styles = StyleSheet.create({
   btn:         { marginTop: 8, borderRadius: R.lg, overflow: 'hidden' },
   btnGradient: { paddingVertical: 15, alignItems: 'center', borderRadius: R.lg },
   btnText:     { color: G.cloud, fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
+  matchError:  { fontSize: 12, color: '#e03131', marginTop: 4 },
   switchBtn:   { marginTop: 16, alignItems: 'center' },
   switchText:  { color: G.stone, fontSize: 14 },
   switchLink:  { color: G.hunter, fontWeight: '700' },

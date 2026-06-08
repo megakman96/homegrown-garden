@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, ActivityIndicator, TextInput, Platform,
+  Alert, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -140,7 +140,10 @@ export default function SubscriptionScreen() {
   const annualPrice  = annualPkg?.product?.priceString  ?? '$19.99';
 
   return (
-    <View style={[styles.container, { backgroundColor: bg }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <LinearGradient colors={[G.forest, G.hunter]} style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
           <Text style={styles.closeBtnText}>✕</Text>
@@ -223,7 +226,7 @@ export default function SubscriptionScreen() {
           <View style={[styles.promoRow, { borderColor: border }]}>
             <TextInput
               style={[styles.promoInput, { backgroundColor: isDark ? colors.bgElement : G.foam, color: textPrim, borderColor: border }]}
-              placeholder="Enter code (e.g. GROWFREE)"
+              placeholder="Enter access code"
               placeholderTextColor={textSec}
               value={promoCode}
               onChangeText={setPromoCode}
@@ -253,7 +256,7 @@ export default function SubscriptionScreen() {
         </Text>
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

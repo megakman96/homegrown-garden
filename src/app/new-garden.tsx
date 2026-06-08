@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput, ScrollView,
   useWindowDimensions, Alert, ActivityIndicator, Platform,
-  TouchableOpacity,
+  TouchableOpacity, KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,29 +17,42 @@ import { PressableScale } from '@/components/ui/PressableScale';
 import { G, Shadow, R, Spring } from '@/constants/theme';
 import {
   makeLayout, resizeLayout, TILE_COLORS, TILE_EMOJIS, TILE_LABELS,
-  SUN_CYCLE, activeCount,
+  SUN_CYCLE, activeCount, serializeLayout,
+  DEFAULT_TILE_SIZE_IN, TILE_SIZE_STEP_IN, TILE_SIZE_MIN_IN, TILE_SIZE_MAX_IN,
+  formatTileSize, formatTotalSize,
   type TileState, type GardenLayout,
 } from '@/lib/garden-layout';
-type Step = 'name' | 'size' | 'shape' | 'sun';
-const STEPS: Step[] = ['name', 'size', 'shape', 'sun'];
+import {
+  searchCity, saveLocation, saveGardenLocation,
+  type Location, type GeoResult,
+} from '@/lib/weather';
+
+type Step = 'year' | 'name' | 'size' | 'shape' | 'sun' | 'location';
+const STEPS: Step[] = ['name', 'year', 'size', 'shape', 'sun', 'location'];
 
 const STEP_TITLES: Record<Step, string> = {
-  name:  'Name your garden',
-  size:  'How big is it?',
-  shape: 'Draw your garden',
-  sun:   'Set the sunlight',
+  year:     'Which season is this for?',
+  name:     'Name your garden',
+  size:     'How big is it?',
+  shape:    'Draw your garden',
+  sun:      'Set the sunlight',
+  location: 'Where is your garden?',
 };
 const STEP_SUBS: Record<Step, string> = {
-  name:  "Give your garden a name you'll remember.",
-  size:  'Set the grid dimensions. You can adjust this later.',
-  shape: 'Tap tiles to include them in your garden.',
-  sun:   'Tap each tile to set its sunlight level.',
+  year:     'Current year = active garden. A future year means it\'s a planning-phase layout.',
+  name:     "Give your garden a name you'll recognize.",
+  size:     'Set the grid dimensions. Each tile is ~30×30 cm (1 sq ft). You can adjust later.',
+  shape:    'Tap tiles to include them in your garden.',
+  sun:      'Tap each tile to set its sunlight level.',
+  location: 'Used for weather-aware watering reminders. You can skip this and add it later.',
 };
 const STEP_EMOJIS: Record<Step, string> = {
-  name:  '🌱',
-  size:  '📐',
-  shape: '🗺️',
-  sun:   '☀️',
+  year:     '📅',
+  name:     '🌱',
+  size:     '📐',
+  shape:    '🗺️',
+  sun:      '☀️',
+  location: '📍',
 };
 
 const MIN_SIZE = 3;
@@ -52,11 +65,20 @@ export default function NewGardenScreen() {
   const { width } = useWindowDimensions();
 
   const [step, setStep] = useState<Step>('name');
+  const [year, setYear] = useState(new Date().getFullYear());
   const [name, setName] = useState('');
   const [rows, setRows] = useState(6);
   const [cols, setCols] = useState(8);
+  const [tileSizeIn, setTileSizeIn] = useState(DEFAULT_TILE_SIZE_IN);
   const [layout, setLayout] = useState<GardenLayout>(() => makeLayout(6, 8));
   const [saving, setSaving] = useState(false);
+  const [location, setLocation] = useState<Location | null>(null);
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationResults, setLocationResults] = useState<GeoResult[]>([]);
+  const [locationSearching, setLocationSearching] = useState(false);
+
+  const currentYear = new Date().getFullYear();
+  const isPlanningYear = year > currentYear;
 
   const slideX = useSharedValue(0);
   const opacity = useSharedValue(1);
@@ -112,19 +134,43 @@ export default function NewGardenScreen() {
     });
   }
 
+  async function searchLocation(q: string) {
+    setLocationQuery(q);
+    if (q.length < 2) { setLocationResults([]); return; }
+    setLocationSearching(true);
+    const results = await searchCity(q);
+    setLocationResults(results);
+    setLocationSearching(false);
+  }
+
+  function selectLocation(r: GeoResult) {
+    const loc: Location = {
+      latitude: r.latitude,
+      longitude: r.longitude,
+      name: r.admin1 ? `${r.name}, ${r.admin1}` : `${r.name}, ${r.country}`,
+    };
+    setLocation(loc);
+    setLocationQuery('');
+    setLocationResults([]);
+  }
+
   async function save() {
     if (!user) return;
     setSaving(true);
     try {
-      await pb.collection('gardens').create({
+      const garden = await pb.collection('gardens').create({
         user_id: user.id,
         name: name.trim() || 'My Garden',
         rows,
         cols,
         sun_exposure: 'full_sun',
-        layout: JSON.stringify(layout),
-        year: new Date().getFullYear(),
+        layout: serializeLayout(layout, tileSizeIn * 2.54, year),
+        location_json: location ? JSON.stringify(location) : null,
       });
+      if (location) {
+        await saveGardenLocation(garden.id, location).catch(() => {});
+        await saveLocation(location).catch(() => {});
+      }
       router.replace('/(tabs)/garden');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save garden');
@@ -140,13 +186,15 @@ export default function NewGardenScreen() {
 
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <LinearGradient colors={[G.forest, G.hunter]} style={styles.header}>
         <PressableScale onPress={() => router.back()} style={styles.backBtn} haptic={false}>
           <Text style={styles.backText}>✕</Text>
         </PressableScale>
         <Text style={styles.headerTitle}>New Garden</Text>
-        <View style={{ width: 36 }} />
+        <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.skipBtn}>
+          <Text style={styles.skipText}>Skip</Text>
+        </TouchableOpacity>
       </LinearGradient>
 
       {/* Step indicator */}
@@ -171,6 +219,38 @@ export default function NewGardenScreen() {
           <Text style={styles.stepTitle}>{STEP_TITLES[step]}</Text>
           <Text style={styles.stepSub}>{STEP_SUBS[step]}</Text>
 
+          {/* ── Step: year ── */}
+          {step === 'year' && (
+            <View style={styles.yearStep}>
+              <View style={styles.yearStepper}>
+                <PressableScale onPress={() => setYear(y => Math.max(currentYear - 1, y - 1))} style={styles.yearBtn}>
+                  <Text style={styles.yearBtnText}>−</Text>
+                </PressableScale>
+                <View style={{ alignItems: 'center', flex: 1 }}>
+                  <Text style={styles.yearValue}>{year}</Text>
+                  {isPlanningYear && (
+                    <View style={styles.planningBadge}>
+                      <Text style={styles.planningBadgeText}>📋 Planning Phase</Text>
+                    </View>
+                  )}
+                  {!isPlanningYear && (
+                    <View style={styles.activeBadge}>
+                      <Text style={styles.activeBadgeText}>🌿 Active Season</Text>
+                    </View>
+                  )}
+                </View>
+                <PressableScale onPress={() => setYear(y => y + 1)} style={styles.yearBtn}>
+                  <Text style={styles.yearBtnText}>+</Text>
+                </PressableScale>
+              </View>
+              {isPlanningYear && (
+                <Text style={styles.planningNote}>
+                  Planting a future garden lets you plan ahead — it won't appear in your watering schedule until that season starts.
+                </Text>
+              )}
+            </View>
+          )}
+
           {/* ── Step: name ── */}
           {step === 'name' && (
             <View style={styles.nameStep}>
@@ -183,7 +263,7 @@ export default function NewGardenScreen() {
                 autoFocus
                 maxLength={40}
                 returnKeyType="next"
-                onSubmitEditing={() => transitionTo('size')}
+                onSubmitEditing={() => transitionTo('year')}
               />
             </View>
           )}
@@ -191,13 +271,24 @@ export default function NewGardenScreen() {
           {/* ── Step: size ── */}
           {step === 'size' && (
             <View style={styles.sizeStep}>
-              <View style={styles.tileSizeNote}>
-                <Text style={styles.tileSizeText}>📏 Each tile = 30 × 30 cm (1 sq ft)</Text>
-              </View>
               <SizeStepper label="Rows" value={rows} min={MIN_SIZE} max={MAX_ROWS}
                 onChange={d => handleSizeChange('rows', d)} />
               <SizeStepper label="Columns" value={cols} min={MIN_SIZE} max={MAX_COLS}
                 onChange={d => handleSizeChange('cols', d)} />
+              <SizeStepper
+                label="Tile size"
+                value={tileSizeIn}
+                min={TILE_SIZE_MIN_IN}
+                max={TILE_SIZE_MAX_IN}
+                step={TILE_SIZE_STEP_IN}
+                displayValue={formatTileSize(tileSizeIn)}
+                onChange={d => setTileSizeIn(v => Math.max(TILE_SIZE_MIN_IN, Math.min(TILE_SIZE_MAX_IN, v + d)))}
+              />
+              <View style={styles.tileSizeNote}>
+                <Text style={styles.tileSizeText}>
+                  📐 {formatTotalSize(cols, rows, tileSizeIn)} total · {formatTileSize(tileSizeIn)} per tile
+                </Text>
+              </View>
               <Text style={styles.previewLabel}>Preview</Text>
               <View style={styles.previewGrid}>
                 {Array.from({ length: rows }, (_, r) => (
@@ -208,9 +299,6 @@ export default function NewGardenScreen() {
                   </View>
                 ))}
               </View>
-              <Text style={styles.previewCount}>
-                {rows} × {cols} = {rows * cols} tiles · ~{(rows * 0.3).toFixed(1)} × {(cols * 0.3).toFixed(1)} m ({(rows * cols).toFixed(0)} sq ft)
-              </Text>
             </View>
           )}
 
@@ -241,6 +329,57 @@ export default function NewGardenScreen() {
               <TileGrid layout={layout} tileSize={tileSize} onTap={cycleSun} showSun />
             </View>
           )}
+
+          {/* ── Step: location ── */}
+          {step === 'location' && (
+            <View style={styles.locationStep}>
+              {location ? (
+                <View style={styles.locationConfirmed}>
+                  <View style={styles.locationConfirmedInner}>
+                    <Text style={styles.locationPin}>📍</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.locationName}>{location.name}</Text>
+                      <Text style={styles.locationCoords}>
+                        {location.latitude.toFixed(3)}, {location.longitude.toFixed(3)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setLocation(null)} style={styles.changeLoc}>
+                      <Text style={styles.changeLocText}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    style={styles.cityInput}
+                    placeholder="Search city (e.g. Austin, London)"
+                    placeholderTextColor={G.stone}
+                    value={locationQuery}
+                    onChangeText={searchLocation}
+                    autoCapitalize="words"
+                    returnKeyType="search"
+                  />
+                  {locationSearching && (
+                    <ActivityIndicator color={G.sage} style={{ marginVertical: 8 }} />
+                  )}
+                  {locationResults.length > 0 && (
+                    <View style={styles.cityResults}>
+                      {locationResults.map((r, i) => (
+                        <TouchableOpacity
+                          key={i}
+                          style={[styles.cityRow, i < locationResults.length - 1 && styles.cityRowBorder]}
+                          onPress={() => selectLocation(r)}
+                        >
+                          <Text style={styles.cityName}>{r.name}</Text>
+                          <Text style={styles.cityRegion}>{r.admin1 ? `${r.admin1}, ` : ''}{r.country}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+          )}
         </Animated.View>
 
         {/* CTA buttons */}
@@ -254,7 +393,7 @@ export default function NewGardenScreen() {
             </PressableScale>
           )}
 
-          {step !== 'sun' ? (
+          {step !== 'location' ? (
             <PressableScale
               onPress={() => {
                 if (step === 'name' && !name.trim()) setName('My Garden');
@@ -273,44 +412,53 @@ export default function NewGardenScreen() {
               </LinearGradient>
             </PressableScale>
           ) : (
-            <PressableScale
-              onPress={save}
-              style={[styles.nextBtn, saving && { opacity: 0.7 }]}
-              disabled={saving}
-            >
-              <LinearGradient
-                colors={[G.sage, G.forest]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={styles.nextBtnGradient}
+            <>
+              {!location && (
+                <PressableScale onPress={save} style={styles.backStepBtn} disabled={saving}>
+                  <Text style={styles.backStepText}>Skip →</Text>
+                </PressableScale>
+              )}
+              <PressableScale
+                onPress={save}
+                style={[styles.nextBtn, saving && { opacity: 0.7 }]}
+                disabled={saving}
               >
-                {saving
-                  ? <ActivityIndicator color={G.cloud} />
-                  : <Text style={styles.nextBtnText}>🌱  Create Garden</Text>
-                }
-              </LinearGradient>
-            </PressableScale>
+                <LinearGradient
+                  colors={[G.sage, G.forest]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={styles.nextBtnGradient}
+                >
+                  {saving
+                    ? <ActivityIndicator color={G.cloud} />
+                    : <Text style={styles.nextBtnText}>🌱  Create Garden</Text>
+                  }
+                </LinearGradient>
+              </PressableScale>
+            </>
           )}
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-function SizeStepper({ label, value, min, max, onChange }: {
+function SizeStepper({ label, value, min, max, step = 1, displayValue, onChange }: {
   label: string; value: number; min: number; max: number;
-  onChange: (delta: number) => void;
+  step?: number; displayValue?: string; onChange: (delta: number) => void;
 }) {
   return (
     <View style={styles.stepper}>
       <Text style={styles.stepperLabel}>{label}</Text>
       <View style={styles.stepperControls}>
-        <PressableScale onPress={() => onChange(-1)} style={[styles.stepBtn, value <= min && styles.stepBtnDisabled]} disabled={value <= min}>
+        <PressableScale onPress={() => onChange(-step)} style={[styles.stepBtn, value <= min && styles.stepBtnDisabled]} disabled={value <= min}>
           <Text style={styles.stepBtnText}>−</Text>
         </PressableScale>
-        <Text style={styles.stepperValue}>{value}</Text>
-        <PressableScale onPress={() => onChange(1)} style={[styles.stepBtn, value >= max && styles.stepBtnDisabled]} disabled={value >= max}>
+        <Text style={[styles.stepperValue, displayValue ? { fontSize: 16, minWidth: 52 } : {}]}>
+          {displayValue ?? value}
+        </Text>
+        <PressableScale onPress={() => onChange(step)} style={[styles.stepBtn, value >= max && styles.stepBtnDisabled]} disabled={value >= max}>
           <Text style={styles.stepBtnText}>+</Text>
         </PressableScale>
       </View>
@@ -376,6 +524,8 @@ const styles = StyleSheet.create({
   },
   backBtn:       { width: 36, height: 36, borderRadius: R.full, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
   backText:      { color: G.cloud, fontSize: 16, fontWeight: '600' },
+  skipBtn:       { paddingHorizontal: 12, paddingVertical: 6 },
+  skipText:      { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '600' },
   headerTitle:   { color: G.cloud, fontSize: 17, fontWeight: '700' },
   stepRow:       { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 20, paddingHorizontal: 40 },
   stepDotWrap:   { flexDirection: 'row', alignItems: 'center' },
@@ -388,6 +538,18 @@ const styles = StyleSheet.create({
   stepEmoji:     { fontSize: 48, marginBottom: 12 },
   stepTitle:     { fontSize: 22, fontWeight: '800', color: G.forest, textAlign: 'center', marginBottom: 6 },
   stepSub:       { fontSize: 14, color: G.stone, textAlign: 'center', marginBottom: 28, lineHeight: 20 },
+
+  // Year step
+  yearStep:       { width: '100%', maxWidth: 360, alignItems: 'center' },
+  yearStepper:    { flexDirection: 'row', alignItems: 'center', backgroundColor: G.cloud, borderRadius: R.xl, padding: 16, width: '100%', ...Shadow.soft, marginBottom: 16 },
+  yearBtn:        { width: 48, height: 48, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
+  yearBtnText:    { fontSize: 26, fontWeight: '300', color: G.hunter, lineHeight: 30 },
+  yearValue:      { fontSize: 42, fontWeight: '800', color: G.forest, textAlign: 'center' },
+  activeBadge:    { backgroundColor: '#d8f3dc', borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 4, marginTop: 6 },
+  activeBadgeText:{ fontSize: 12, fontWeight: '700', color: '#2b8a3e' },
+  planningBadge:  { backgroundColor: '#fff3bf', borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 4, marginTop: 6 },
+  planningBadgeText:{ fontSize: 12, fontWeight: '700', color: '#e67700' },
+  planningNote:   { fontSize: 13, color: G.stone, textAlign: 'center', lineHeight: 19, backgroundColor: '#fff9db', borderRadius: R.md, padding: 12, borderWidth: 1, borderColor: '#ffe066' },
 
   // Name step
   nameStep:  { width: '100%', maxWidth: 420 },

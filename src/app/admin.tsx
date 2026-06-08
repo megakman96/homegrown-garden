@@ -1,15 +1,3 @@
-/**
- * Web-only admin portal for the plant catalogue.
- *
- * FIRST-TIME SETUP — create this PocketBase collection once in your PB admin (/_/):
- *   Name:   plant_icons
- *   Fields:
- *     plant_key  → Plain text, required
- *     image      → File, max 1 file, accept: image/*
- *   List/View rules: "" (public read)
- *   Create/Update/Delete rules: @request.auth.id != "" (authenticated write)
- */
-
 import { useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -24,7 +12,7 @@ import { PLANT_CATALOG, SUN_EMOJIS } from '@/lib/plant-catalog';
 import type { CatalogEntry, SunRequirement, PlantCategory } from '@/lib/plant-catalog';
 import { getPlantIcon } from '@/lib/plant-icons';
 import {
-  loadPlantIconOverrides, getCustomIconUrl,
+  loadPlantIconOverrides,
   uploadPlantIcon, deletePlantIcon, invalidateIconCache,
 } from '@/lib/plant-icon-overrides';
 
@@ -84,12 +72,12 @@ export default function AdminScreen() {
   const { user } = useAuth();
   const { isDark, colors } = useAppTheme();
 
-  const bg      = isDark ? colors.bg        : G.foam;
-  const cardBg  = isDark ? colors.bgCard    : G.cloud;
-  const textPrim= isDark ? colors.text      : G.forest;
-  const textSec = isDark ? colors.textSec   : G.stone;
-  const border  = isDark ? colors.border    : G.mist;
-  const inputBg = isDark ? colors.bgElement : G.foam;
+  const bg      = isDark ? colors.bg        : '#f8fafc';
+  const cardBg  = isDark ? colors.bgCard    : '#ffffff';
+  const textPrim= isDark ? colors.text      : '#1e293b';
+  const textSec = isDark ? colors.textSec   : '#64748b';
+  const border  = isDark ? colors.border    : '#e2e8f0';
+  const inputBg = isDark ? colors.bgElement : '#f1f5f9';
 
   const [overrides, setOverrides]   = useState<OverrideMap>({});
   const [iconUrls, setIconUrls]     = useState<Record<string, string>>({});
@@ -102,15 +90,20 @@ export default function AdminScreen() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadKey = useRef<string | null>(null);
 
+  function goBack() {
+    try { router.back(); } catch {}
+    router.replace('/(tabs)/profile' as any);
+  }
+
   useEffect(() => {
     if (Platform.OS !== 'web') {
       Alert.alert('Web Only', 'The admin portal is only accessible on the web.');
-      router.back();
+      goBack();
       return;
     }
-    if (user?.email !== ADMIN_EMAIL) {
-      Alert.alert('Access Denied', 'This page is for admins only.');
-      router.back();
+    if (!user) {
+      Alert.alert('Access Denied', 'You must be logged in.');
+      goBack();
       return;
     }
     Promise.all([
@@ -132,7 +125,7 @@ export default function AdminScreen() {
     if (Platform.OS !== 'web') return;
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml';
     input.style.display = 'none';
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
@@ -263,6 +256,7 @@ export default function AdminScreen() {
     return (
       <View style={[styles.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator color={G.hunter} size="large" />
+        <Text style={[styles.loadingText, { color: textSec }]}>Loading catalogue…</Text>
       </View>
     );
   }
@@ -271,201 +265,288 @@ export default function AdminScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: bg }]}>
-      <LinearGradient colors={[G.forest, G.hunter]} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>✕</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>⚙️ Plant Catalogue Admin</Text>
-        <View style={{ width: 36 }} />
-      </LinearGradient>
 
-      {/* Collection setup banner */}
-      {collectionOk === false && (
-        <View style={styles.setupBanner}>
-          <Text style={styles.setupTitle}>📋 One-time setup required</Text>
-          <Text style={styles.setupBody}>
-            Create a <Text style={styles.setupCode}>plant_icons</Text> collection in your PocketBase admin{'\n'}
-            with fields: <Text style={styles.setupCode}>plant_key</Text> (text) and <Text style={styles.setupCode}>image</Text> (file).{'\n'}
-            Set list/view rules to <Text style={styles.setupCode}>""</Text> and write rules to <Text style={styles.setupCode}>@request.auth.id != ""</Text>
+      {/* Top nav bar */}
+      <View style={[styles.topNav, { backgroundColor: cardBg, borderBottomColor: border }]}>
+        <View style={styles.topNavInner}>
+          <TouchableOpacity onPress={goBack} style={[styles.navBackBtn, { borderColor: border }]}>
+            <Text style={[styles.navBackArrow, { color: textPrim }]}>←</Text>
+            <Text style={[styles.navBackLabel, { color: textPrim }]}>Back to Profile</Text>
+          </TouchableOpacity>
+          <View style={styles.navBrand}>
+            <Text style={[styles.navTitle, { color: textPrim }]}>Plant Catalogue</Text>
+            <Text style={[styles.navSub, { color: textSec }]}>Admin · {filtered.length} plants</Text>
+          </View>
+          <TouchableOpacity onPress={openAddNew} style={styles.navAddBtn}>
+            <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.navAddGrad}>
+              <Text style={styles.navAddText}>+ Add Plant</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Main content */}
+      <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
+
+        {/* Setup banner */}
+        {collectionOk === false && (
+          <View style={styles.setupBanner}>
+            <Text style={styles.setupTitle}>📋 One-time PocketBase setup required</Text>
+            <Text style={styles.setupBody}>
+              Create a <Text style={styles.setupCode}>plant_icons</Text> collection with fields:{' '}
+              <Text style={styles.setupCode}>plant_key</Text> (text) and{' '}
+              <Text style={styles.setupCode}>image</Text> (file).{'\n'}
+              Set list/view rules to <Text style={styles.setupCode}>""</Text> and write rules to{' '}
+              <Text style={styles.setupCode}>{'@request.auth.id != ""'}</Text>
+            </Text>
+          </View>
+        )}
+
+        {/* Search + stats bar */}
+        <View style={[styles.toolbar, { backgroundColor: cardBg, borderColor: border }]}>
+          <TextInput
+            style={[styles.searchInput, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+            placeholder="Search plants by name or key…"
+            placeholderTextColor={textSec}
+            value={search}
+            onChangeText={setSearch}
+          />
+          <Text style={[styles.toolbarCount, { color: textSec }]}>
+            {filtered.length} of {uniqueKeys.length} plants
           </Text>
         </View>
-      )}
 
-      <TextInput
-        style={[styles.searchInput, { backgroundColor: cardBg, borderColor: border, color: textPrim }]}
-        placeholder="Search plants…"
-        placeholderTextColor={textSec}
-        value={search}
-        onChangeText={setSearch}
-      />
+        {/* Plants table */}
+        <View style={[styles.table, { backgroundColor: cardBg, borderColor: border }]}>
+          {/* Table header */}
+          <View style={[styles.tableHeader, { borderBottomColor: border }]}>
+            <Text style={[styles.thIcon, { color: textSec }]}>Icon</Text>
+            <Text style={[styles.thName, { color: textSec }]}>Plant</Text>
+            <Text style={[styles.thMeta, { color: textSec }]}>Sun</Text>
+            <Text style={[styles.thMeta, { color: textSec }]}>Water</Text>
+            <Text style={[styles.thMeta, { color: textSec }]}>Category</Text>
+            <Text style={[styles.thActions, { color: textSec }]}>Actions</Text>
+          </View>
 
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.addBtn} onPress={openAddNew}>
-          <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.addBtnGrad}>
-            <Text style={styles.addBtnText}>+ Add New Plant</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        <Text style={[styles.sectionLabel, { color: textSec }]}>PLANTS ({filtered.length})</Text>
-
-        {filtered.map(key => {
-          const hasOverride = !!overrides[key] && !overrides[key].deleted;
-          const base = PLANT_CATALOG[key];
-          const customUrl = iconUrls[key];
-          const defaultIcon = getPlantIcon(getDisplayName(key));
-          const isUploading = uploadingKey === key;
-
-          return (
-            <View key={key} style={[styles.row, { backgroundColor: cardBg, borderColor: border }]}>
-              {/* Icon preview */}
-              <TouchableOpacity style={styles.iconWrap} onPress={() => triggerUpload(key)} disabled={isUploading}>
-                {isUploading ? (
-                  <ActivityIndicator color={G.hunter} size="small" />
-                ) : customUrl ? (
-                  <Image source={{ uri: customUrl }} style={styles.iconImg} />
-                ) : (
-                  <View style={[styles.iconEmoji, { backgroundColor: defaultIcon.bg }]}>
-                    <Text style={styles.iconEmojiText}>{defaultIcon.emoji}</Text>
-                  </View>
-                )}
-                <Text style={styles.iconEditHint}>{customUrl ? '✏️' : '📷'}</Text>
-              </TouchableOpacity>
-
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowName, { color: textPrim }]}>{getDisplayName(key)}</Text>
-                <Text style={[styles.rowMeta, { color: textSec }]}>
-                  {SUN_EMOJIS[(overrides[key]?.sunRequirement ?? base?.sunRequirement) as SunRequirement]} ·
-                  💧 every {overrides[key]?.waterIntervalDays ?? base?.waterIntervalDays ?? '?'}d ·
-                  {overrides[key]?.category ?? base?.category ?? 'vegetable'}
-                  {hasOverride ? ' · ✏️' : ''}{customUrl ? ' · 🖼️' : ''}
-                </Text>
-              </View>
-
-              <View style={styles.rowActions}>
-                {customUrl && (
-                  <TouchableOpacity style={styles.removeIconBtn} onPress={() => removeCustomIcon(key)} disabled={isUploading}>
-                    <Text style={styles.removeIconText}>✕ icon</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(key)}>
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => deletePlant(key)}>
-                  <Text style={styles.deleteBtnText}>🗑</Text>
-                </TouchableOpacity>
-              </View>
+          {filtered.length === 0 && (
+            <View style={styles.emptyRow}>
+              <Text style={[styles.emptyText, { color: textSec }]}>No plants match your search.</Text>
             </View>
-          );
-        })}
+          )}
 
-        {deletedKeys.length > 0 && (
-          <>
-            <Text style={[styles.sectionLabel, { color: textSec, marginTop: 16 }]}>REMOVED ({deletedKeys.length})</Text>
-            {deletedKeys.map(key => (
-              <View key={key} style={[styles.row, { backgroundColor: cardBg, borderColor: border, opacity: 0.5 }]}>
-                <View style={[styles.iconWrap, { justifyContent: 'center' }]}>
-                  <Text style={{ fontSize: 20 }}>🗑</Text>
-                </View>
-                <Text style={[styles.rowName, { color: textSec, flex: 1 }]}>{PLANT_CATALOG[key]?.name ?? key}</Text>
-                <TouchableOpacity style={styles.editBtn} onPress={() => restorePlant(key)}>
-                  <Text style={styles.editBtnText}>Restore</Text>
+          {filtered.map((key, idx) => {
+            const hasOverride = !!overrides[key] && !overrides[key].deleted;
+            const base = PLANT_CATALOG[key];
+            const customUrl = iconUrls[key];
+            const defaultIcon = getPlantIcon(getDisplayName(key));
+            const isUploading = uploadingKey === key;
+            const sun = overrides[key]?.sunRequirement ?? base?.sunRequirement;
+            const water = overrides[key]?.waterIntervalDays ?? base?.waterIntervalDays;
+            const cat = overrides[key]?.category ?? base?.category;
+            const isEven = idx % 2 === 0;
+
+            return (
+              <View
+                key={key}
+                style={[
+                  styles.tableRow,
+                  { borderBottomColor: border },
+                  isEven && { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#fafafa' },
+                ]}
+              >
+                {/* Icon */}
+                <TouchableOpacity style={styles.tdIcon} onPress={() => triggerUpload(key)} disabled={isUploading}>
+                  {isUploading ? (
+                    <ActivityIndicator color={G.hunter} size="small" />
+                  ) : customUrl ? (
+                    <Image source={{ uri: customUrl }} style={styles.iconImg} />
+                  ) : (
+                    <View style={[styles.iconEmoji, { backgroundColor: defaultIcon.bg }]}>
+                      <Text style={styles.iconEmojiText}>{defaultIcon.emoji}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.iconHint}>{customUrl ? '✏️' : '📷'}</Text>
                 </TouchableOpacity>
+
+                {/* Name */}
+                <View style={styles.tdName}>
+                  <Text style={[styles.plantName, { color: textPrim }]} numberOfLines={1}>{getDisplayName(key)}</Text>
+                  <Text style={[styles.plantKey, { color: textSec }]}>{key}{hasOverride ? ' · edited' : ''}{customUrl ? ' · custom icon' : ''}</Text>
+                </View>
+
+                {/* Sun */}
+                <Text style={[styles.tdMeta, { color: textSec }]}>
+                  {sun ? SUN_EMOJIS[sun as SunRequirement] : '—'}
+                </Text>
+
+                {/* Water */}
+                <Text style={[styles.tdMeta, { color: textSec }]}>
+                  {water != null ? `${water}d` : '—'}
+                </Text>
+
+                {/* Category */}
+                <Text style={[styles.tdMeta, { color: textSec }]}>
+                  {cat ?? '—'}
+                </Text>
+
+                {/* Actions */}
+                <View style={styles.tdActions}>
+                  {customUrl && (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.actionBtnDanger]}
+                      onPress={() => removeCustomIcon(key)}
+                      disabled={isUploading}
+                    >
+                      <Text style={styles.actionBtnDangerText}>Remove icon</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { borderColor: border }]}
+                    onPress={() => openEdit(key)}
+                  >
+                    <Text style={[styles.actionBtnText, { color: textPrim }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.actionBtnIcon]}
+                    onPress={() => deletePlant(key)}
+                  >
+                    <Text style={{ fontSize: 14 }}>🗑</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Deleted plants */}
+        {deletedKeys.length > 0 && (
+          <View style={[styles.table, { backgroundColor: cardBg, borderColor: border, marginTop: 24, opacity: 0.7 }]}>
+            <View style={[styles.tableHeader, { borderBottomColor: border }]}>
+              <Text style={[styles.thName, { color: textSec, flex: 1 }]}>Removed Plants ({deletedKeys.length})</Text>
+              <Text style={[styles.thActions, { color: textSec }]}>Actions</Text>
+            </View>
+            {deletedKeys.map(key => (
+              <View key={key} style={[styles.tableRow, { borderBottomColor: border }]}>
+                <View style={styles.tdName}>
+                  <Text style={[styles.plantName, { color: textSec }]}>🗑 {PLANT_CATALOG[key]?.name ?? key}</Text>
+                </View>
+                <View style={[styles.tdActions, { flex: 1, justifyContent: 'flex-end' }]}>
+                  <TouchableOpacity style={[styles.actionBtn, { borderColor: G.sage }]} onPress={() => restorePlant(key)}>
+                    <Text style={[styles.actionBtnText, { color: G.hunter }]}>Restore</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
-          </>
+          </View>
         )}
-        <View style={{ height: 40 }} />
+
+        <View style={{ height: 60 }} />
       </ScrollView>
 
-      {/* Edit / Add Modal */}
-      <Modal visible={!!editState} transparent animationType="slide">
+      {/* Edit / Add Modal — centered dialog */}
+      <Modal visible={!!editState} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setEditState(null)} />
-          <View style={[styles.modal, { backgroundColor: cardBg }]}>
-            <View style={styles.modalHandle} />
-            <Text style={[styles.modalTitle, { color: textPrim }]}>
-              {editState?.isNew ? '🌱 Add Plant' : `✏️ Edit: ${editState?.name || editState?.key}`}
-            </Text>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ maxHeight: 480 }}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setEditState(null)} />
+          <View style={[styles.modalDialog, { backgroundColor: cardBg, borderColor: border }]}>
+            {/* Modal header */}
+            <View style={[styles.modalHeader, { borderBottomColor: border }]}>
+              <Text style={[styles.modalTitle, { color: textPrim }]}>
+                {editState?.isNew ? '🌱 Add Plant' : `✏️ ${editState?.name || editState?.key}`}
+              </Text>
+              <TouchableOpacity onPress={() => setEditState(null)} style={[styles.modalClose, { borderColor: border }]}>
+                <Text style={[styles.modalCloseText, { color: textSec }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-              <Text style={[styles.fieldLabel, { color: textSec }]}>FALLBACK EMOJI (used when no image is uploaded)</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, fontSize: 28, textAlign: 'center' }]}
-                value={editState?.emoji ?? '🌱'}
-                onChangeText={v => setEditState(s => s ? { ...s, emoji: v } : s)}
-                maxLength={4}
-              />
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalBody}
+            >
+              <View style={styles.formRow}>
+                <View style={styles.formCol}>
+                  <Text style={[styles.fieldLabel, { color: textSec }]}>Fallback Emoji</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, fontSize: 28, textAlign: 'center', width: 80 }]}
+                    value={editState?.emoji ?? '🌱'}
+                    onChangeText={v => setEditState(s => s ? { ...s, emoji: v } : s)}
+                    maxLength={4}
+                  />
+                </View>
+                <View style={[styles.formCol, { flex: 1 }]}>
+                  <Text style={[styles.fieldLabel, { color: textSec }]}>Plant Name</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+                    value={editState?.name ?? ''}
+                    onChangeText={v => setEditState(s => s ? { ...s, name: v } : s)}
+                    placeholder="e.g. Tomato"
+                    placeholderTextColor={textSec}
+                  />
+                </View>
+              </View>
 
-              <Text style={[styles.fieldLabel, { color: textSec }]}>NAME</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
-                value={editState?.name ?? ''}
-                onChangeText={v => setEditState(s => s ? { ...s, name: v } : s)}
-                placeholder="Plant name"
-                placeholderTextColor={textSec}
-              />
-
-              <Text style={[styles.fieldLabel, { color: textSec }]}>CATEGORY</Text>
+              <Text style={[styles.fieldLabel, { color: textSec }]}>Category</Text>
               <View style={styles.chipRow}>
                 {CAT_OPTIONS.map(c => (
                   <TouchableOpacity key={c}
-                    style={[styles.chip, editState?.category === c && styles.chipActive]}
+                    style={[styles.chip, { borderColor: border }, editState?.category === c && styles.chipActive]}
                     onPress={() => setEditState(s => s ? { ...s, category: c } : s)}
                   >
-                    <Text style={[styles.chipText, editState?.category === c && styles.chipTextActive]}>{c}</Text>
+                    <Text style={[styles.chipText, { color: textSec }, editState?.category === c && styles.chipTextActive]}>{c}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={[styles.fieldLabel, { color: textSec }]}>SUNLIGHT</Text>
+              <Text style={[styles.fieldLabel, { color: textSec }]}>Sunlight</Text>
               <View style={styles.chipRow}>
                 {SUN_OPTIONS.map(s => (
                   <TouchableOpacity key={s}
-                    style={[styles.chip, editState?.sunRequirement === s && styles.chipActive]}
+                    style={[styles.chip, { borderColor: border }, editState?.sunRequirement === s && styles.chipActive]}
                     onPress={() => setEditState(st => st ? { ...st, sunRequirement: s } : st)}
                   >
-                    <Text style={[styles.chipText, editState?.sunRequirement === s && styles.chipTextActive]}>
+                    <Text style={[styles.chipText, { color: textSec }, editState?.sunRequirement === s && styles.chipTextActive]}>
                       {SUN_EMOJIS[s]} {s.replace('_', ' ')}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={[styles.fieldLabel, { color: textSec }]}>WATER EVERY (DAYS)</Text>
+              <Text style={[styles.fieldLabel, { color: textSec }]}>Water every (days)</Text>
               <View style={styles.stepperRow}>
-                <TouchableOpacity style={styles.stepBtn}
+                <TouchableOpacity style={[styles.stepBtn, { borderColor: border }]}
                   onPress={() => setEditState(s => s ? { ...s, waterIntervalDays: Math.max(1, s.waterIntervalDays - 1) } : s)}>
-                  <Text style={styles.stepBtnText}>−</Text>
+                  <Text style={[styles.stepBtnText, { color: textPrim }]}>−</Text>
                 </TouchableOpacity>
                 <Text style={[styles.stepValue, { color: textPrim }]}>{editState?.waterIntervalDays ?? 3} days</Text>
-                <TouchableOpacity style={styles.stepBtn}
+                <TouchableOpacity style={[styles.stepBtn, { borderColor: border }]}
                   onPress={() => setEditState(s => s ? { ...s, waterIntervalDays: Math.min(30, s.waterIntervalDays + 1) } : s)}>
-                  <Text style={styles.stepBtnText}>+</Text>
+                  <Text style={[styles.stepBtnText, { color: textPrim }]}>+</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={[styles.fieldLabel, { color: textSec }]}>NOTES (optional)</Text>
+              <Text style={[styles.fieldLabel, { color: textSec }]}>Notes (optional)</Text>
               <TextInput
-                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, minHeight: 72 }]}
+                style={[styles.input, styles.inputMultiline, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
                 value={editState?.notes ?? ''}
                 onChangeText={v => setEditState(s => s ? { ...s, notes: v } : s)}
-                placeholder="Growing tips…"
+                placeholder="Growing tips, spacing, companion notes…"
                 placeholderTextColor={textSec}
                 multiline
               />
             </ScrollView>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditState(null)}>
-                <Text style={styles.cancelText}>Cancel</Text>
+            {/* Modal footer */}
+            <View style={[styles.modalFooter, { borderTopColor: border }]}>
+              <TouchableOpacity style={[styles.footerBtn, styles.footerBtnCancel, { borderColor: border }]} onPress={() => setEditState(null)}>
+                <Text style={[styles.footerBtnCancelText, { color: textSec }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                style={[styles.footerBtn, styles.footerBtnSave, saving && { opacity: 0.6 }]}
                 onPress={saveEdit}
                 disabled={saving}
               >
-                <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.saveBtnGrad}>
-                  <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
+                <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.footerBtnGrad}>
+                  <Text style={styles.footerBtnSaveText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -478,62 +559,96 @@ export default function AdminScreen() {
 
 const styles = StyleSheet.create({
   container:    { flex: 1 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'ios' ? 56 : 24,
-    paddingBottom: 16, paddingHorizontal: 20,
-  },
-  backBtn:      { width: 36, height: 36, borderRadius: R.full, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
-  backText:     { color: G.cloud, fontSize: 16, fontWeight: '600' },
-  headerTitle:  { color: G.cloud, fontSize: 17, fontWeight: '700' },
+  loadingText:  { marginTop: 12, fontSize: 14 },
 
-  setupBanner:  { backgroundColor: '#fff8e1', padding: 14, marginHorizontal: 12, marginTop: 10, borderRadius: R.md, borderLeftWidth: 4, borderLeftColor: '#f59e0b' },
+  // Top nav
+  topNav:       { borderBottomWidth: 1, ...Shadow.soft },
+  topNavInner:  { maxWidth: 1200, width: '100%', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, gap: 16 },
+  navBackBtn:   { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: R.md, borderWidth: 1 },
+  navBackArrow: { fontSize: 16, fontWeight: '700' },
+  navBackLabel: { fontSize: 13, fontWeight: '600' },
+  navBrand:     { flex: 1 },
+  navTitle:     { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  navSub:       { fontSize: 12, marginTop: 1 },
+  navAddBtn:    { borderRadius: R.md, overflow: 'hidden', ...Shadow.soft },
+  navAddGrad:   { paddingVertical: 9, paddingHorizontal: 18 },
+  navAddText:   { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  // Page content
+  pageContent:  { maxWidth: 1200, width: '100%', alignSelf: 'center', padding: 24, paddingBottom: 48 },
+
+  // Setup banner
+  setupBanner:  { backgroundColor: '#fffbeb', padding: 16, marginBottom: 20, borderRadius: R.lg, borderLeftWidth: 4, borderLeftColor: '#f59e0b', borderWidth: 1, borderColor: '#fde68a' },
   setupTitle:   { fontWeight: '700', color: '#92400e', marginBottom: 6, fontSize: 14 },
-  setupBody:    { fontSize: 12, color: '#78350f', lineHeight: 18 },
-  setupCode:    { fontFamily: 'monospace', backgroundColor: '#fef3c7', color: '#92400e' },
+  setupBody:    { fontSize: 13, color: '#78350f', lineHeight: 20 },
+  setupCode:    { fontFamily: Platform.OS === 'web' ? 'monospace' : 'Courier', backgroundColor: '#fef3c7', color: '#92400e' } as any,
 
-  searchInput:  { margin: 12, borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, borderWidth: 1.5 },
-  list:         { paddingHorizontal: 12, paddingBottom: 40 },
-  addBtn:       { marginBottom: 16, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
-  addBtnGrad:   { paddingVertical: 14, alignItems: 'center' },
-  addBtnText:   { color: G.cloud, fontWeight: '700', fontSize: 15 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  // Toolbar
+  toolbar:      { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 14, borderRadius: R.lg, borderWidth: 1, marginBottom: 16 },
+  searchInput:  { flex: 1, borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, borderWidth: 1.5 },
+  toolbarCount: { fontSize: 13, fontWeight: '600', flexShrink: 0 },
 
-  row:          { flexDirection: 'row', alignItems: 'center', borderRadius: R.md, borderWidth: 1, marginBottom: 8, padding: 10, gap: 10 },
-  iconWrap:     { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer' } as any,
-  iconImg:      { width: 48, height: 48, borderRadius: R.sm },
-  iconEmoji:    { width: 48, height: 48, borderRadius: R.sm, justifyContent: 'center', alignItems: 'center' },
-  iconEmojiText:{ fontSize: 26, lineHeight: 48, textAlign: 'center' },
-  iconEditHint: { position: 'absolute', bottom: -2, right: -2, fontSize: 12 },
-  rowName:      { fontSize: 15, fontWeight: '600' },
-  rowMeta:      { fontSize: 12, marginTop: 2 },
-  rowActions:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  removeIconBtn:{ backgroundColor: '#fff5f5', borderRadius: R.sm, paddingHorizontal: 8, paddingVertical: 5, borderWidth: 1, borderColor: '#ffc9c9' },
-  removeIconText:{ color: '#e03131', fontSize: 11, fontWeight: '600' },
-  editBtn:      { backgroundColor: G.dew, borderRadius: R.sm, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: G.mist },
-  editBtnText:  { color: G.hunter, fontSize: 13, fontWeight: '600' },
-  deleteBtn:    { paddingHorizontal: 6, paddingVertical: 6 },
-  deleteBtnText:{ fontSize: 16 },
+  // Table
+  table:        { borderRadius: R.lg, borderWidth: 1, overflow: 'hidden' },
+  tableHeader:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
+  thIcon:       { width: 56, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  thName:       { flex: 1, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  thMeta:       { width: 80, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  thActions:    { width: 200, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'right' },
 
-  modalBackdrop:{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modal:        { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 32 : 20, paddingTop: 12 },
-  modalHandle:  { width: 40, height: 4, borderRadius: 2, backgroundColor: '#d0d8d4', alignSelf: 'center', marginBottom: 16 },
-  modalTitle:   { fontSize: 18, fontWeight: '700', marginBottom: 16 },
-  fieldLabel:   { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, marginTop: 12 },
-  input:        { borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, borderWidth: 1.5, marginBottom: 4 },
+  tableRow:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
+  emptyRow:     { padding: 32, alignItems: 'center' },
+  emptyText:    { fontSize: 14 },
+
+  tdIcon:       { width: 56, alignItems: 'center', position: 'relative', cursor: 'pointer' } as any,
+  iconImg:      { width: 40, height: 40, borderRadius: R.sm },
+  iconEmoji:    { width: 40, height: 40, borderRadius: R.sm, justifyContent: 'center', alignItems: 'center' },
+  iconEmojiText:{ fontSize: 22 },
+  iconHint:     { position: 'absolute', bottom: -2, right: 2, fontSize: 10 },
+
+  tdName:       { flex: 1, paddingRight: 12 },
+  plantName:    { fontSize: 14, fontWeight: '600' },
+  plantKey:     { fontSize: 11, marginTop: 2 },
+
+  tdMeta:       { width: 80, fontSize: 13 },
+
+  tdActions:    { width: 200, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
+  actionBtn:    { paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, borderWidth: 1, borderColor: '#e2e8f0' },
+  actionBtnText:{ fontSize: 12, fontWeight: '600' },
+  actionBtnDanger:      { borderColor: '#ffc9c9', backgroundColor: '#fff5f5' },
+  actionBtnDangerText:  { color: '#e03131', fontSize: 12, fontWeight: '600' },
+  actionBtnIcon:{ paddingHorizontal: 8 },
+
+  // Modal
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalDialog:  { width: '100%', maxWidth: 560, borderRadius: R.xl, borderWidth: 1, maxHeight: '85%', ...Shadow.float },
+  modalHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1 },
+  modalTitle:   { fontSize: 17, fontWeight: '700' },
+  modalClose:   { width: 32, height: 32, borderRadius: R.full, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  modalCloseText: { fontSize: 14, fontWeight: '600' },
+  modalBody:    { padding: 24 },
+  modalFooter:  { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, padding: 16, borderTopWidth: 1 },
+
+  footerBtn:        { borderRadius: R.md, overflow: 'hidden' },
+  footerBtnCancel:  { borderWidth: 1, paddingHorizontal: 18, paddingVertical: 9 },
+  footerBtnCancelText: { fontSize: 14, fontWeight: '600' },
+  footerBtnSave:    {},
+  footerBtnGrad:    { paddingHorizontal: 22, paddingVertical: 10 },
+  footerBtnSaveText:{ color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  // Form
+  formRow:      { flexDirection: 'row', gap: 16, marginBottom: 4, alignItems: 'flex-start' },
+  formCol:      {},
+  fieldLabel:   { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6, marginTop: 14 },
+  input:        { borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, borderWidth: 1.5 },
+  inputMultiline: { minHeight: 80, textAlignVertical: 'top' },
   chipRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
-  chip:         { borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: G.foam, borderWidth: 1.5, borderColor: G.mist },
+  chip:         { borderRadius: R.full, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1.5 },
   chipActive:   { backgroundColor: G.hunter, borderColor: G.hunter },
-  chipText:     { color: G.hunter, fontSize: 13, fontWeight: '500' },
-  chipTextActive:{ color: G.cloud, fontWeight: '700' },
-  stepperRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 4 },
-  stepBtn:      { width: 36, height: 36, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
-  stepBtnText:  { fontSize: 22, fontWeight: '700', color: G.hunter, lineHeight: 24 },
-  stepValue:    { fontSize: 18, fontWeight: '700', minWidth: 80, textAlign: 'center' },
-  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, marginTop: 8, borderTopWidth: 1, borderTopColor: G.dew },
-  cancelBtn:    { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9' },
-  cancelText:   { color: '#e03131', fontSize: 15, fontWeight: '700' },
-  saveBtn:      { borderRadius: R.lg, overflow: 'hidden', ...Shadow.soft },
-  saveBtnGrad:  { paddingVertical: 12, paddingHorizontal: 28 },
-  saveBtnText:  { color: G.cloud, fontWeight: '700', fontSize: 15 },
+  chipText:     { fontSize: 13, fontWeight: '500' },
+  chipTextActive: { color: G.cloud, fontWeight: '700' },
+  stepperRow:   { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 4, marginTop: 4 },
+  stepBtn:      { width: 36, height: 36, borderRadius: R.full, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
+  stepBtnText:  { fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  stepValue:    { fontSize: 16, fontWeight: '700', minWidth: 70, textAlign: 'center' },
 });

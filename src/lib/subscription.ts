@@ -17,6 +17,7 @@
  */
 
 import { Platform } from 'react-native';
+import { pb } from './pb';
 
 export const REVENUECAT_API_KEY_IOS     = 'appl_REPLACE_WITH_YOUR_KEY';
 export const REVENUECAT_API_KEY_ANDROID = 'goog_REPLACE_WITH_YOUR_KEY';
@@ -34,9 +35,10 @@ let initialized = false;
 
 export async function initPurchases(userId: string) {
   if (Platform.OS === 'web') return;
+  const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY_IOS : REVENUECAT_API_KEY_ANDROID;
+  if (apiKey.startsWith('appl_REPLACE') || apiKey.startsWith('goog_REPLACE')) return;
   try {
     const Purchases = (await import('react-native-purchases')).default;
-    const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY_IOS : REVENUECAT_API_KEY_ANDROID;
     Purchases.configure({ apiKey, appUserID: userId });
     initialized = true;
   } catch {
@@ -95,7 +97,10 @@ export async function presentOfferCodeSheet() {
 
 // ── Local promo code grant (dev / beta testing) ───────────────────────────────
 
-const PROMO_STORAGE_KEY = 'gg_promo_grant';
+function promoKey(): string {
+  const uid = (pb.authStore.model as any)?.id ?? 'anonymous';
+  return `gg_promo_grant:${uid}`;
+}
 
 async function getStorage() {
   if (Platform.OS === 'web') return null;
@@ -105,10 +110,10 @@ async function getStorage() {
 export async function hasLocalPromoGrant(): Promise<boolean> {
   try {
     if (Platform.OS === 'web') {
-      return !!localStorage.getItem(PROMO_STORAGE_KEY);
+      return !!localStorage.getItem(promoKey());
     }
     const store = await getStorage();
-    return !!(await store?.getItem(PROMO_STORAGE_KEY));
+    return !!(await store?.getItem(promoKey()));
   } catch { return false; }
 }
 
@@ -117,10 +122,10 @@ export async function redeemPromoCode(code: string): Promise<{ success: boolean;
   if (TEST_PROMO_CODES[upper]) {
     try {
       if (Platform.OS === 'web') {
-        localStorage.setItem(PROMO_STORAGE_KEY, upper);
+        localStorage.setItem(promoKey(), upper);
       } else {
         const store = await getStorage();
-        await store?.setItem(PROMO_STORAGE_KEY, upper);
+        await store?.setItem(promoKey(), upper);
       }
       return { success: true, message: `✅ Code applied! ${TEST_PROMO_CODES[upper]}` };
     } catch {
@@ -140,10 +145,10 @@ export async function redeemPromoCode(code: string): Promise<{ success: boolean;
 export async function clearPromoGrant() {
   try {
     if (Platform.OS === 'web') {
-      localStorage.removeItem(PROMO_STORAGE_KEY);
+      localStorage.removeItem(promoKey());
     } else {
       const store = await getStorage();
-      await store?.removeItem(PROMO_STORAGE_KEY);
+      await store?.removeItem(promoKey());
     }
   } catch {}
 }

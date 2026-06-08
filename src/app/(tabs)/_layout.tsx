@@ -6,6 +6,7 @@ import { G, Shadow, Spring, R } from '@/constants/theme';
 import { DesktopSidebar } from '@/components/layout/DesktopSidebar';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAppTheme } from '@/contexts/theme-context';
+import OfflineBanner from '@/components/ui/OfflineBanner';
 
 const TABS = [
   { name: 'index',    label: 'Home',     emoji: '🏡' },
@@ -71,7 +72,8 @@ function MobileTabs() {
         tabBarLabelStyle: styles.tabLabel,
         tabBarActiveTintColor: isDark ? colors.tint : G.hunter,
         tabBarInactiveTintColor: isDark ? colors.textSec : G.stone,
-        animation: 'fade',
+        animation: 'none',
+        sceneStyle: { backgroundColor: isDark ? colors.bg : G.foam },
       }}
     >
       {TABS.map(tab => (
@@ -93,7 +95,12 @@ function MobileTabs() {
 
 export default function TabsLayout() {
   const { isDesktop } = useBreakpoint();
-  return isDesktop ? <DesktopTabsWrapper /> : <MobileTabs />;
+  return (
+    <View style={{ flex: 1 }}>
+      <OfflineBanner />
+      {isDesktop ? <DesktopTabsWrapper /> : <MobileTabs />}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

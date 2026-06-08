@@ -50,6 +50,7 @@ export interface Database {
           total_yield_grams: number;
           notes: string | null;
           created_at: string;
+          quantity: number | null;
         };
         Insert: {
           garden_id: string;
@@ -66,6 +67,7 @@ export interface Database {
           sun_requirement?: 'full_sun' | 'partial_sun' | 'shade' | null;
           total_yield_grams?: number;
           notes?: string | null;
+          quantity?: number | null;
         };
         Update: {
           name?: string;
@@ -80,6 +82,7 @@ export interface Database {
           sun_requirement?: 'full_sun' | 'partial_sun' | 'shade' | null;
           total_yield_grams?: number;
           notes?: string | null;
+          quantity?: number | null;
         };
         Relationships: [];
       };

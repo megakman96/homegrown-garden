@@ -12,7 +12,6 @@ import { PLANT_CATALOG, SUN_EMOJIS, searchPlants } from '@/lib/plant-catalog';
 import { getPlantIcon } from '@/lib/plant-icons';
 import type { CatalogEntry } from '@/lib/plant-catalog';
 
-// Cool season crops can tolerate frost; warm season cannot
 const COOL_SEASON = new Set([
   'lettuce', 'spinach', 'kale', 'broccoli', 'cabbage', 'cauliflower',
   'brussels_sprouts', 'pea', 'carrot', 'radish', 'beet', 'turnip', 'parsnip',
@@ -70,10 +69,8 @@ function computePlan(
     let transplantDate: Date | null = null;
 
     if (isCool) {
-      // Cool season: direct sow 4–6 weeks before last frost, or 8 weeks before first fall frost
       directSowDate = addDays(lastFrost, -42);
     } else {
-      // Warm season: direct sow on last frost date; start indoors 6–8 weeks before
       directSowDate = lastFrost;
       if (matMin >= 60) {
         seedStartDate = addDays(lastFrost, -56);
@@ -126,10 +123,10 @@ export default function PlanScreen() {
 
   const pickerModal = (
     <Modal visible={showPicker} transparent animationType="slide">
-      <View style={styles.modalBackdrop}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPicker(false)} />
-        <View style={[styles.modal, { backgroundColor: cardBg }]}>
-          <View style={styles.modalHandle} />
+      <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+        {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPicker(false)} />}
+        <View style={[styles.modal, { backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+          {!isDesktop && <View style={styles.modalHandle} />}
           <Text style={[styles.modalTitle, { color: textPrim }]}>Choose Plants</Text>
           <TextInput
             style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
@@ -172,21 +169,141 @@ export default function PlanScreen() {
     </Modal>
   );
 
-  return (
-    <View style={[styles.container, { backgroundColor: bg }]}>
-      {isDesktop && (
+  const planResults = plan.length > 0 ? (
+    <>
+      <Text style={[styles.sectionTitle, { color: textPrim, marginTop: isDesktop ? 0 : 8, marginBottom: 12 }]}>
+        📅 {planYear} Planting Schedule
+      </Text>
+      <View style={isDesktop ? styles.planGrid : undefined}>
+        {plan.map(({ key, entry, seedStartDate, transplantDate, directSowDate, harvestStart, harvestEnd }) => (
+          <View key={key} style={[styles.planCard, { backgroundColor: cardBg, borderColor: border }, isDesktop && styles.planCardDesktop]}>
+            <View style={styles.planHeader}>
+              <Text style={styles.planEmoji}>{getPlantIcon(entry.name).emoji}</Text>
+              <Text style={[styles.planName, { color: textPrim }]}>{entry.name}</Text>
+              <Text style={[styles.planCategory, { color: textSec }]}>{entry.category}</Text>
+            </View>
+            <View style={styles.timeline}>
+              {seedStartDate && (
+                <TimelineRow emoji="🏠" label="Start seeds indoors" date={fmt(seedStartDate)} color="#74c0fc" />
+              )}
+              {transplantDate && (
+                <TimelineRow emoji="🌱" label="Transplant outside" date={fmt(transplantDate)} color="#52b788" />
+              )}
+              {!seedStartDate && (
+                <TimelineRow emoji="🌱" label="Direct sow" date={fmt(directSowDate)} color="#52b788" />
+              )}
+              <TimelineRow emoji="🧺" label="Expected harvest" date={`${fmt(harvestStart)} – ${fmt(harvestEnd)}`} color="#a9e34b" />
+            </View>
+            {entry.notes && (
+              <Text style={[styles.planNote, { color: textSec }]}>💡 {entry.notes}</Text>
+            )}
+          </View>
+        ))}
+      </View>
+    </>
+  ) : selectedKeys.length > 0 ? (
+    <View style={styles.emptyPlan}>
+      <Text style={[styles.emptyText, { color: textSec }]}>Check your frost dates — enter them in MM/DD format (e.g. 04/15).</Text>
+    </View>
+  ) : (
+    <View style={styles.emptyPlan}>
+      <Text style={styles.emptyEmoji}>🗓️</Text>
+      <Text style={[styles.emptyTitle, { color: textPrim }]}>Plan a future season</Text>
+      <Text style={[styles.emptyText, { color: textSec }]}>
+        Set your year and frost dates, pick plants, and get a personalized planting calendar.
+      </Text>
+    </View>
+  );
+
+  if (isDesktop) {
+    return (
+      <View style={[styles.container, { backgroundColor: bg }]}>
         <View style={[styles.header, { borderBottomColor: border }]}>
           <Text style={[styles.pageTitle, { color: textPrim }]}>🗓️ Garden Plan</Text>
           <Text style={[styles.pageSub, { color: textSec }]}>Plan your future seasons</Text>
         </View>
-      )}
-      <ScrollView contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]} showsVerticalScrollIndicator={false}>
+        <View style={styles.desktopLayout}>
+          {/* Left panel: season settings */}
+          <View style={[styles.desktopLeftPanel, { backgroundColor: cardBg, borderRightColor: border }]}>
+            <ScrollView contentContainerStyle={styles.desktopLeftContent} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.sectionTitle, { color: textPrim }]}>⚙️ Season Settings</Text>
 
-        {/* Config card */}
+              <Text style={[styles.configLabel, { color: textSec, marginBottom: 6 }]}>Plan Year</Text>
+              <View style={[styles.yearRow, { marginBottom: 20 }]}>
+                <TouchableOpacity style={[styles.yearBtn, { backgroundColor: isDark ? colors.bgElement : G.foam }]} onPress={() => setPlanYear(y => Math.max(new Date().getFullYear(), y - 1))}>
+                  <Text style={[styles.yearBtnText, { color: textPrim }]}>−</Text>
+                </TouchableOpacity>
+                <Text style={[styles.yearValue, { color: textPrim }]}>{planYear}</Text>
+                <TouchableOpacity style={[styles.yearBtn, { backgroundColor: isDark ? colors.bgElement : G.foam }]} onPress={() => setPlanYear(y => y + 1)}>
+                  <Text style={[styles.yearBtnText, { color: textPrim }]}>+</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.configLabel, { color: textSec, marginBottom: 6 }]}>Last Spring Frost</Text>
+              <TextInput
+                style={[styles.frostInput, { backgroundColor: inputBg, borderColor: border, color: textPrim, width: '100%', marginBottom: 16 }]}
+                value={lastFrost}
+                onChangeText={setLastFrost}
+                placeholder="MM/DD"
+                placeholderTextColor={textSec}
+                maxLength={5}
+              />
+
+              <Text style={[styles.configLabel, { color: textSec, marginBottom: 6 }]}>First Fall Frost</Text>
+              <TextInput
+                style={[styles.frostInput, { backgroundColor: inputBg, borderColor: border, color: textPrim, width: '100%', marginBottom: 16 }]}
+                value={firstFrost}
+                onChangeText={setFirstFrost}
+                placeholder="MM/DD"
+                placeholderTextColor={textSec}
+                maxLength={5}
+              />
+
+              <Text style={[styles.frostHint, { color: textSec, marginBottom: 20 }]}>
+                Not sure? Find your average frost dates at a local gardening resource.
+              </Text>
+
+              <PressableScale onPress={() => setShowPicker(true)} style={[styles.addPlantsBtn, { marginBottom: 0 }]}>
+                <LinearGradient colors={[G.sage, G.forest]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.addPlantsBtnGrad}>
+                  <Text style={styles.addPlantsBtnText}>
+                    🌱 {selectedKeys.length === 0 ? 'Choose Plants' : `${selectedKeys.length} Plant${selectedKeys.length !== 1 ? 's' : ''} Selected`}
+                  </Text>
+                </LinearGradient>
+              </PressableScale>
+
+              {selectedKeys.length > 0 && (
+                <View style={{ marginTop: 16, gap: 6 }}>
+                  {selectedKeys.map(k => (
+                    <View key={k} style={[styles.selectedChip, { backgroundColor: isDark ? colors.bgElement : '#d8f3dc', borderColor: border }]}>
+                      <Text style={{ fontSize: 16 }}>{getPlantIcon(PLANT_CATALOG[k]?.name ?? k).emoji}</Text>
+                      <Text style={[styles.selectedChipText, { color: textPrim }]}>{PLANT_CATALOG[k]?.name ?? k}</Text>
+                      <TouchableOpacity onPress={() => togglePlant(k)}>
+                        <Text style={{ color: textSec, fontSize: 16 }}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+
+          {/* Right panel: plan results */}
+          <ScrollView style={styles.desktopRightPanel} contentContainerStyle={styles.desktopRightContent} showsVerticalScrollIndicator={false}>
+            {planResults}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+        {pickerModal}
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: bg }]}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.configCard, { backgroundColor: cardBg, borderColor: border }]}>
           <Text style={[styles.sectionTitle, { color: textPrim }]}>⚙️ Season Settings</Text>
 
-          {/* Year */}
           <View style={styles.configRow}>
             <Text style={[styles.configLabel, { color: textSec }]}>Plan Year</Text>
             <View style={styles.yearRow}>
@@ -200,7 +317,6 @@ export default function PlanScreen() {
             </View>
           </View>
 
-          {/* Frost dates */}
           <View style={styles.configRow}>
             <Text style={[styles.configLabel, { color: textSec }]}>Last Spring Frost</Text>
             <TextInput
@@ -228,7 +344,6 @@ export default function PlanScreen() {
           </Text>
         </View>
 
-        {/* Plant selector */}
         <PressableScale onPress={() => setShowPicker(true)} style={styles.addPlantsBtn}>
           <LinearGradient colors={[G.sage, G.forest]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.addPlantsBtnGrad}>
             <Text style={styles.addPlantsBtnText}>
@@ -237,70 +352,7 @@ export default function PlanScreen() {
           </LinearGradient>
         </PressableScale>
 
-        {/* Plan output */}
-        {plan.length > 0 ? (
-          <>
-            <Text style={[styles.sectionTitle, { color: textPrim, marginTop: 8, marginBottom: 12 }]}>
-              📅 {planYear} Planting Schedule
-            </Text>
-            {plan.map(({ key, entry, seedStartDate, transplantDate, directSowDate, harvestStart, harvestEnd }) => (
-              <View key={key} style={[styles.planCard, { backgroundColor: cardBg, borderColor: border }]}>
-                <View style={styles.planHeader}>
-                  <Text style={styles.planEmoji}>{getPlantIcon(entry.name).emoji}</Text>
-                  <Text style={[styles.planName, { color: textPrim }]}>{entry.name}</Text>
-                  <Text style={[styles.planCategory, { color: textSec }]}>{entry.category}</Text>
-                </View>
-                <View style={styles.timeline}>
-                  {seedStartDate && (
-                    <TimelineRow
-                      emoji="🏠"
-                      label="Start seeds indoors"
-                      date={fmt(seedStartDate)}
-                      color="#74c0fc"
-                    />
-                  )}
-                  {transplantDate && (
-                    <TimelineRow
-                      emoji="🌱"
-                      label="Transplant outside"
-                      date={fmt(transplantDate)}
-                      color="#52b788"
-                    />
-                  )}
-                  {!seedStartDate && (
-                    <TimelineRow
-                      emoji="🌱"
-                      label="Direct sow"
-                      date={fmt(directSowDate)}
-                      color="#52b788"
-                    />
-                  )}
-                  <TimelineRow
-                    emoji="🧺"
-                    label="Expected harvest"
-                    date={`${fmt(harvestStart)} – ${fmt(harvestEnd)}`}
-                    color="#a9e34b"
-                  />
-                </View>
-                {entry.notes && (
-                  <Text style={[styles.planNote, { color: textSec }]}>💡 {entry.notes}</Text>
-                )}
-              </View>
-            ))}
-          </>
-        ) : selectedKeys.length > 0 ? (
-          <View style={styles.emptyPlan}>
-            <Text style={[styles.emptyText, { color: textSec }]}>Check your frost dates — enter them in MM/DD format (e.g. 04/15).</Text>
-          </View>
-        ) : (
-          <View style={styles.emptyPlan}>
-            <Text style={styles.emptyEmoji}>🗓️</Text>
-            <Text style={[styles.emptyTitle, { color: textPrim }]}>Plan a future season</Text>
-            <Text style={[styles.emptyText, { color: textSec }]}>
-              Set your year and frost dates, pick plants, and get a personalized planting calendar.
-            </Text>
-          </View>
-        )}
+        {planResults}
         <View style={{ height: 40 }} />
       </ScrollView>
       {pickerModal}
@@ -327,7 +379,19 @@ const styles = StyleSheet.create({
   pageTitle:      { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   pageSub:        { fontSize: 13, marginTop: 3 },
   content:        { padding: 16, paddingBottom: 40 },
-  contentDesktop: { maxWidth: 800, width: '100%', alignSelf: 'center', paddingHorizontal: 32 },
+
+  // Desktop 2-column layout
+  desktopLayout:      { flex: 1, flexDirection: 'row' },
+  desktopLeftPanel:   { width: 300, borderRightWidth: 1, flexShrink: 0 },
+  desktopLeftContent: { padding: 24, paddingBottom: 40 },
+  desktopRightPanel:  { flex: 1 },
+  desktopRightContent:{ padding: 32, paddingBottom: 48, maxWidth: 900, width: '100%', alignSelf: 'center' },
+
+  planGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  planCardDesktop:{ width: '47%', flexGrow: 1 },
+
+  selectedChip:       { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: R.md, borderWidth: 1, padding: 10 },
+  selectedChipText:   { flex: 1, fontSize: 14, fontWeight: '600' },
 
   configCard:     { borderRadius: R.lg, padding: 16, marginBottom: 16, borderWidth: 1, ...Shadow.soft },
   sectionTitle:   { fontSize: 16, fontWeight: '700', marginBottom: 14 },
@@ -362,8 +426,10 @@ const styles = StyleSheet.create({
   emptyTitle:     { fontSize: 20, fontWeight: '800', marginBottom: 8 },
   emptyText:      { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 
-  modalBackdrop:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modal:          { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 32 : 20, paddingTop: 12, maxHeight: '88%' },
+  modalBackdrop:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalBackdropCenter: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 32 },
+  modal:               { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 32 : 20, paddingTop: 16, maxHeight: '88%' },
+  modalCenter:         { width: '100%', maxWidth: 560, borderRadius: 20 },
   modalHandle:    { width: 40, height: 4, borderRadius: 2, backgroundColor: '#d0d8d4', alignSelf: 'center', marginBottom: 16 },
   modalTitle:     { fontSize: 18, fontWeight: '700', marginBottom: 12 },
   input:          { borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, borderWidth: 1.5, marginBottom: 8 },

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "GardenGrid",
+    "name": "GreenPlot",
     "slug": "homegrown-garden",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,9 +9,13 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.homegrown.garden",
+      "buildNumber": "6",
+      "supportsTablet": true,
       "icon": "./assets/images/icon.png",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Used to photograph your plants to log their growth progress.",
+        "NSPhotoLibraryUsageDescription": "Used to select photos of your plants for progress logging."
       }
     },
     "android": {
@@ -22,14 +26,17 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
       "output": "single-page",
       "favicon": "./assets/images/favicon.png",
-      "name": "GardenGrid",
-      "shortName": "GardenGrid",
+      "name": "GreenPlot",
+      "shortName": "GreenPlot",
       "description": "Plan your garden, track your plants, harvest more.",
       "themeColor": "#1b4332",
       "backgroundColor": "#f0f7ee",
@@ -59,7 +66,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow GardenGrid to access your photos to add plant progress pictures."
+          "photosPermission": "Allow GreenPlot to access your photos to add plant progress pictures."
         }
       ],
       [

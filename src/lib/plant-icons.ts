@@ -9,6 +9,7 @@ export interface PlantIconDef {
 const ICONS: Record<string, PlantIconDef> = {
   // ── Vegetables ─────────────────────────────────────────────────────────────
   tomato:              { emoji: '🍅', bg: '#ffe3e3' },
+  cherry_tomato:       { emoji: '🍒', bg: '#ffe3e3' },
   pepper:              { emoji: '🌶️', bg: '#ffe8cc' },
   serrano:             { emoji: '🌶️', bg: '#ffe8cc' },
   jalapeno:            { emoji: '🌶️', bg: '#ffe8cc' },

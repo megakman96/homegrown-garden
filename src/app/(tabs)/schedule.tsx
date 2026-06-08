@@ -3,7 +3,8 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   ActivityIndicator, RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { offlineList, offlineUpdate } from '@/lib/offline-db';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -17,6 +18,7 @@ import {
   type WeatherData, type WateringAdvice, type Location,
 } from '@/lib/weather';
 import { addActivityEntryAsync } from '@/lib/activity-log';
+import { yearFromGarden, sortGardens } from '@/lib/garden-layout';
 
 interface PlantWithAdvice {
   plant: Plant;
@@ -40,6 +42,7 @@ export default function ScheduleScreen() {
 
   const [plants, setPlants] = useState<Plant[]>([]);
   const [gardens, setGardens] = useState<Garden[]>([]);
+  const [sharedGardenIds, setSharedGardenIds] = useState<Set<string>>(new Set());
   const [gardenWeather, setGardenWeather] = useState<Record<string, WeatherData | null>>({});
   const [gardenLocations, setGardenLocations] = useState<Record<string, Location | null>>({});
   const [gardenWeatherLoading, setGardenWeatherLoading] = useState<Record<string, boolean>>({});
@@ -65,40 +68,69 @@ export default function ScheduleScreen() {
   const loadAll = useCallback(async () => {
     if (!user) return;
 
-    const [plantsData, gardensData] = await Promise.all([
-      pb.collection('plants').getFullList({
-        filter: `user_id = "${user.id}" && health_status != "dead" && health_status != "harvested"`,
-      }),
-      pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }),
-    ]);
+    const currentYear = new Date().getFullYear();
 
-    const pl = plantsData as any[] as Plant[];
-    const gl = gardensData as any[] as Garden[];
+    // Own gardens
+    const gardensData = await offlineList('gardens', user.id, `user_id = "${user.id}"`);
+    const gl = gardensData as Garden[];
+    const validGardenIds = new Set(
+      gl.filter(g => { const y = yearFromGarden(g); return y == null || y === currentYear; }).map(g => g.id)
+    );
+
+    const plantsData = await offlineList('plants', user.id, `user_id = "${user.id}" && health_status != "dead" && health_status != "harvested"`);
+    const pl: Plant[] = (plantsData as any[] as Plant[]).filter(
+      p => !p.garden_id || validGardenIds.has(p.garden_id)
+    );
+
+    // Shared gardens — load gardens and their plants
+    const sharedIds = new Set<string>();
+    try {
+      const shares = await pb.collection('garden_shares').getFullList({ filter: `shared_with_email = "${user.email}"` });
+      await Promise.all(shares.map(async (share: any) => {
+        const garden = await pb.collection('gardens').getOne(share.garden_id).catch(() => null);
+        if (!garden) return;
+        const g = garden as any as Garden;
+        const y = yearFromGarden(g);
+        if (y != null && y !== currentYear) return;
+        sharedIds.add(g.id);
+        gl.push(g);
+        validGardenIds.add(g.id);
+        const sharedPlants = await offlineList('plants', `${user.id}:${g.id}`, `garden_id = "${g.id}" && health_status != "dead" && health_status != "harvested"`).catch(() => []);
+        pl.push(...(sharedPlants as Plant[]));
+      }));
+    } catch {}
+
+    setSharedGardenIds(sharedIds);
     setPlants(pl);
-    setGardens(gl);
+    const currentYearGardens = sortGardens(gl.filter(g => { const y = yearFromGarden(g); return y == null || y === currentYear; }));
+    setGardens(currentYearGardens);
 
-    // Load location + weather for each garden
+    // Load location + weather for all gardens with a location
+    // Weather display and watering advice are gated per-garden in render/buildSchedule
     const locs: Record<string, Location | null> = {};
-    await Promise.all(gl.map(async (g) => {
+    await Promise.all(currentYearGardens.map(async (g) => {
       const loc = await loadGardenLocation(g as any);
       locs[g.id] = loc;
       if (loc) loadGardenWeather(g, loc);
     }));
     setGardenLocations(locs);
 
-    // Build schedule using whatever weather is already cached (may be empty on first load;
-    // weather updates trigger a re-build via gardenWeather state change)
-    buildSchedule(pl, {});
-  }, [user]);
+    buildSchedule(pl, {}, sharedIds, isPremium);
+  }, [user, isPremium]);
 
   useEffect(() => {
     loadAll();
   }, [user]);
 
-  // Re-build schedule whenever weather map changes
+  // Re-build schedule whenever weather map or premium/shared status changes
   useEffect(() => {
-    if (plants.length > 0) buildSchedule(plants, gardenWeather);
-  }, [gardenWeather]);
+    if (plants.length > 0) buildSchedule(plants, gardenWeather, sharedGardenIds, isPremium);
+  }, [gardenWeather, sharedGardenIds, isPremium]);
+
+  // Full refresh on every focus so deletions/additions from the garden tab show immediately
+  useFocusEffect(useCallback(() => {
+    loadAll();
+  }, [loadAll]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -111,12 +143,15 @@ export default function ScheduleScreen() {
   const buildSchedule = useCallback((
     plantList: Plant[],
     wxMap: Record<string, WeatherData | null>,
+    sharedIds: Set<string>,
+    premiumFlag: boolean,
   ) => {
     const now = new Date();
     const schedule: PlantWithAdvice[] = [];
 
     for (const plant of plantList) {
-      const wx = wxMap[plant.garden_id] ?? null;
+      const weatherAllowed = premiumFlag || sharedIds.has(plant.garden_id);
+      const wx = weatherAllowed ? (wxMap[plant.garden_id] ?? null) : null;
 
       if (plant.water_interval_days) {
         const advice = wx
@@ -149,14 +184,13 @@ export default function ScheduleScreen() {
   }, []);
 
   async function markWatered(plant: Plant) {
+    if (!user) return;
     const now = new Date().toISOString();
-    await pb.collection('plants').update(plant.id, { last_watered: now });
-    if (user) {
-      addActivityEntryAsync(user.id, { type: 'water', plantId: plant.id, plantName: plant.name, gardenId: plant.garden_id });
-    }
+    await offlineUpdate('plants', user.id, plant.id, { last_watered: now });
+    addActivityEntryAsync(user.id, { type: 'water', plantId: plant.id, plantName: plant.name, gardenId: plant.garden_id });
     const updated = plants.map(p => p.id === plant.id ? { ...p, last_watered: now } : p);
     setPlants(updated);
-    buildSchedule(updated, gardenWeather);
+    buildSchedule(updated, gardenWeather, sharedGardenIds, isPremium);
   }
 
   // ── Build schedule map ────────────────────────────────────────────────────
@@ -191,14 +225,21 @@ export default function ScheduleScreen() {
     const loc = gardenLocations[g.id];
     if (!loc) continue;
     const key = locationKey(loc);
+    const wx = gardenWeather[g.id] ?? null;
+    const isLoading = gardenWeatherLoading[g.id] ?? false;
     if (!groupMap.has(key)) {
       groupMap.set(key, {
         key,
         locationName: loc.name ?? `${loc.latitude.toFixed(1)}, ${loc.longitude.toFixed(1)}`,
         gardens: [],
-        weather: gardenWeather[g.id] ?? null,
-        loading: gardenWeatherLoading[g.id] ?? false,
+        weather: wx,
+        loading: isLoading,
       });
+    } else {
+      const existing = groupMap.get(key)!;
+      // Prefer weather from shared gardens if own garden has none (non-premium)
+      if (!existing.weather && wx) existing.weather = wx;
+      if (!existing.loading && isLoading) existing.loading = true;
     }
     groupMap.get(key)!.gardens.push(g);
   }
@@ -217,7 +258,7 @@ export default function ScheduleScreen() {
     return (
       <View key={garden.id}>
         <Text style={[styles.gardenName, { color: textPrim, marginTop: 10, marginBottom: 6 }]}>
-          🌻 {garden.name}
+          🌻 {garden.name}{yearFromGarden(garden) ? ` · ${yearFromGarden(garden)}` : ''}
         </Text>
         {overdue.length > 0 && (
           <Section title={`🔴 Overdue (${overdue.length})`}>
@@ -246,6 +287,8 @@ export default function ScheduleScreen() {
 
   // Renders a location group: one weather card + all gardens in that location
   function renderLocationGroup(group: LocationGroup, isDesktopLayout: boolean) {
+    const groupHasShared = group.gardens.some(g => sharedGardenIds.has(g.id));
+    const showWeather = isPremium || groupHasShared;
     return (
       <View key={group.key} style={isDesktopLayout ? styles.desktopGardenSection : styles.gardenSection}>
         <View style={[styles.gardenHeader, { marginBottom: 8 }]}>
@@ -253,7 +296,7 @@ export default function ScheduleScreen() {
             📍 {group.locationName}
           </Text>
         </View>
-        {isPremium
+        {showWeather
           ? <WeatherWidget weather={group.weather} loading={group.loading} tempUnit={tempUnit} />
           : <UpgradePrompt compact message="Weather-aware watering is a Pro feature" />
         }
@@ -267,15 +310,16 @@ export default function ScheduleScreen() {
     const gItems = itemsByGarden[garden.id] ?? [];
     const overdue = gItems.filter(i => i.overdue);
     const upcoming = gItems.filter(i => !i.overdue);
+    const showWeather = isPremium || sharedGardenIds.has(garden.id);
 
     return (
       <View key={garden.id} style={isDesktopLayout ? styles.desktopGardenSection : styles.gardenSection}>
         <View style={styles.gardenHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.gardenName, { color: textPrim }]}>🌻 {garden.name}</Text>
+            <Text style={[styles.gardenName, { color: textPrim }]}>🌻 {garden.name}{yearFromGarden(garden) ? ` · ${yearFromGarden(garden)}` : ''}</Text>
           </View>
         </View>
-        {isPremium
+        {showWeather
           ? <WeatherWidget weather={null} loading={false} tempUnit={tempUnit} />
           : <UpgradePrompt compact message="Weather-aware watering is a Pro feature" />
         }

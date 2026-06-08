@@ -151,26 +151,36 @@ export async function saveGardenLocation(gardenId: string, loc: Location): Promi
   } catch {
     try { localStorage.setItem(key, JSON.stringify(loc)); } catch {}
   }
+  // Also persist to PocketBase so shared users can read the location
+  try {
+    const { pb } = await import('./pb');
+    if (pb.authStore.isValid) {
+      await pb.collection('gardens').update(gardenId, { location_json: JSON.stringify(loc) });
+    }
+  } catch {}
 }
 
 export async function loadGardenLocation(garden: { id: string; location_json?: string | null }): Promise<Location | null> {
+  // Check localStorage first — this reflects the user's most recent explicit choice
+  // even when PocketBase's location_json hasn't been updated yet (missing field schema).
+  const key = `garden_location_${garden.id}`;
+  try {
+    const { getItemAsync } = await import('expo-secure-store');
+    const raw = await getItemAsync(key);
+    if (raw) { const p = JSON.parse(raw); if (p?.latitude != null) return p as Location; }
+  } catch {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) { const p = JSON.parse(raw); if (p?.latitude != null) return p as Location; }
+    } catch {}
+  }
+  // Fall back to PocketBase field
   if (garden.location_json) {
     try {
       const parsed = typeof garden.location_json === 'string'
         ? JSON.parse(garden.location_json)
         : garden.location_json;
       if (parsed?.latitude != null && parsed?.longitude != null) return parsed as Location;
-    } catch {}
-  }
-  const key = `garden_location_${garden.id}`;
-  try {
-    const { getItemAsync } = await import('expo-secure-store');
-    const raw = await getItemAsync(key);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) return JSON.parse(raw);
     } catch {}
   }
   return null;

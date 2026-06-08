@@ -49,6 +49,11 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editingBday, setEditingBday] = useState(false);
   const [editBday, setEditBday] = useState('');
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [oldPw, setOldPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [changingPw, setChangingPw] = useState(false);
 
   async function saveName() {
     if (!user || !editName.trim()) return;
@@ -63,6 +68,38 @@ export default function ProfileScreen() {
     if (!user) return;
     saveBirthday(user.id, editBday.trim());
     setEditingBday(false);
+  }
+
+  async function changePassword() {
+    if (!user) return;
+    if (!oldPw || !newPw || !confirmPw) {
+      Alert.alert('Missing fields', 'Please fill in all three fields.');
+      return;
+    }
+    if (newPw !== confirmPw) {
+      Alert.alert('Passwords do not match', 'New password and confirm password must match.');
+      return;
+    }
+    if (newPw.length < 8) {
+      Alert.alert('Too short', 'New password must be at least 8 characters.');
+      return;
+    }
+    setChangingPw(true);
+    try {
+      await pb.collection('users').update(user.id, {
+        oldPassword: oldPw,
+        password: newPw,
+        passwordConfirm: confirmPw,
+      });
+      Alert.alert('Success', 'Your password has been updated. Please sign in again.');
+      setShowChangePw(false);
+      setOldPw(''); setNewPw(''); setConfirmPw('');
+      signOut();
+    } catch (e: any) {
+      Alert.alert('Error', e?.data?.oldPassword?.message ?? e?.message ?? 'Could not change password.');
+    } finally {
+      setChangingPw(false);
+    }
   }
 
   const bg = isDark ? colors.bg : '#f0f7ee';
@@ -155,6 +192,11 @@ export default function ProfileScreen() {
     setWipingData(true);
     try {
       const plants = await pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` });
+
+      // Delete plant photos before plants (foreign key)
+      const photos = await pb.collection('plant_photos').getFullList({ filter: `user_id = "${user.id}"` }).catch(() => [] as any[]);
+      await Promise.all((photos as any[]).map((ph: any) => pb.collection('plant_photos').delete(ph.id).catch(() => {})));
+
       await Promise.all(plants.map(p => pb.collection('plants').delete(p.id).catch(() => {})));
 
       const harvests = await pb.collection('harvests').getFullList({ filter: `user_id = "${user.id}"` }).catch(() => [] as any[]);
@@ -163,14 +205,19 @@ export default function ProfileScreen() {
       const gardenList = await pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` });
       await Promise.all(gardenList.map(g => pb.collection('gardens').delete(g.id).catch(() => {})));
 
-      const shareList = await pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` });
-      await Promise.all(shareList.map(s => pb.collection('garden_shares').delete(s.id).catch(() => {})));
+      const shareList = await pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` }).catch(() => [] as any[]);
+      await Promise.all((shareList as any[]).map((s: any) => pb.collection('garden_shares').delete(s.id).catch(() => {})));
+
+      // Also remove gardens that were shared WITH this user
+      const sharedWithMe = await pb.collection('garden_shares').getFullList({ filter: `shared_with_email = "${user.email}"` }).catch(() => [] as any[]);
+      await Promise.all((sharedWithMe as any[]).map((s: any) => pb.collection('garden_shares').delete(s.id).catch(() => {})));
 
       await clearActivityLogAsync(user.id);
 
       setGardens([]);
       setShares([]);
-      Alert.alert('Done', 'All garden data has been cleared. Your account and profile are intact.');
+      // Navigate to home so all tabs refresh with empty state
+      router.replace('/(tabs)');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not wipe data. Please try again.');
     } finally {
@@ -178,10 +225,64 @@ export default function ProfileScreen() {
     }
   }
 
+  const changePwModal = (
+    <Modal visible={showChangePw} transparent animationType="fade">
+      <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+        <View style={[styles.modal, isDesktop && styles.modalCenter]}>
+          <Text style={[styles.modalTitle, { color: textPrimary }]}>Change Password</Text>
+
+          <Text style={[styles.pwLabel, { color: textSecondary }]}>Current Password</Text>
+          <TextInput
+            style={[styles.input, { color: textPrimary, borderColor: borderCol, backgroundColor: isDark ? colors.bgElement : '#f0f7ee' }]}
+            value={oldPw}
+            onChangeText={setOldPw}
+            secureTextEntry
+            placeholder="Current password"
+            placeholderTextColor={textSecondary}
+            autoFocus
+          />
+
+          <Text style={[styles.pwLabel, { color: textSecondary }]}>New Password</Text>
+          <TextInput
+            style={[styles.input, { color: textPrimary, borderColor: borderCol, backgroundColor: isDark ? colors.bgElement : '#f0f7ee' }]}
+            value={newPw}
+            onChangeText={setNewPw}
+            secureTextEntry
+            placeholder="At least 8 characters"
+            placeholderTextColor={textSecondary}
+          />
+
+          <Text style={[styles.pwLabel, { color: textSecondary }]}>Confirm New Password</Text>
+          <TextInput
+            style={[styles.input, { color: textPrimary, borderColor: borderCol, backgroundColor: isDark ? colors.bgElement : '#f0f7ee' }]}
+            value={confirmPw}
+            onChangeText={setConfirmPw}
+            secureTextEntry
+            placeholder="Repeat new password"
+            placeholderTextColor={textSecondary}
+          />
+
+          <View style={styles.modalButtons}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowChangePw(false)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, changingPw && { opacity: 0.6 }]}
+              onPress={changePassword}
+              disabled={changingPw}
+            >
+              <Text style={styles.buttonText}>{changingPw ? 'Saving…' : 'Update Password'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const shareModal = (
     <Modal visible={showShare} transparent animationType="slide">
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modal}>
+      <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+        <View style={[styles.modal, isDesktop && styles.modalCenter]}>
           <Text style={styles.modalTitle}>Share Garden</Text>
           {gardens.length > 1 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gardenPicker}>
@@ -301,7 +402,7 @@ export default function ProfileScreen() {
       </View>
 
       {/* Birthday */}
-      <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
+      <View style={[styles.settingRow, { borderBottomColor: borderCol }]}>
         <Text style={[styles.settingKey, { color: textSecondary }]}>Birthday</Text>
         {editingBday ? (
           <View style={styles.settingEditRow}>
@@ -325,6 +426,17 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         )}
+      </View>
+
+      {/* Change Password */}
+      <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
+        <Text style={[styles.settingKey, { color: textSecondary }]}>Password</Text>
+        <View style={styles.settingValueRow}>
+          <Text style={[styles.settingValue, { color: textPrimary }]}>••••••••</Text>
+          <TouchableOpacity onPress={() => { setShowChangePw(true); setOldPw(''); setNewPw(''); setConfirmPw(''); }}>
+            <Text style={styles.settingEdit}>Change</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -377,6 +489,7 @@ export default function ProfileScreen() {
     return (
       <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.desktopContent}>
         {shareModal}
+        {changePwModal}
         <View style={styles.desktopPageHeader}>
           <Text style={[styles.desktopPageTitle, { color: textPrimary }]}>👤 Profile</Text>
           <Text style={[styles.desktopPageSub, { color: textSecondary }]}>Account, sharing & settings</Text>
@@ -514,6 +627,7 @@ export default function ProfileScreen() {
         <Text style={styles.deleteButtonText}>{deletingAccount ? 'Deleting…' : 'Delete Account'}</Text>
       </TouchableOpacity>
       {shareModal}
+      {changePwModal}
     </ScrollView>
   );
 }
@@ -650,8 +764,10 @@ const styles = StyleSheet.create({
   adminButtonText: { color: '#2d6a4f', fontWeight: '700', fontSize: 14 },
 
   // Modal
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: '#fff', borderRadius: 20, padding: 24, margin: 16 },
+  modalBackdrop:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalBackdropCenter: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 32 },
+  modal:               { backgroundColor: '#fff', borderRadius: 20, padding: 24, margin: 16 },
+  modalCenter:         { width: '100%', maxWidth: 480, margin: 0 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#2d6a4f', marginBottom: 16 },
   input: {
     backgroundColor: '#f0f7ee',
@@ -680,4 +796,5 @@ const styles = StyleSheet.create({
   cancelText: { color: '#e03131', fontSize: 15, fontWeight: '700' },
   button: { backgroundColor: '#2d6a4f', borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   buttonText: { color: '#fff', fontWeight: '600' },
+  pwLabel: { fontSize: 12, fontWeight: '600', marginTop: 12, marginBottom: 4 },
 });

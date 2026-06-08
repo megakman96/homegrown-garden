@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { pb } from '@/lib/pb';
+import { offlineList } from '@/lib/offline-db';
 import { useAuth } from '@/hooks/use-auth';
 import { getPlantIcon } from '@/lib/plant-icons';
 import ProBanner from '@/components/ui/ProBanner';
@@ -47,10 +47,12 @@ export default function DashboardScreen() {
 
   const loadPlants = useCallback(async () => {
     if (!user) return;
-    pb.collection('plants')
-      .getFullList({ filter: `user_id = "${user.id}"` })
-      .then((data) => { setPlants(data as any); setLoading(false); })
-      .catch(() => setLoading(false));
+    try {
+      const data = await offlineList('plants', user.id, `user_id = "${user.id}"`);
+      setPlants(data as any);
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
 
   useFocusEffect(useCallback(() => { loadPlants(); }, [loadPlants]));

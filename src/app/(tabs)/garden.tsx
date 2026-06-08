@@ -2,11 +2,13 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
-  FlatList, useWindowDimensions, Animated,
+  FlatList, useWindowDimensions, Animated, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { pb } from '@/lib/pb';
+import { offlineList, offlineCreate, offlineUpdate, offlineDelete } from '@/lib/offline-db';
 import { useAuth } from '@/hooks/use-auth';
 import { usePremium, FREE_LIMITS } from '@/hooks/use-premium';
 import { PressableScale } from '@/components/ui/PressableScale';
@@ -17,6 +19,9 @@ import { getPlantIcon } from '@/lib/plant-icons';
 import {
   layoutFromGarden, makeLayout, resizeLayout,
   TILE_COLORS, TILE_LABELS, TILE_EMOJIS, SUN_CYCLE, activeCount,
+  tileSizeInFromGarden, yearFromGarden, serializeLayout,
+  DEFAULT_TILE_SIZE_IN, TILE_SIZE_STEP_IN, TILE_SIZE_MIN_IN, TILE_SIZE_MAX_IN,
+  formatTileSize, formatTotalSize, sortGardens,
 } from '@/lib/garden-layout';
 import { emit } from '@/lib/events';
 import type { TileState, GardenLayout } from '@/lib/garden-layout';
@@ -59,6 +64,7 @@ type SharedEntry = { garden: Garden; ownerEmail: string };
 export default function GardenScreen() {
   const { user } = useAuth();
   const { isDark, colors } = useAppTheme();
+  const { isDesktop } = useBreakpoint();
   const bg         = isDark ? colors.bg        : G.foam;
   const cardBg     = isDark ? colors.bgCard    : '#fff';
   const textPrim   = isDark ? colors.text      : '#2d6a4f';
@@ -73,6 +79,7 @@ export default function GardenScreen() {
 
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [sharedEntries, setSharedEntries] = useState<SharedEntry[]>([]);
+  const [gardensLoaded, setGardensLoaded] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   // Cache plants per garden so swiping back is instant
   const [plantsMap, setPlantsMap] = useState<Record<string, Plant[]>>({});
@@ -84,17 +91,33 @@ export default function GardenScreen() {
   const selectedGarden = allGardens[currentIndex] ?? null;
   const plants = plantsMap[selectedGarden?.id ?? ''] ?? [];
 
-  // Pulse the arrows once when multiple gardens are loaded, to hint at swiping
+  // Ref for synchronous garden context — set before any modal/handler runs on desktop
+  const activeGardenRef = useRef<Garden | null>(null);
+  function getActiveGarden(): Garden | null {
+    return activeGardenRef.current ?? selectedGarden;
+  }
+  function getActivePlants(g?: Garden | null): Plant[] {
+    const garden = g ?? getActiveGarden();
+    return garden ? (plantsMap[garden.id] ?? []) : [];
+  }
+  function getActiveLayout(g?: Garden | null): GardenLayout | null {
+    const garden = g ?? getActiveGarden();
+    return garden ? layoutFromGarden(garden) : null;
+  }
+
+  // Per-garden display tile size overrides (desktop only)
+
+  // Pulse the arrows continuously while multiple gardens exist
   useEffect(() => {
     if (allGardens.length < 2) return;
     const seq = Animated.sequence([
-      Animated.delay(600),
+      Animated.delay(800),
       Animated.loop(
         Animated.sequence([
-          Animated.timing(arrowPulse, { toValue: 0.35, duration: 500, useNativeDriver: true }),
-          Animated.timing(arrowPulse, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(arrowPulse, { toValue: 0.45, duration: 600, useNativeDriver: true }),
+          Animated.timing(arrowPulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+          Animated.delay(1200),
         ]),
-        { iterations: 3 },
       ),
     ]);
     seq.start();
@@ -111,10 +134,11 @@ export default function GardenScreen() {
   const [placeName, setPlaceName] = useState('');
   const [placeSun, setPlaceSun] = useState<SunRequirement>('full_sun');
   const [placeWaterDays, setPlaceWaterDays] = useState(3);
+  const [placeQuantity, setPlaceQuantity] = useState(1);
   const [catalogueSearch, setCatalogueSearch] = useState('');
   const [placeSelected, setPlaceSelected] = useState(false);
 
-  const gardenLayout = selectedGarden ? layoutFromGarden(selectedGarden) : null;
+  const gardenLayout = selectedGarden ? layoutFromGarden(selectedGarden) : null; // mobile only
 
   // Plant action sheet (tap on planted tile)
   const [plantAction, setPlantAction] = useState<Plant | null>(null);
@@ -132,11 +156,53 @@ export default function GardenScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyLog, setHistoryLog] = useState<ActivityEntry[]>([]);
 
+  // Share garden modal
+  const [showShareGarden, setShowShareGarden] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareSaving, setShareSaving] = useState(false);
+
+  async function doShareGarden() {
+    const garden = getActiveGarden();
+    if (!user || !garden || !shareEmail.trim()) return;
+    const email = shareEmail.trim().toLowerCase();
+    if (email === user.email?.toLowerCase()) {
+      Alert.alert('That\'s you!', 'You can\'t share a garden with yourself.');
+      return;
+    }
+    setShareSaving(true);
+    try {
+      const existing = await pb.collection('users').getList(1, 1, {
+        filter: `email = "${email}"`,
+        fields: 'id',
+        requestKey: null,
+      });
+      if (existing.totalItems === 0) {
+        Alert.alert('User not found', `No account exists for ${email}. They need to sign up first.`);
+        setShareSaving(false);
+        return;
+      }
+      await pb.collection('garden_shares').create({
+        garden_id: garden.id,
+        owner_id: user.id,
+        shared_with_email: email,
+        permission: 'edit',
+      });
+      Alert.alert('Shared!', `${garden.name} has been shared with ${email}.`);
+      setShowShareGarden(false);
+      setShareEmail('');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not share garden');
+    } finally {
+      setShareSaving(false);
+    }
+  }
+
   // Edit garden modal
   const [showEditGarden, setShowEditGarden] = useState(false);
   const [editStep, setEditStep] = useState<'size' | 'shape' | 'sun' | 'location'>('size');
   const [editRows, setEditRows] = useState(6);
   const [editCols, setEditCols] = useState(8);
+  const [editTileSize, setEditTileSize] = useState(DEFAULT_TILE_SIZE_IN); // stored in inches
   const [editLayout, setEditLayout] = useState<GardenLayout>(() => makeLayout(6, 8));
   const [editSaving, setEditSaving] = useState(false);
   const [editYear, setEditYear] = useState(new Date().getFullYear());
@@ -147,23 +213,22 @@ export default function GardenScreen() {
 
   useEffect(() => {
     if (!user) return;
+    setGardensLoaded(false);
 
-    // Own gardens
-    pb.collection('gardens')
-      .getFullList({ filter: `user_id = "${user.id}"` })
+    const ownPromise = offlineList('gardens', user.id, `user_id = "${user.id}"`)
       .then((list) => {
-        setGardens(list as any);
-        // Load plants for the first garden immediately
-        if (list.length > 0) {
-          pb.collection('plants').getFullList({ filter: `garden_id = "${list[0].id}"` })
-            .then(data => setPlantsMap(prev => ({ ...prev, [list[0].id]: data as any })))
+        setGardens(sortGardens(list as any));
+        // Preload plants for every garden so icons are ready immediately when switching
+        for (const garden of list) {
+          offlineList('plants', `${user.id}:${(garden as any).id}`, `garden_id = "${(garden as any).id}"`)
+            .then(data => setPlantsMap(prev => ({ ...prev, [(garden as any).id]: data as any })))
             .catch(() => {});
         }
       })
       .catch(() => {});
 
-    // Gardens shared with me via my email
-    pb.collection('garden_shares')
+    // Gardens shared with me — online only (sharing is a connected feature)
+    const sharesPromise = pb.collection('garden_shares')
       .getFullList({ filter: `shared_with_email = "${user.email}"` })
       .then(async (shares) => {
         const entries: SharedEntry[] = [];
@@ -176,23 +241,36 @@ export default function GardenScreen() {
             ownerEmail = (owner as any).email ?? 'Shared';
           } catch {}
           entries.push({ garden: garden as any, ownerEmail });
+          // Load plants for this shared garden immediately
+          const gid = (garden as any).id;
+          offlineList('plants', `${user.id}:${gid}`, `garden_id = "${gid}"`)
+            .then(data => setPlantsMap(prev => ({ ...prev, [gid]: data as any })))
+            .catch(() => {});
         }
-        setSharedEntries(entries);
+        setSharedEntries(entries.sort((a, b) => {
+          const currentYear = new Date().getFullYear();
+          const ya = yearFromGarden(a.garden) ?? currentYear;
+          const yb = yearFromGarden(b.garden) ?? currentYear;
+          if (yb !== ya) return yb - ya;
+          return new Date((b.garden as any).created ?? 0).getTime() - new Date((a.garden as any).created ?? 0).getTime();
+        }));
       })
       .catch(() => {});
+
+    Promise.all([ownPromise, sharesPromise]).then(() => setGardensLoaded(true));
   }, [user]);
 
   // Load plants for a garden the first time it's visited
   const loadPlantsForGarden = useCallback((garden: Garden) => {
     if (plantsMap[garden.id]) return; // already cached
-    pb.collection('plants').getFullList({ filter: `garden_id = "${garden.id}"` })
+    offlineList('plants', `${user?.id ?? ''}:${garden.id}`, `garden_id = "${garden.id}"`)
       .then(data => setPlantsMap(prev => ({ ...prev, [garden.id]: data as any })))
       .catch(() => {});
-  }, [plantsMap]);
+  }, [plantsMap, user?.id]);
 
   async function createGarden() {
     if (!user || !newName.trim()) return;
-    const data = await pb.collection('gardens').create({
+    const { record: data } = await offlineCreate('gardens', user.id, {
       user_id: user.id, name: newName.trim(), rows: 6, cols: 8, sun_exposure: newSun,
     });
     setGardens(prev => {
@@ -212,7 +290,7 @@ export default function GardenScreen() {
   }
 
   function getPlantAt(row: number, col: number) {
-    return plants.find((p) => p.row === row && p.col === col);
+    return getActivePlants().find((p) => p.row === row && p.col === col);
   }
 
   function getNeighbors(row: number, col: number): Plant[] {
@@ -229,13 +307,14 @@ export default function GardenScreen() {
       return;
     }
     const neighbors = getNeighbors(row, col);
-    const tileSun = (gardenLayout?.[row]?.[col] ?? 'full_sun') as TileState;
+    const tileSun = (getActiveLayout()?.[row]?.[col] ?? 'full_sun') as TileState;
     setPlacement({ row, col, neighbors, tileSun });
     setPlaceName('');
     setPlaceSelected(false);
     setCatalogueSearch('');
     setPlaceSun(tileSun === 'inactive' ? 'full_sun' : tileSun as SunRequirement);
     setPlaceWaterDays(3);
+    setPlaceQuantity(1);
   }
 
   function selectCatalogueItem(entry: CatalogEntry) {
@@ -277,30 +356,36 @@ export default function GardenScreen() {
   }
 
   async function placePlant() {
-    if (!user || !selectedGarden || !placement || !placeName.trim()) return;
-    const totalPlants = Object.values(plantsMap).reduce((sum, arr) => sum + arr.length, 0);
-    if (!isPremium && totalPlants >= FREE_LIMITS.plants) {
-      setPlacement(null);
-      router.push('/subscription' as any);
-      return;
+    const garden = getActiveGarden();
+    if (!user || !garden || !placement || !placeName.trim()) return;
+    const isSharedGarden = sharedEntries.some(e => e.garden.id === garden.id);
+    if (!isPremium && !isSharedGarden) {
+      const ownGardenIds = new Set(gardens.map(g => g.id));
+      const ownPlantCount = Object.entries(plantsMap)
+        .filter(([gid]) => ownGardenIds.has(gid))
+        .reduce((sum, [, arr]) => sum + arr.length, 0);
+      if (ownPlantCount >= FREE_LIMITS.plants) {
+        setPlacement(null);
+        router.push('/subscription' as any);
+        return;
+      }
     }
-    const data = await pb.collection('plants').create({
+    const { record: data } = await offlineCreate('plants', user.id, {
       user_id: user.id,
-      garden_id: selectedGarden.id,
+      garden_id: garden.id,
       name: placeName.trim(),
       row: placement.row,
       col: placement.col,
       health_status: 'healthy',
       sun_requirement: placeSun,
       water_interval_days: placeWaterDays,
+      quantity: placeQuantity > 1 ? placeQuantity : null,
       total_yield_grams: 0,
     });
-    if (selectedGarden) {
-      setPlantsMap(prev => ({
-        ...prev,
-        [selectedGarden.id]: [...(prev[selectedGarden.id] ?? []), data as any],
-      }));
-    }
+    setPlantsMap(prev => ({
+      ...prev,
+      [garden.id]: [...(prev[garden.id] ?? []), data as any],
+    }));
     emit('plants:changed');
     setPlacement(null);
     setPlaceSelected(false);
@@ -310,9 +395,10 @@ export default function GardenScreen() {
   // ── Plant action handlers ─────────────────────────────────────────────────
 
   async function unplantPlant() {
-    if (!plantAction || !selectedGarden) return;
-    await pb.collection('plants').update(plantAction.id, { row: null, col: null });
-    const gid = selectedGarden.id;
+    const garden = getActiveGarden();
+    if (!plantAction || !garden || !user) return;
+    await offlineUpdate('plants', user.id, plantAction.id, { row: null, col: null });
+    const gid = garden.id;
     setPlantsMap(prev => ({ ...prev, [gid]: (prev[gid] ?? []).filter(p => p.id !== plantAction.id) }));
     setPlantAction(null);
     emit('plants:changed');
@@ -320,18 +406,18 @@ export default function GardenScreen() {
 
   // ── Edit garden ───────────────────────────────────────────────────────────
 
-  function openEditGarden() {
-    if (!selectedGarden) return;
-    setEditRows(selectedGarden.rows);
-    setEditCols(selectedGarden.cols);
-    setEditLayout(layoutFromGarden(selectedGarden));
+  async function openEditGarden() {
+    const garden = getActiveGarden();
+    if (!garden) return;
+    setEditRows(garden.rows);
+    setEditCols(garden.cols);
+    setEditTileSize(tileSizeInFromGarden(garden));
+    setEditLayout(layoutFromGarden(garden));
     setEditStep('size');
-    setEditYear(selectedGarden.year ?? new Date().getFullYear());
+    setEditYear(yearFromGarden(garden) ?? new Date().getFullYear());
     setEditLocationQuery('');
     setEditLocationResults([]);
-    const savedLoc = selectedGarden.location_json
-      ? (() => { try { return JSON.parse(selectedGarden.location_json as string); } catch { return null; } })()
-      : null;
+    const savedLoc = await loadGardenLocation(garden);
     setEditSelectedLocation(savedLoc);
     setShowEditGarden(true);
   }
@@ -388,21 +474,22 @@ export default function GardenScreen() {
   }
 
   async function saveGardenEdit() {
-    if (!selectedGarden) return;
+    const garden = getActiveGarden();
+    if (!garden) return;
     setEditSaving(true);
     try {
-      const updated = await pb.collection('gardens').update(selectedGarden.id, {
+      const { record: updated } = await offlineUpdate('gardens', user?.id ?? '', garden.id, {
         rows: editRows,
         cols: editCols,
-        layout: JSON.stringify(editLayout),
+        layout: serializeLayout(editLayout, editTileSize * 2.54, editYear),
         location_json: editSelectedLocation ? JSON.stringify(editSelectedLocation) : null,
-        year: editYear,
       });
       if (editSelectedLocation) {
-        await saveGardenLocation(selectedGarden.id, editSelectedLocation);
+        await saveGardenLocation(garden.id, editSelectedLocation);
         await saveLocation(editSelectedLocation);
       }
-      setGardens(prev => prev.map(g => g.id === selectedGarden.id ? updated as any : g));
+      setGardens(prev => prev.map(g => g.id === garden.id ? updated as any : g));
+      setSharedEntries(prev => prev.map(e => e.garden.id === garden.id ? { ...e, garden: updated as any } : e));
       setShowEditGarden(false);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save changes');
@@ -414,16 +501,19 @@ export default function GardenScreen() {
   // ── Delete garden ─────────────────────────────────────────────────────────
 
   function confirmDeleteGarden() {
-    if (!selectedGarden) return;
+    const garden = getActiveGarden();
+    if (!garden) return;
+    const gardenPlants = getActivePlants(garden);
     Alert.alert(
       'Delete Garden',
-      `Delete "${selectedGarden.name}" and all ${plants.length} plant${plants.length !== 1 ? 's' : ''} in it? This cannot be undone.`,
+      `Delete "${garden.name}" and all ${gardenPlants.length} plant${gardenPlants.length !== 1 ? 's' : ''} in it? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: async () => {
-          const gardenId = selectedGarden.id;
-          await Promise.all(plants.map(p => pb.collection('plants').delete(p.id).catch(() => {})));
-          await pb.collection('gardens').delete(gardenId).catch(() => {});
+          const gardenId = garden.id;
+          await Promise.all(gardenPlants.map(p => offlineDelete('plants', user?.id ?? '', p.id).catch(() => {})));
+          await offlineDelete('gardens', user?.id ?? '', gardenId).catch(() => {});
+          activeGardenRef.current = null;
           setPlantsMap(prev => { const n = { ...prev }; delete n[gardenId]; return n; });
           setGardens(prev => prev.filter(g => g.id !== gardenId));
           setCurrentIndex(i => Math.max(0, i - 1));
@@ -435,10 +525,11 @@ export default function GardenScreen() {
   // ── History ───────────────────────────────────────────────────────────────
 
   async function openHistory() {
-    if (!user || !selectedGarden) return;
+    const garden = getActiveGarden();
+    if (!user || !garden) return;
     const all = await getActivityLogAsync(user.id);
-    const gardenPlantIds = new Set(plants.map(p => p.id));
-    setHistoryLog(all.filter(e => e.gardenId === selectedGarden.id || gardenPlantIds.has(e.plantId)));
+    const gardenPlantIds = new Set(getActivePlants(garden).map(p => p.id));
+    setHistoryLog(all.filter(e => e.gardenId === garden.id || gardenPlantIds.has(e.plantId)));
     setShowHistory(true);
   }
 
@@ -497,7 +588,7 @@ export default function GardenScreen() {
   function buildCompatSummary() {
     if (!placement || !placeName.trim()) return null;
     const tileSun = (placement.tileSun === 'inactive'
-      ? (selectedGarden?.sun_exposure ?? 'full_sun')
+      ? (getActiveGarden()?.sun_exposure ?? 'full_sun')
       : placement.tileSun) as SunRequirement;
     const plantKey = findPlantKey(placeName);
     const plantInfo = plantKey ? PLANT_CATALOG[plantKey] : null;
@@ -525,6 +616,7 @@ export default function GardenScreen() {
   const [reportPreview, setReportPreview] = useState<{
     garden: Garden; plants: Plant[]; layout: GardenLayout | null;
   } | null>(null);
+  const [reportMode, setReportMode] = useState<'single' | 'full'>('single');
   const [generatingReport, setGeneratingReport] = useState(false);
 
   // Render a single garden page inside the pager
@@ -533,7 +625,8 @@ export default function GardenScreen() {
     const pagePlants = plantsMap[garden.id] ?? [];
     const sharedEntry = sharedEntries.find(e => e.garden.id === garden.id);
     const isOwned = !sharedEntry;
-    const tileSize = Math.max(30, Math.min(58, Math.floor((screenWidth - 32) / garden.cols)));
+    const availableWidth = isDesktop ? Math.min(screenWidth - 280, 860) : screenWidth;
+    const tileSize = Math.max(30, Math.min(56, Math.floor((availableWidth - 48) / garden.cols)));
 
     function getPagePlantAt(row: number, col: number) {
       return pagePlants.find(p => p.row === row && p.col === col);
@@ -541,8 +634,8 @@ export default function GardenScreen() {
 
     return (
       <ScrollView
-        style={{ width: screenWidth }}
-        contentContainerStyle={styles.gridContainer}
+        style={isDesktop ? { flex: 1 } : { width: screenWidth }}
+        contentContainerStyle={[styles.gridContainer, isDesktop && styles.gridContainerDesktop]}
         showsVerticalScrollIndicator={false}
       >
         {/* Garden header — title row, then buttons below */}
@@ -553,7 +646,7 @@ export default function GardenScreen() {
               {garden.name}
             </Text>
             <View style={[styles.yearBadge, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}>
-              <Text style={[styles.yearBadgeText, { color: textPrim }]}>{garden.year ?? new Date().getFullYear()}</Text>
+              <Text style={[styles.yearBadgeText, { color: textPrim }]}>{yearFromGarden(garden) ?? new Date().getFullYear()}</Text>
             </View>
             {sharedEntry && (
               <View style={styles.sharedBadge}>
@@ -574,16 +667,19 @@ export default function GardenScreen() {
             <View style={styles.headerActions}>
               <GardenBtn emoji="📋" label="History" onPress={openHistory} />
               <GardenBtn emoji="🗓️" label="Plan" onPress={() => {
-                if (!isPremium) { router.push('/subscription' as any); return; }
+                if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
                 setShowPlan(true);
               }} />
               <GardenBtn emoji="📄" label="Print" onPress={() => {
-                if (!isPremium) { router.push('/subscription' as any); return; }
+                if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
                 setReportPreview({ garden, plants: pagePlants, layout: pageGardenLayout });
               }} />
+              <GardenBtn emoji="✏️" label="Edit" onPress={openEditGarden} />
               {isOwned && (
                 <>
-                  <GardenBtn emoji="✏️" label="Edit" onPress={openEditGarden} />
+                  {isPremium && (
+                    <GardenBtn emoji="🤝" label="Share" onPress={() => { setShareEmail(''); setShowShareGarden(true); }} />
+                  )}
                   <GardenBtn emoji="🗑" label="Delete" danger onPress={confirmDeleteGarden} />
                 </>
               )}
@@ -612,6 +708,11 @@ export default function GardenScreen() {
                     {plant ? (
                       <>
                         <Text style={[styles.cellEmoji, { fontSize: tileSize * 0.42 }]}>{getPlantIcon(plant.name).emoji}</Text>
+                        {plant.quantity != null && plant.quantity > 1 && (
+                          <View style={styles.quantityBadge}>
+                            <Text style={styles.quantityBadgeText}>×{plant.quantity}</Text>
+                          </View>
+                        )}
                         {tileState !== 'inactive' && (
                           <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>
                         )}
@@ -658,7 +759,12 @@ export default function GardenScreen() {
   return (
     <View style={[styles.container, { backgroundColor: bg }]}>
 
-      {allGardens.length === 0 ? (
+      {!gardensLoaded ? (
+        // ── Loading state — wait for both own + shared gardens before deciding empty ─
+        <View style={styles.empty}>
+          <ActivityIndicator size="large" color={G.sage} />
+        </View>
+      ) : allGardens.length === 0 ? (
         // ── Empty state ───────────────────────────────────────────────────────
         <FadeInView style={styles.empty} from="scale">
           <Text style={styles.emptyEmoji}>🌻</Text>
@@ -670,54 +776,135 @@ export default function GardenScreen() {
             </LinearGradient>
           </PressableScale>
         </FadeInView>
+      ) : isDesktop ? (
+        <ScrollView style={{ flex: 1, backgroundColor: bg }} contentContainerStyle={styles.desktopAllGardensContent} showsVerticalScrollIndicator={false}>
+          {allGardens.map((garden, gardenIndex) => {
+            const pageLayout = layoutFromGarden(garden);
+            const pagePlants = plantsMap[garden.id] ?? [];
+            const sharedEntry = sharedEntries.find(e => e.garden.id === garden.id);
+            const isOwned = !sharedEntry;
+            const tileSize = Math.max(28, Math.min(56, Math.floor((Math.min(screenWidth - 280, 860) - 48) / garden.cols)));
+
+            function activate() {
+              activeGardenRef.current = garden;
+              setCurrentIndex(gardenIndex);
+              if (!plantsMap[garden.id]) loadPlantsForGarden(garden);
+            }
+
+            return (
+              <View key={garden.id} style={[styles.desktopGardenSection, { backgroundColor: isDark ? colors.bgCard : G.cloud, borderColor: border }]}>
+                {/* Section header */}
+                <View style={styles.desktopGardenSectionHeader}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={styles.gardenTitleRow}>
+                      <Text style={[styles.gardenName, { color: textPrim, fontSize: 20 }]} numberOfLines={1}>{garden.name}</Text>
+                      <View style={[styles.yearBadge, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}>
+                        <Text style={[styles.yearBadgeText, { color: textPrim }]}>{yearFromGarden(garden) ?? new Date().getFullYear()}</Text>
+                      </View>
+                      {sharedEntry && <View style={styles.sharedBadge}><Text style={styles.sharedBadgeText}>🤝 Shared</Text></View>}
+                    </View>
+                    <Text style={[styles.gardenMeta, { color: textSec }]}>
+                      {SUN_EMOJIS[garden.sun_exposure as SunRequirement]} {SUN_LABELS[garden.sun_exposure as SunRequirement]} · {garden.rows}×{garden.cols}
+                      {sharedEntry ? ` · by ${sharedEntry.ownerEmail}` : ''}
+                      {' · '}{pagePlants.length} plant{pagePlants.length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+
+                  {/* Garden size display */}
+                  <View style={styles.desktopTileSizeControl}>
+                    <Text style={[styles.desktopTileSizeLabel, { color: textSec }]}>Garden size</Text>
+                    <Text style={[styles.desktopTileSizeVal, { color: textPrim, minWidth: 0 }]}>
+                      {formatTotalSize(garden.cols, garden.rows, tileSizeInFromGarden(garden))}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Action buttons */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerActionsScroll}>
+                  <View style={[styles.headerActions, { paddingHorizontal: 16, paddingBottom: 12 }]}>
+                    <GardenBtn emoji="📋" label="History" onPress={() => { activate(); openHistory(); }} />
+                    <GardenBtn emoji="🗓️" label="Plan" onPress={() => {
+                      if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
+                      activate(); setShowPlan(true);
+                    }} />
+                    <GardenBtn emoji="📄" label="Print" onPress={() => {
+                      if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
+                      activate(); setReportPreview({ garden, plants: pagePlants, layout: pageLayout });
+                    }} />
+                    <GardenBtn emoji="✏️" label="Edit" onPress={() => { activate(); openEditGarden(); }} />
+                    {isOwned && (
+                      <>
+                        {isPremium && (
+                          <GardenBtn emoji="🤝" label="Share" onPress={() => { activate(); setShareEmail(''); setShowShareGarden(true); }} />
+                        )}
+                        <GardenBtn emoji="🗑" label="Delete" danger onPress={() => { activate(); confirmDeleteGarden(); }} />
+                      </>
+                    )}
+                  </View>
+                </ScrollView>
+
+                {/* Grid */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={tileSize * garden.cols > screenWidth - 340}>
+                  <View style={[styles.gridWrapper, { paddingHorizontal: 16, paddingBottom: 16 }]}>
+                    {Array.from({ length: garden.rows }).map((_, row) => (
+                      <View key={row} style={styles.gridRow}>
+                        {Array.from({ length: garden.cols }).map((_, col) => {
+                          const plant = pagePlants.find(p => p.row === row && p.col === col);
+                          const tileState = pageLayout?.[row]?.[col] ?? 'inactive';
+                          const isInactive = tileState === 'inactive';
+                          const tileBg = plant
+                            ? HEALTH_COLORS[plant.health_status]
+                            : isInactive ? '#e0e6e3' : TILE_COLORS[tileState];
+                          return (
+                            <TouchableOpacity
+                              key={col}
+                              style={[styles.cell, { width: tileSize, height: tileSize, backgroundColor: tileBg }, isInactive && styles.inactiveCell]}
+                              onPress={() => { if (!isInactive) { activate(); handleCellTap(row, col); } }}
+                              disabled={isInactive}
+                            >
+                              {plant ? (
+                                <>
+                                  <Text style={[styles.cellEmoji, { fontSize: tileSize * 0.42 }]}>{getPlantIcon(plant.name).emoji}</Text>
+                                  {tileState !== 'inactive' && <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>}
+                                </>
+                              ) : !isInactive ? (
+                                <Text style={[styles.cellPlus, { fontSize: tileSize * 0.35 }]}>+</Text>
+                              ) : null}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                {/* Legend */}
+                <View style={[styles.desktopLegendRow, { borderTopColor: border, paddingHorizontal: 16 }]}>
+                  <View style={styles.legend}>
+                    {Object.entries(HEALTH_COLORS).map(([status, color]) => (
+                      <View key={status} style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: color }]} />
+                        <Text style={[styles.legendLabel, { color: textSec }]}>{status.replace('_', ' ')}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={[styles.legend, { marginLeft: 24 }]}>
+                    {SUN_CYCLE.map(s => (
+                      <View key={s} style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: TILE_COLORS[s] }]} />
+                        <Text style={[styles.legendLabel, { color: textSec }]}>{TILE_LABELS[s]}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+          <View style={{ height: 80 }} />
+        </ScrollView>
       ) : (
         <>
-          {/* ── Page indicator bar ─────────────────────────────────────────── */}
-          <View style={[styles.pageBar, { backgroundColor: isDark ? colors.bgCard : '#fff', borderBottomColor: border }]}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.pageDots}>
-                {allGardens.map((g, i) => (
-                  <TouchableOpacity
-                    key={g.id}
-                    onPress={() => {
-                      setCurrentIndex(i);
-                      loadPlantsForGarden(allGardens[i]);
-                      flatListRef.current?.scrollToIndex({ index: i, animated: true });
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-                  >
-                    <View style={[
-                      styles.pageDot,
-                      { backgroundColor: isDark ? colors.border : G.mist },
-                      i === currentIndex && styles.pageDotActive,
-                    ]} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {allGardens.length > 1 && (
-                <Text style={[styles.swipeHint, { color: textSec }]}>
-                  Swipe to switch gardens
-                </Text>
-              )}
-            </View>
-            <TouchableOpacity
-              style={[styles.newGardenBtn, { backgroundColor: isDark ? colors.bgElement : G.dew, borderColor: isDark ? colors.border : G.mist }]}
-              onPress={() => {
-                if (!isPremium && allGardens.length >= FREE_LIMITS.gardens) {
-                  router.push('/subscription' as any);
-                } else {
-                  router.push('/new-garden');
-                }
-              }}
-            >
-              <Text style={[styles.newGardenText, { color: isDark ? colors.text : G.forest }]}>
-                {!isPremium && allGardens.length >= FREE_LIMITS.gardens ? '🔒 New' : '＋ New'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ── Horizontal garden pager + edge arrows ──────────────────────── */}
-          <View style={{ flex: 1 }}>
+          {/* ── Horizontal garden pager — no overlapping buttons ───────────── */}
           <FlatList
             ref={flatListRef}
             data={allGardens}
@@ -729,6 +916,7 @@ export default function GardenScreen() {
             initialNumToRender={1}
             maxToRenderPerBatch={1}
             windowSize={3}
+            style={{ flex: 1 }}
             getItemLayout={(_, index) => ({ length: screenWidth, offset: screenWidth * index, index })}
             onMomentumScrollEnd={e => {
               const i = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
@@ -740,100 +928,146 @@ export default function GardenScreen() {
             renderItem={({ item: garden }) => renderGardenPage(garden)}
           />
 
-          {/* Left arrow — shown when not on first garden */}
-          {currentIndex > 0 && (
-            <Animated.View style={[styles.swipeArrow, styles.swipeArrowLeft, { opacity: arrowPulse }]}
-              pointerEvents="box-none">
-              <TouchableOpacity
-                style={styles.swipeArrowBtn}
-                onPress={() => {
-                  const i = currentIndex - 1;
-                  setCurrentIndex(i);
-                  loadPlantsForGarden(allGardens[i]);
-                  flatListRef.current?.scrollToIndex({ index: i, animated: true });
-                }}
-              >
-                <Text style={styles.swipeArrowText}>‹</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
+          {/* ── Bottom nav bar: arrows + dots + hint ──────────────────────── */}
+          <View style={[styles.swipeBar, { backgroundColor: isDark ? colors.bgCard : '#fff', borderTopColor: border }]}>
+            <TouchableOpacity
+              style={[styles.navArrow, !currentIndex && styles.navArrowHidden]}
+              disabled={currentIndex === 0}
+              onPress={() => {
+                const i = currentIndex - 1;
+                setCurrentIndex(i);
+                loadPlantsForGarden(allGardens[i]);
+                flatListRef.current?.scrollToIndex({ index: i, animated: true });
+              }}
+            >
+              <Text style={[styles.navArrowIcon, { color: textPrim }]}>‹</Text>
+              {currentIndex > 0 && (
+                <Text style={[styles.navArrowLabel, { color: textSec }]} numberOfLines={1}>
+                  {allGardens[currentIndex - 1]?.name}
+                </Text>
+              )}
+            </TouchableOpacity>
 
-          {/* Right arrow — shown when not on last garden */}
-          {currentIndex < allGardens.length - 1 && (
-            <Animated.View style={[styles.swipeArrow, styles.swipeArrowRight, { opacity: arrowPulse }]}
-              pointerEvents="box-none">
-              <TouchableOpacity
-                style={styles.swipeArrowBtn}
-                onPress={() => {
-                  const i = currentIndex + 1;
-                  setCurrentIndex(i);
-                  loadPlantsForGarden(allGardens[i]);
-                  flatListRef.current?.scrollToIndex({ index: i, animated: true });
-                }}
-              >
-                <Text style={styles.swipeArrowText}>›</Text>
-              </TouchableOpacity>
+            <Animated.View style={[styles.navCenter, { opacity: allGardens.length > 1 ? arrowPulse : 1 }]}>
+              <View style={styles.pageDots}>
+                {allGardens.map((_, i) => (
+                  <View key={i} style={[
+                    styles.pageDot,
+                    { backgroundColor: isDark ? colors.border : G.mist },
+                    i === currentIndex && styles.pageDotActive,
+                  ]} />
+                ))}
+              </View>
+              {allGardens.length > 1 && (
+                <Text style={[styles.swipeHint, { color: textSec }]}>
+                  swipe to switch · {currentIndex + 1} of {allGardens.length}
+                </Text>
+              )}
             </Animated.View>
-          )}
+
+            <TouchableOpacity
+              style={[styles.navArrow, styles.navArrowRight, currentIndex >= allGardens.length - 1 && styles.navArrowHidden]}
+              disabled={currentIndex >= allGardens.length - 1}
+              onPress={() => {
+                const i = currentIndex + 1;
+                setCurrentIndex(i);
+                loadPlantsForGarden(allGardens[i]);
+                flatListRef.current?.scrollToIndex({ index: i, animated: true });
+              }}
+            >
+              {currentIndex < allGardens.length - 1 && (
+                <Text style={[styles.navArrowLabel, { color: textSec }]} numberOfLines={1}>
+                  {allGardens[currentIndex + 1]?.name}
+                </Text>
+              )}
+              <Text style={[styles.navArrowIcon, { color: textPrim }]}>›</Text>
+            </TouchableOpacity>
           </View>
         </>
       )}
 
+      {/* ── New Garden FAB ────────────────────────────────────────────── */}
+      <TouchableOpacity
+        style={[styles.fab, isDesktop && styles.fabDesktop, { backgroundColor: isPremium || gardens.length < FREE_LIMITS.gardens ? G.hunter : '#52796f' }]}
+        onPress={() => {
+          if (!isPremium && gardens.length >= FREE_LIMITS.gardens) {
+            router.push('/subscription' as any);
+          } else {
+            router.push('/new-garden');
+          }
+        }}
+      >
+        <Text style={styles.fabIcon}>
+          {!isPremium && gardens.length >= FREE_LIMITS.gardens ? '🔒' : '+'}
+        </Text>
+      </TouchableOpacity>
+
       {/* ── Report Preview Modal ──────────────────────────────────────── */}
       <Modal visible={!!reportPreview} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setReportPreview(null)} />
-          <View style={[styles.modal, { paddingTop: 12, maxHeight: '88%', backgroundColor: cardBg }]}>
-            <View style={styles.modalHandle} />
+        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setReportPreview(null)} />}
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, maxHeight: '88%', backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
             <Text style={[styles.modalTitle, { color: textPrim }]}>📄 Print Garden Plan</Text>
-            <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 12 }]}>
-              {reportPreview?.garden.name} · {reportPreview?.garden.year ?? new Date().getFullYear()}
+            <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 14 }]}>
+              {reportPreview?.garden.name} · {yearFromGarden(reportPreview?.garden) ?? new Date().getFullYear()}
             </Text>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1 }}>
-              {/* Page structure */}
-              {[
-                {
-                  page: 1,
-                  title: 'Garden Grid',
-                  desc: `Full ${reportPreview?.garden.rows}×${reportPreview?.garden.cols} grid with every plant in its tile — health colors, sun indicators, and a legend.`,
-                  icon: '🗺️',
-                  accent: '#52b788',
-                },
-                {
-                  page: 2,
-                  title: 'Plant Summary Table',
-                  desc: `Quick-reference table of all ${(reportPreview?.plants ?? []).filter(p => p.row != null).length} placed plants — position, health, water interval, sun, harvest date.`,
-                  icon: '📋',
-                  accent: '#339af0',
-                },
-                ...(reportPreview?.plants ?? []).filter(p => p.row != null).map((p, i) => ({
-                  page: i + 3,
-                  title: p.name + (p.variety ? ` — ${p.variety}` : ''),
-                  desc: `Sowing guide · sun & water needs · ${(PLANT_CATALOG[findPlantKey(p.name) ?? '']?.goodCompanions?.length ?? 0)} beneficial companions · keep-away list · growing tips`,
-                  icon: '🌱',
-                  accent: '#a9e34b',
-                })),
-              ].map(({ page, title, desc, icon, accent }) => (
-                <View key={page} style={[styles.previewPageRow, { borderLeftColor: accent }]}>
-                  <View style={[styles.previewPageNum, { backgroundColor: accent }]}>
-                    <Text style={styles.previewPageNumText}>{page}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.previewPageTitle, { color: textPrim }]}>{icon}  {title}</Text>
-                    <Text style={[styles.previewPageDesc, { color: textSec }]}>{desc}</Text>
-                  </View>
+            {/* Mode picker */}
+            <View style={[styles.reportModeRow, { marginBottom: 16 }]}>
+              <TouchableOpacity
+                style={[styles.reportModeCard, reportMode === 'single' && styles.reportModeCardActive, { backgroundColor: isDark ? colors.bgElement : '#f0f7ee', borderColor: reportMode === 'single' ? G.hunter : border }]}
+                onPress={() => setReportMode('single')}
+              >
+                <View style={[styles.reportModeRadio, reportMode === 'single' && { borderColor: G.hunter, backgroundColor: G.hunter }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.reportModeTitle, { color: textPrim }]}>Quick Overview</Text>
+                  <Text style={[styles.reportModeDesc, { color: textSec }]}>1 page — grid + plant list + legend</Text>
                 </View>
-              ))}
+                <Text style={{ fontSize: 20 }}>🗺️</Text>
+              </TouchableOpacity>
 
-              {(reportPreview?.plants ?? []).filter(p => p.row != null).length === 0 && (
-                <View style={[styles.previewPageRow, { borderLeftColor: G.stone }]}>
-                  <Text style={[styles.previewPageDesc, { color: textSec }]}>
-                    No plants are placed in the grid yet. Add plants to get detailed per-plant pages.
+              <TouchableOpacity
+                style={[styles.reportModeCard, reportMode === 'full' && styles.reportModeCardActive, { backgroundColor: isDark ? colors.bgElement : '#f0f7ee', borderColor: reportMode === 'full' ? G.hunter : border }]}
+                onPress={() => setReportMode('full')}
+              >
+                <View style={[styles.reportModeRadio, reportMode === 'full' && { borderColor: G.hunter, backgroundColor: G.hunter }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.reportModeTitle, { color: textPrim }]}>Full Report</Text>
+                  <Text style={[styles.reportModeDesc, { color: textSec }]}>
+                    {2 + (reportPreview?.plants ?? []).filter(p => p.row != null).length} pages — grid, summary & per-plant cards
                   </Text>
                 </View>
-              )}
-            </ScrollView>
+                <Text style={{ fontSize: 20 }}>📚</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Page list — only shown for full report */}
+            {reportMode === 'full' && (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1 }}>
+                {[
+                  { page: 1, title: 'Garden Grid', desc: `${reportPreview?.garden.rows}×${reportPreview?.garden.cols} grid with health colors, sun indicators, and a legend.`, icon: '🗺️', accent: '#52b788' },
+                  { page: 2, title: 'Plant Summary Table', desc: `${(reportPreview?.plants ?? []).filter(p => p.row != null).length} placed plants — position, health, water, sun, harvest date.`, icon: '📋', accent: '#339af0' },
+                  ...(reportPreview?.plants ?? []).filter(p => p.row != null).map((p, i) => ({
+                    page: i + 3,
+                    title: p.name + (p.variety ? ` — ${p.variety}` : ''),
+                    desc: `Sowing guide · companions · growing tips`,
+                    icon: '🌱',
+                    accent: '#a9e34b',
+                  })),
+                ].map(({ page, title, desc, icon, accent }) => (
+                  <View key={page} style={[styles.previewPageRow, { borderLeftColor: accent }]}>
+                    <View style={[styles.previewPageNum, { backgroundColor: accent }]}>
+                      <Text style={styles.previewPageNumText}>{page}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.previewPageTitle, { color: textPrim }]}>{icon}  {title}</Text>
+                      <Text style={[styles.previewPageDesc, { color: textSec }]}>{desc}</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
 
             <View style={[styles.modalButtons, { marginTop: 12 }]}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setReportPreview(null)}>
@@ -846,14 +1080,14 @@ export default function GardenScreen() {
                   if (!reportPreview) return;
                   setGeneratingReport(true);
                   try {
-                    await generateGardenPdf(reportPreview.garden, reportPreview.plants, reportPreview.layout);
+                    await generateGardenPdf(reportPreview.garden, reportPreview.plants, reportPreview.layout, reportMode);
                   } finally {
                     setGeneratingReport(false);
                     setReportPreview(null);
                   }
                 }}
               >
-                <Text style={styles.buttonText}>{generatingReport ? 'Printing…' : '📄 Print Garden Plan'}</Text>
+                <Text style={styles.buttonText}>{generatingReport ? 'Printing…' : '📄 Print'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -862,10 +1096,10 @@ export default function GardenScreen() {
 
       {/* ── Plant Action Sheet ─────────────────────────────────────────── */}
       <Modal visible={!!plantAction} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlantAction(null)} />
-          <View style={[styles.modal, { paddingTop: 12, backgroundColor: cardBg }]}>
-            <View style={styles.modalHandle} />
+        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlantAction(null)} />}
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
             <Text style={[styles.modalTitle, { color: textPrim }]}>{plantAction?.name ?? ''}</Text>
             <Text style={[styles.fieldLabel, { marginBottom: 16, color: textSec }]}>
               {plantAction?.health_status?.replace('_', ' ')} · {plantAction?.sun_requirement?.replace('_', ' ')}
@@ -892,10 +1126,10 @@ export default function GardenScreen() {
 
       {/* ── Edit Garden Modal ──────────────────────────────────────────── */}
       <Modal visible={showEditGarden} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowEditGarden(false)} />
-          <View style={[styles.modal, { paddingTop: 12, maxHeight: '85%', backgroundColor: cardBg }]}>
-            <View style={styles.modalHandle} />
+        <KeyboardAvoidingView style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowEditGarden(false)} />}
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, maxHeight: '85%', backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
 
             {/* Year selector — always visible at top of edit modal */}
             <View style={[styles.editYearRow, { borderBottomColor: border }]}>
@@ -931,6 +1165,29 @@ export default function GardenScreen() {
                   <EditStepper label="Rows" value={editRows} min={3} max={14} onChange={d => handleEditSizeChange('rows', d)} />
                   <EditStepper label="Cols" value={editCols} min={3} max={14} onChange={d => handleEditSizeChange('cols', d)} />
                   <Text style={styles.editCount}>{editRows} × {editCols} = {editRows * editCols} tiles</Text>
+
+                  {/* Tile size */}
+                  <View style={[styles.tileSizeSection, { borderTopColor: isDark ? colors.border : G.mist }]}>
+                    <Text style={[styles.editHint, { marginBottom: 4 }]}>Tile size — sets the real-world size of each square.</Text>
+                    <EditStepper
+                      label="Tile size"
+                      value={editTileSize}
+                      min={TILE_SIZE_MIN_IN}
+                      max={TILE_SIZE_MAX_IN}
+                      step={TILE_SIZE_STEP_IN}
+                      onChange={d => setEditTileSize(v => Math.max(TILE_SIZE_MIN_IN, Math.min(TILE_SIZE_MAX_IN, v + d)))}
+                      unit={formatTileSize(editTileSize)}
+                      hideValue
+                    />
+                    <View style={[styles.tileSizeSummary, { backgroundColor: isDark ? colors.bgElement : '#f0f7ee', borderColor: isDark ? colors.border : G.mist }]}>
+                      <Text style={[styles.tileSizeSummaryRow, { color: textPrim }]}>
+                        📐 Total: {formatTotalSize(editCols, editRows, editTileSize)}
+                      </Text>
+                      <Text style={[styles.tileSizeSummaryRow, { color: textSec }]}>
+                        Each tile: {formatTileSize(editTileSize)} × {formatTileSize(editTileSize)}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               )}
 
@@ -1015,13 +1272,55 @@ export default function GardenScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Share Garden Modal */}
+      <Modal visible={showShareGarden} transparent animationType="fade">
+        <KeyboardAvoidingView
+          style={[styles.modalBackdrop, styles.modalBackdropCenter]}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+        >
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setShowShareGarden(false)} />
+          <View style={[styles.modal, { paddingTop: 24, paddingBottom: 24, backgroundColor: cardBg }, styles.modalCenter]}>
+
+            <Text style={[styles.modalTitle, { color: textPrim }]}>🤝 Share Garden</Text>
+            <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 8 }]}>
+              Share "{getActiveGarden()?.name ?? 'Garden'}" — enter the email address of the person you want to invite.
+              They'll see this garden in their garden tab and can make edits.
+            </Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+              placeholder="friend@example.com"
+              placeholderTextColor={textSec}
+              value={shareEmail}
+              onChangeText={setShareEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoFocus
+              onSubmitEditing={doShareGarden}
+            />
+            <View style={[styles.modalButtons, { marginTop: 16 }]}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowShareGarden(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, (!shareEmail.trim() || shareSaving) && { opacity: 0.5 }]}
+                onPress={doShareGarden}
+                disabled={!shareEmail.trim() || shareSaving}
+              >
+                <Text style={styles.buttonText}>{shareSaving ? 'Sharing…' : 'Share Garden'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* New Garden Modal */}
       <Modal visible={showNewGarden} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modal, { backgroundColor: cardBg }]}>
+        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
             <Text style={[styles.modalTitle, { color: textPrim }]}>New Garden</Text>
             <TextInput
               style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
@@ -1058,13 +1357,13 @@ export default function GardenScreen() {
       {/* Place Plant Modal */}
       <Modal visible={!!placement} transparent animationType="slide">
         <KeyboardAvoidingView
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlacement(null)} />
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlacement(null)} />}
 
-          <View style={[styles.modal, { backgroundColor: cardBg }]}>
-            <View style={styles.modalHandle} />
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
 
             <View style={styles.modalTitleRow}>
               <Text style={[styles.modalTitle, { color: textPrim }]}>Plant Here</Text>
@@ -1092,8 +1391,8 @@ export default function GardenScreen() {
                     onChangeText={setCatalogueSearch}
                   />
 
-                  {/* Companion suggestions when neighbors exist */}
-                  {(() => {
+                  {/* Companion suggestions — hidden while searching so results appear at top */}
+                  {!catalogueSearch.trim() && (() => {
                     const suggestions = getNeighborSuggestions();
                     if (!suggestions.length) return null;
                     return (
@@ -1199,6 +1498,20 @@ export default function GardenScreen() {
                     </View>
                   </View>
 
+                  {/* Quantity */}
+                  <View style={styles.waterRow}>
+                    <Text style={styles.fieldLabel}>Quantity</Text>
+                    <View style={styles.waterStepper}>
+                      <TouchableOpacity style={styles.stepBtn} onPress={() => setPlaceQuantity((q) => Math.max(1, q - 1))}>
+                        <Text style={styles.stepBtnText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.stepValue}>{placeQuantity} plant{placeQuantity !== 1 ? 's' : ''}</Text>
+                      <TouchableOpacity style={styles.stepBtn} onPress={() => setPlaceQuantity((q) => Math.min(99, q + 1))}>
+                        <Text style={styles.stepBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
                   {/* Compatibility analysis */}
                   <View style={styles.analysisBox}>
                     <Text style={styles.analysisTitle}>Planting Analysis</Text>
@@ -1295,10 +1608,10 @@ export default function GardenScreen() {
 
       {/* ── History Modal ─────────────────────────────────────────────── */}
       <Modal visible={showHistory} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowHistory(false)} />
-          <View style={[styles.modal, { paddingTop: 12, maxHeight: '80%', backgroundColor: cardBg }]}>
-            <View style={styles.modalHandle} />
+        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowHistory(false)} />}
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, maxHeight: '80%', backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
             <Text style={[styles.modalTitle, { color: textPrim }]}>📋 History — {selectedGarden?.name}</Text>
             <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 8 }}>
               {historyLog.length === 0 ? (
@@ -1331,10 +1644,10 @@ export default function GardenScreen() {
 
       {/* ── Plan Modal ────────────────────────────────────────────────── */}
       <Modal visible={showPlan} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPlan(false)} />
-          <View style={[styles.modal, { paddingTop: 12, maxHeight: '88%', backgroundColor: cardBg }]}>
-            <View style={styles.modalHandle} />
+        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPlan(false)} />}
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, maxHeight: '88%', backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
             <Text style={[styles.modalTitle, { color: textPrim }]}>🗓️ Season Plan — {selectedGarden?.name}</Text>
 
             {/* Year picker */}
@@ -1430,23 +1743,29 @@ export default function GardenScreen() {
 
 // ── Edit garden sub-components ───────────────────────────────────────────────
 
-function EditStepper({ label, value, min, max, onChange }: {
-  label: string; value: number; min: number; max: number; onChange: (d: number) => void;
+function EditStepper({ label, value, min, max, step = 1, unit, hideValue, onChange }: {
+  label: string; value: number; min: number; max: number;
+  step?: number; unit?: string; hideValue?: boolean; onChange: (d: number) => void;
 }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, backgroundColor: G.foam, borderRadius: R.lg, padding: 14 }}>
-      <Text style={{ fontSize: 15, fontWeight: '700', color: G.forest }}>{label}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: G.forest }}>{label}</Text>
+        {unit && !hideValue ? <Text style={{ fontSize: 12, color: G.stone, marginTop: 1 }}>{value} {unit}</Text> : null}
+      </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
         <TouchableOpacity
           style={{ width: 34, height: 34, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' }}
-          onPress={() => onChange(-1)} disabled={value <= min}
+          onPress={() => onChange(-step)} disabled={value <= min}
         >
           <Text style={{ fontSize: 20, color: G.hunter, lineHeight: 22 }}>−</Text>
         </TouchableOpacity>
-        <Text style={{ fontSize: 20, fontWeight: '800', color: G.forest, minWidth: 28, textAlign: 'center' }}>{value}</Text>
+        <Text style={{ fontSize: hideValue ? 15 : 20, fontWeight: '800', color: G.forest, minWidth: hideValue ? 52 : 28, textAlign: 'center' }}>
+          {hideValue ? unit : value}
+        </Text>
         <TouchableOpacity
           style={{ width: 34, height: 34, borderRadius: R.full, backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' }}
-          onPress={() => onChange(1)} disabled={value >= max}
+          onPress={() => onChange(step)} disabled={value >= max}
         >
           <Text style={{ fontSize: 20, color: G.hunter, lineHeight: 22 }}>+</Text>
         </TouchableOpacity>
@@ -1527,6 +1846,20 @@ const gardenBtnStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container:    { flex: 1, backgroundColor: G.foam },
+  fab:          { position: 'absolute', bottom: 68, right: 18, width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', ...Shadow.card, zIndex: 10 },
+  fabDesktop:   { bottom: 24, right: 32 },
+  gridContainerDesktop: { maxWidth: 960, width: '100%', alignSelf: 'center', paddingBottom: 60 },
+  desktopAllGardensContent: { padding: 24, gap: 24, maxWidth: 1100, width: '100%', alignSelf: 'center' },
+  desktopGardenSection: { borderRadius: R.lg, borderWidth: 1, overflow: 'hidden' },
+  desktopGardenSectionHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, padding: 16, paddingBottom: 8 },
+  desktopTileSizeControl: { alignItems: 'flex-end', flexShrink: 0 },
+  desktopTileSizeLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
+  desktopTileSizeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  desktopTileSizeBtn: { width: 28, height: 28, borderRadius: R.full, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  desktopTileSizeBtnText: { fontSize: 16, lineHeight: 18, fontWeight: '600' },
+  desktopTileSizeVal: { fontSize: 13, fontWeight: '700', minWidth: 36, textAlign: 'center' },
+  desktopLegendRow: { flexDirection: 'row', flexWrap: 'wrap', paddingVertical: 10, borderTopWidth: 1 },
+  fabIcon:      { fontSize: 28, color: '#fff', lineHeight: 32, fontWeight: '300' },
   emptyTitle:   { fontSize: 22, fontWeight: '800', color: G.forest, marginBottom: 8, marginTop: 8 },
   emptySub:     { fontSize: 15, color: G.stone, textAlign: 'center', marginBottom: 28, lineHeight: 22 },
   emptyBtn:     { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
@@ -1534,24 +1867,18 @@ const styles = StyleSheet.create({
   emptyBtnText: { color: G.cloud, fontWeight: '700', fontSize: 16 },
   inactiveCell: { opacity: 0.35 },
 
-  // Page indicator bar
-  pageBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
+  navCenter:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  navArrow:       { flexDirection: 'row', alignItems: 'center', minWidth: 64, paddingHorizontal: 8 },
+  navArrowRight:  { justifyContent: 'flex-end' },
+  navArrowHidden: { opacity: 0, pointerEvents: 'none' } as any,
+  navArrowIcon:   { fontSize: 28, fontWeight: '300', lineHeight: 32, color: G.hunter },
+  navArrowLabel:  { fontSize: 11, fontWeight: '600', maxWidth: 72 },
   pageDots:      { flexDirection: 'row', alignItems: 'center', gap: 7 },
   pageDot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: G.mist },
   pageDotActive: { width: 22, height: 8, borderRadius: 4, backgroundColor: G.hunter },
-  swipeHint:     { fontSize: 10, fontWeight: '500', marginTop: 4, letterSpacing: 0.2 },
-  newGardenBtn:  { paddingHorizontal: 12, paddingVertical: 6, borderRadius: R.full, backgroundColor: G.dew, borderWidth: 1, borderColor: G.mist },
-  newGardenText: { fontSize: 13, fontWeight: '700' },
-  // Swipe arrows
-  swipeArrow:      { position: 'absolute', top: 0, bottom: 0, justifyContent: 'center', pointerEvents: 'box-none' } as any,
-  swipeArrowLeft:  { left: 0 },
-  swipeArrowRight: { right: 0 },
-  swipeArrowBtn:   { backgroundColor: 'rgba(45,106,79,0.12)', borderRadius: 24, width: 36, height: 72, justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
-  swipeArrowText:  { fontSize: 30, color: G.hunter, fontWeight: '300', lineHeight: 34 },
+  swipeHint:     { fontSize: 10, fontWeight: '600', marginTop: 4, letterSpacing: 0.2 },
+  // Bottom nav bar
+  swipeBar: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderTopWidth: 1 },
 
   sharedBadge:    { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   sharedBadgeText:{ fontSize: 11, color: '#1971c2', fontWeight: '600' },
@@ -1576,6 +1903,12 @@ const styles = StyleSheet.create({
   headerBtnDanger: { backgroundColor: '#fff5f5', borderColor: '#ffc9c9' },
   headerBtnDangerText: { fontSize: 14 },
   // Report preview
+  reportModeRow:       { gap: 8 },
+  reportModeCard:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: R.md, borderWidth: 2, padding: 12 },
+  reportModeCardActive:{ },
+  reportModeRadio:     { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: G.mist, flexShrink: 0 },
+  reportModeTitle:     { fontSize: 14, fontWeight: '700' },
+  reportModeDesc:      { fontSize: 11, marginTop: 1 },
   previewPageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12, paddingLeft: 12, borderLeftWidth: 3, borderRadius: 2 },
   previewPageNum: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', flexShrink: 0, marginTop: 2 },
   previewPageNumText: { fontSize: 11, fontWeight: '800', color: '#fff' },
@@ -1603,6 +1936,8 @@ const styles = StyleSheet.create({
 
   // Cell
   cellSunEmoji: { position: 'absolute', bottom: 1, right: 2, fontSize: 11, lineHeight: 14 },
+  quantityBadge: { position: 'absolute', top: 1, right: 2, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6, paddingHorizontal: 3, paddingVertical: 1 },
+  quantityBadgeText: { color: '#fff', fontSize: 9, fontWeight: '700', lineHeight: 12 },
 
   // Plant action sheet
   actionRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: G.foam },
@@ -1621,6 +1956,9 @@ const styles = StyleSheet.create({
   editHint: { fontSize: 13, color: G.stone, marginBottom: 14, fontStyle: 'italic' },
   editLegendRow: { flexDirection: 'row', gap: 14, marginBottom: 10 },
   editCount: { fontSize: 12, color: G.stone, marginTop: 10, textAlign: 'center' },
+  tileSizeSection: { marginTop: 18, paddingTop: 18, borderTopWidth: 1 },
+  tileSizeSummary: { borderRadius: R.md, borderWidth: 1, padding: 12, marginTop: 4 },
+  tileSizeSummaryRow: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
   locationConfirmed: { flexDirection: 'row', alignItems: 'center', borderRadius: R.md, borderWidth: 1.5, padding: 12, gap: 10, marginBottom: 8 },
   locationPin: { fontSize: 22 },
   locationName: { fontSize: 14, fontWeight: '700' },
@@ -1653,6 +1991,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
+  modalBackdropCenter: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 32,
+  },
   modal: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
@@ -1660,6 +2004,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: Platform.OS === 'ios' ? 32 : 20,
     paddingTop: 12,
+  },
+  modalCenter: {
+    width: '100%',
+    maxWidth: 600,
+    borderRadius: 20,
+    paddingBottom: 24,
   },
   modalHandle: {
     width: 40, height: 4, borderRadius: 2,

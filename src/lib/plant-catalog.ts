@@ -44,6 +44,22 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
       { name: 'Sun Gold', notes: 'Orange cherry; very sweet' },
     ],
   },
+  cherry_tomato: {
+    name: 'Cherry Tomato', aliases: ['cherry tomatoes', 'cherry tomato', 'grape tomato'],
+    scientificName: 'Solanum lycopersicum var. cerasiforme', category: 'vegetable',
+    sunRequirement: 'full_sun', waterNeeds: 'medium', waterIntervalDays: 2,
+    goodCompanions: ['basil', 'carrot', 'marigold', 'parsley', 'borage', 'nasturtium', 'chive'],
+    badCompanions: ['fennel', 'cabbage', 'broccoli', 'potato', 'corn'],
+    notes: 'Prolific producer; great in containers. Basil repels aphids and enhances flavor.',
+    daysToMaturity: { min: 55, max: 65 }, spacingCm: 45,
+    varieties: [
+      { name: 'Sun Gold', notes: 'Orange; very sweet; vigorous grower' },
+      { name: 'Sweet 100', notes: 'Classic red; heavy clusters' },
+      { name: 'Black Cherry', notes: 'Deep red-purple; rich flavor' },
+      { name: 'Yellow Pear', notes: 'Pear-shaped; mild, sweet' },
+      { name: 'Juliet', notes: 'Plum-shaped; crack-resistant' },
+    ],
+  },
   // ─── PEPPERS ─────────────────────────────────────────────────────────────────
   pepper: {
     name: 'Pepper', aliases: ['peppers', 'bell pepper', 'chili', 'chilli', 'capsicum', 'sweet pepper'],

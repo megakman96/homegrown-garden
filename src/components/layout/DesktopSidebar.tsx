@@ -4,7 +4,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-na
 import { G, Spring, R } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 
-const TABS = [
+const MAIN_TABS = [
   { name: '(tabs)/index',    route: '/(tabs)',           label: 'Home',     emoji: '🏡' },
   { name: '(tabs)/garden',   route: '/(tabs)/garden',    label: 'Garden',   emoji: '🌻' },
   { name: '(tabs)/plants',   route: '/(tabs)/plants',    label: 'Plants',   emoji: '🌿' },
@@ -12,7 +12,12 @@ const TABS = [
   { name: '(tabs)/profile',  route: '/(tabs)/profile',   label: 'Profile',  emoji: '👤' },
 ];
 
-function NavItem({ tab, active }: { tab: typeof TABS[0]; active: boolean }) {
+const TOOL_TABS = [
+  { name: '(tabs)/history', route: '/(tabs)/history', label: 'History', emoji: '📋' },
+  { name: '(tabs)/plan',    route: '/(tabs)/plan',    label: 'Planner', emoji: '🗓️' },
+];
+
+function NavItem({ tab, active }: { tab: typeof MAIN_TABS[0]; active: boolean }) {
   const router = useRouter();
   const bg = useSharedValue(0);
   const animStyle = useAnimatedStyle(() => ({
@@ -52,13 +57,25 @@ export function DesktopSidebar() {
 
       <Text style={styles.sectionLabel}>MENU</Text>
 
-      {/* Nav */}
+      {/* Main nav */}
       <View style={styles.nav}>
-        {TABS.map(tab => {
+        {MAIN_TABS.map(tab => {
           const tabKey = tab.name.replace('(tabs)/', '');
           const isActive =
             activeSegment === tabKey ||
             (tabKey === 'index' && (activeSegment === '(tabs)' || activeSegment === undefined));
+          return <NavItem key={tab.name} tab={tab} active={isActive} />;
+        })}
+      </View>
+
+      <View style={styles.divider} />
+      <Text style={styles.sectionLabel}>TOOLS</Text>
+
+      {/* Tools nav */}
+      <View style={styles.nav}>
+        {TOOL_TABS.map(tab => {
+          const tabKey = tab.name.replace('(tabs)/', '');
+          const isActive = activeSegment === tabKey;
           return <NavItem key={tab.name} tab={tab} active={isActive} />;
         })}
       </View>
@@ -115,6 +132,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   nav: { gap: 2 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 12 },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',

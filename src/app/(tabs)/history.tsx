@@ -118,9 +118,9 @@ const styles = StyleSheet.create({
   pageTitle:     { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   pageSub:       { fontSize: 13, marginTop: 3 },
   content:       { padding: 16, paddingBottom: 40 },
-  contentDesktop:{ maxWidth: 800, width: '100%', alignSelf: 'center', paddingHorizontal: 32 },
+  contentDesktop:{ maxWidth: 1200, width: '100%', alignSelf: 'center', paddingHorizontal: 32, flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' },
   group:         { marginBottom: 20 },
-  groupDesktop:  {},
+  groupDesktop:  { width: '47%', minWidth: 320, flexGrow: 1 },
   groupLabel:    { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
   card: {
     flexDirection: 'row', alignItems: 'center', borderRadius: R.lg,
