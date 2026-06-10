@@ -471,10 +471,14 @@ export default function GardenScreen() {
     const plant = plantAction;
     setGardenUploading(true);
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
       const formData = new FormData();
-      formData.append('photo', blob as any, `photo_${Date.now()}.jpg`);
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        formData.append('photo', blob as any, `photo_${Date.now()}.jpg`);
+      } else {
+        formData.append('photo', { uri, type: 'image/jpeg', name: `photo_${Date.now()}.jpg` } as any);
+      }
       formData.append('plant_id', plant.id);
       formData.append('user_id', user.id);
       await pb.collection('plant_photos').create(formData);
