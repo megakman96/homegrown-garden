@@ -120,8 +120,14 @@ export default function PlantDetailScreen() {
       .catch(() => {});
 
     pb.collection('plant_photos')
-      .getFullList({ filter: `plant_id = "${id}"`, sort: '-created' })
-      .then((ph) => { setPhotos(ph as any); setPhotoLoadError(null); })
+      .getFullList({ filter: `plant_id = "${id}"` })
+      .then((ph) => {
+        const sorted = [...ph].sort((a, b) =>
+          new Date(b.created).getTime() - new Date(a.created).getTime()
+        );
+        setPhotos(sorted as any);
+        setPhotoLoadError(null);
+      })
       .catch((e) => setPhotoLoadError(e?.message ?? 'Could not load photos'));
   }, [id]);
 
