@@ -16,6 +16,7 @@ import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { G, Shadow, R, Spring } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
 import {
   makeLayout, resizeLayout, TILE_COLORS, TILE_EMOJIS, TILE_LABELS,
   SUN_CYCLE, activeCount, serializeLayout,
@@ -63,9 +64,16 @@ const MAX_COLS = 14;
 export default function NewGardenScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const { isDark, colors } = useAppTheme();
   const { noSkip } = useLocalSearchParams<{ noSkip?: string }>();
   const showSkip = !noSkip;
   const { width } = useWindowDimensions();
+  const bg = isDark ? colors.bg : G.foam;
+  const cardBg = isDark ? colors.bgCard : G.cloud;
+  const textPrim = isDark ? colors.text : G.forest;
+  const textSec = isDark ? colors.textSec : G.stone;
+  const border = isDark ? colors.border : G.mist;
+  const inputBg = isDark ? colors.bgElement : G.cloud;
 
   const [step, setStep] = useState<Step>('name');
   const [year, setYear] = useState(new Date().getFullYear());
@@ -189,7 +197,7 @@ export default function NewGardenScreen() {
 
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={[styles.container, { backgroundColor: bg }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <LinearGradient colors={[G.forest, G.hunter]} style={styles.header}>
         <PressableScale onPress={() => router.back()} style={styles.backBtn} haptic={false}>
           <Text style={styles.backText}>✕</Text>
@@ -221,18 +229,18 @@ export default function NewGardenScreen() {
       >
         <Animated.View style={[styles.stepContent, contentStyle]}>
           <Text style={styles.stepEmoji}>{STEP_EMOJIS[step]}</Text>
-          <Text style={styles.stepTitle}>{STEP_TITLES[step]}</Text>
-          <Text style={styles.stepSub}>{STEP_SUBS[step]}</Text>
+          <Text style={[styles.stepTitle, { color: textPrim }]}>{STEP_TITLES[step]}</Text>
+          <Text style={[styles.stepSub, { color: textSec }]}>{STEP_SUBS[step]}</Text>
 
           {/* ── Step: year ── */}
           {step === 'year' && (
             <View style={styles.yearStep}>
-              <View style={styles.yearStepper}>
+              <View style={[styles.yearStepper, { backgroundColor: cardBg }]}>
                 <PressableScale onPress={() => setYear(y => Math.max(currentYear - 1, y - 1))} style={styles.yearBtn}>
                   <Text style={styles.yearBtnText}>−</Text>
                 </PressableScale>
                 <View style={{ alignItems: 'center', flex: 1 }}>
-                  <Text style={styles.yearValue}>{year}</Text>
+                  <Text style={[styles.yearValue, { color: textPrim }]}>{year}</Text>
                   {isPlanningYear && (
                     <View style={styles.planningBadge}>
                       <Text style={styles.planningBadgeText}>📋 Planning Phase</Text>
@@ -260,9 +268,9 @@ export default function NewGardenScreen() {
           {step === 'name' && (
             <View style={styles.nameStep}>
               <TextInput
-                style={styles.nameInput}
+                style={[styles.nameInput, { backgroundColor: cardBg, color: textPrim, borderColor: border }]}
                 placeholder="e.g. Backyard Garden"
-                placeholderTextColor={G.stone}
+                placeholderTextColor={textSec}
                 value={name}
                 onChangeText={setName}
                 autoFocus
@@ -277,9 +285,9 @@ export default function NewGardenScreen() {
           {step === 'size' && (
             <View style={styles.sizeStep}>
               <SizeStepper label="Rows" value={rows} min={MIN_SIZE} max={MAX_ROWS}
-                onChange={d => handleSizeChange('rows', d)} />
+                onChange={d => handleSizeChange('rows', d)} cardBg={cardBg} textPrim={textPrim} />
               <SizeStepper label="Columns" value={cols} min={MIN_SIZE} max={MAX_COLS}
-                onChange={d => handleSizeChange('cols', d)} />
+                onChange={d => handleSizeChange('cols', d)} cardBg={cardBg} textPrim={textPrim} />
               <SizeStepper
                 label="Tile size"
                 value={tileSizeIn}
@@ -288,6 +296,7 @@ export default function NewGardenScreen() {
                 step={TILE_SIZE_STEP_IN}
                 displayValue={formatTileSize(tileSizeIn)}
                 onChange={d => setTileSizeIn(v => Math.max(TILE_SIZE_MIN_IN, Math.min(TILE_SIZE_MAX_IN, v + d)))}
+                cardBg={cardBg} textPrim={textPrim}
               />
               <View style={styles.tileSizeNote}>
                 <Text style={styles.tileSizeText}>
@@ -356,9 +365,9 @@ export default function NewGardenScreen() {
               ) : (
                 <>
                   <TextInput
-                    style={styles.cityInput}
+                    style={[styles.cityInput, { backgroundColor: inputBg, color: textPrim, borderColor: border }]}
                     placeholder="Search city (e.g. Austin, London)"
-                    placeholderTextColor={G.stone}
+                    placeholderTextColor={textSec}
                     value={locationQuery}
                     onChangeText={searchLocation}
                     autoCapitalize="words"
@@ -368,15 +377,15 @@ export default function NewGardenScreen() {
                     <ActivityIndicator color={G.sage} style={{ marginVertical: 8 }} />
                   )}
                   {locationResults.length > 0 && (
-                    <View style={styles.cityResults}>
+                    <View style={[styles.cityResults, { backgroundColor: cardBg }]}>
                       {locationResults.map((r, i) => (
                         <TouchableOpacity
                           key={i}
-                          style={[styles.cityRow, i < locationResults.length - 1 && styles.cityRowBorder]}
+                          style={[styles.cityRow, i < locationResults.length - 1 && [styles.cityRowBorder, { borderBottomColor: border }]]}
                           onPress={() => selectLocation(r)}
                         >
-                          <Text style={styles.cityName}>{r.name}</Text>
-                          <Text style={styles.cityRegion}>{r.admin1 ? `${r.admin1}, ` : ''}{r.country}</Text>
+                          <Text style={[styles.cityName, { color: textPrim }]}>{r.name}</Text>
+                          <Text style={[styles.cityRegion, { color: textSec }]}>{r.admin1 ? `${r.admin1}, ` : ''}{r.country}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -392,9 +401,9 @@ export default function NewGardenScreen() {
           {stepIndex > 0 && (
             <PressableScale
               onPress={() => transitionTo(STEPS[stepIndex - 1])}
-              style={styles.backStepBtn}
+              style={[styles.backStepBtn, { backgroundColor: cardBg, borderColor: border }]}
             >
-              <Text style={styles.backStepText}>← Back</Text>
+              <Text style={[styles.backStepText, { color: textSec }]}>← Back</Text>
             </PressableScale>
           )}
 
@@ -449,18 +458,19 @@ export default function NewGardenScreen() {
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-function SizeStepper({ label, value, min, max, step = 1, displayValue, onChange }: {
+function SizeStepper({ label, value, min, max, step = 1, displayValue, onChange, cardBg, textPrim }: {
   label: string; value: number; min: number; max: number;
   step?: number; displayValue?: string; onChange: (delta: number) => void;
+  cardBg?: string; textPrim?: string;
 }) {
   return (
-    <View style={styles.stepper}>
-      <Text style={styles.stepperLabel}>{label}</Text>
+    <View style={[styles.stepper, cardBg ? { backgroundColor: cardBg } : undefined]}>
+      <Text style={[styles.stepperLabel, textPrim ? { color: textPrim } : undefined]}>{label}</Text>
       <View style={styles.stepperControls}>
         <PressableScale onPress={() => onChange(-step)} style={[styles.stepBtn, value <= min && styles.stepBtnDisabled]} disabled={value <= min}>
           <Text style={styles.stepBtnText}>−</Text>
         </PressableScale>
-        <Text style={[styles.stepperValue, displayValue ? { fontSize: 16, minWidth: 52 } : {}]}>
+        <Text style={[styles.stepperValue, textPrim ? { color: textPrim } : undefined, displayValue ? { fontSize: 16, minWidth: 52 } : {}]}>
           {displayValue ?? value}
         </Text>
         <PressableScale onPress={() => onChange(step)} style={[styles.stepBtn, value >= max && styles.stepBtnDisabled]} disabled={value >= max}>

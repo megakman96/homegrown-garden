@@ -11,8 +11,9 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
-import { useAppTheme, isBirthdayToday, loadBirthday } from '@/contexts/theme-context';
+import { useAppTheme, isBirthdayToday, loadBirthday, formatTemp } from '@/contexts/theme-context';
 import { subscribe } from '@/lib/events';
+import { fetchWeather, loadSavedLocation, type WeatherData } from '@/lib/weather';
 import type { Plant } from '@/lib/types';
 
 function greeting() {
@@ -31,11 +32,18 @@ const BIRTHDAY_MSGS = [
 
 export default function DashboardScreen() {
   const { user } = useAuth();
-  const { isDark, colors } = useAppTheme();
+  const { isDark, colors, tempUnit } = useAppTheme();
   const router = useRouter();
   const { isDesktop } = useBreakpoint();
   const [plants, setPlants] = useState<Plant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+
+  useEffect(() => {
+    loadSavedLocation()
+      .then(loc => { if (loc) fetchWeather(loc).then(setWeather).catch(() => {}); })
+      .catch(() => {});
+  }, []);
 
   const firstName = user?.name?.split(' ')?.[0] || 'Gardener';
   const birthday = user ? loadBirthday(user.id) : null;
@@ -144,6 +152,31 @@ export default function DashboardScreen() {
     </View>
   );
 
+  // Weather forecast
+  const forecastDays = weather?.days.filter(d => d.isFuture).slice(0, 5) ?? [];
+  const weatherSection = forecastDays.length > 0 && (
+    <FadeInView delay={80} from="bottom" style={[styles.section, isDesktop && styles.sectionDesktop]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>
+        🌤️ {weather!.locationName ? `${weather!.locationName} Forecast` : 'Weather Forecast'}
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+        {forecastDays.map(day => {
+          const icon = day.precipMm > 4 ? '🌧️' : day.precipMm > 1 ? '🌦️' : '☀️';
+          const label = new Date(day.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+          return (
+            <View key={day.date} style={[styles.weatherDayCard, { backgroundColor: cardBg, borderColor }]}>
+              <Text style={[styles.weatherDayLabel, { color: textSecondary }]}>{label}</Text>
+              <Text style={styles.weatherDayIcon}>{icon}</Text>
+              <Text style={[styles.weatherDayHigh, { color: textPrimary }]}>{formatTemp(day.tempMaxC, tempUnit)}</Text>
+              <Text style={[styles.weatherDayLow, { color: textSecondary }]}>{formatTemp(day.tempMinC, tempUnit)}</Text>
+              {day.precipMm > 0 && <Text style={[styles.weatherDayRain, { color: '#339af0' }]}>{day.precipMm.toFixed(1)}mm</Text>}
+            </View>
+          );
+        })}
+      </ScrollView>
+    </FadeInView>
+  );
+
   // Needs water section
   const waterSection = needsWater.length > 0 && (
     <FadeInView delay={120} from="bottom" style={[styles.section, isDesktop && styles.sectionDesktop]}>
@@ -239,6 +272,7 @@ export default function DashboardScreen() {
           {statsRow}
           <View style={styles.desktopColumns}>
             <View style={styles.desktopCol}>
+              {weatherSection}
               {waterSection}
               {emptyState}
             </View>
@@ -258,6 +292,7 @@ export default function DashboardScreen() {
       {heroSection}
       <View style={{ height: 16 }} />
       {statsRow}
+      {weatherSection}
       {waterSection}
       {harvestSection}
       {harvestSummary}
@@ -327,6 +362,14 @@ const styles = StyleSheet.create({
   harvestChipEmoji: { fontSize: 22 },
   harvestChipName:  { fontSize: 13, fontWeight: '700', maxWidth: 100 },
   harvestChipSub:   { fontSize: 11, marginTop: 1 },
+
+  // Weather
+  weatherDayCard: { borderRadius: R.lg, borderWidth: 1, padding: 10, alignItems: 'center', minWidth: 70, gap: 2, ...Shadow.soft },
+  weatherDayLabel:{ fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
+  weatherDayIcon: { fontSize: 22, marginVertical: 2 },
+  weatherDayHigh: { fontSize: 15, fontWeight: '800' },
+  weatherDayLow:  { fontSize: 12, fontWeight: '500' },
+  weatherDayRain: { fontSize: 10, fontWeight: '600', marginTop: 1 },
 
   // Empty
   empty:          { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },

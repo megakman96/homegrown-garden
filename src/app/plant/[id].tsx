@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, Alert, Image, Dimensions, Platform,
+  TextInput, Modal, Alert, Image, Dimensions,
 } from 'react-native';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
-import { pb, fileUrl } from '@/lib/pb';
+import { pb } from '@/lib/pb';
 import { offlineList, offlineOne, offlineUpdate, offlineCreate } from '@/lib/offline-db';
 import { useAuth } from '@/hooks/use-auth';
 import PlantAvatar from '@/components/PlantAvatar';
 import { G, R, Shadow } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
-import type { Plant, Harvest, PlantPhoto, HealthStatus } from '@/lib/types';
+import { usePremium } from '@/hooks/use-premium';
+import type { Plant, Harvest, HealthStatus } from '@/lib/types';
 import { addActivityEntryAsync } from '@/lib/activity-log';
 import { generateSinglePlantPdf } from '@/lib/garden-pdf';
 import { findPlantKey, PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS } from '@/lib/plant-catalog';
@@ -22,7 +22,7 @@ import { loadGardenLocation } from '@/lib/weather';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const HERO_HEIGHT = 260;
 
-const HEALTH_OPTIONS: HealthStatus[] = ['healthy', 'needs_water', 'sick', 'harvested', 'dead'];
+const HEALTH_OPTIONS: HealthStatus[] = ['healthy', 'needs_water', 'sick', 'dead'];
 
 const HEALTH_COLORS: Record<HealthStatus, string> = {
   healthy:     '#52b788',
@@ -44,6 +44,8 @@ export default function PlantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { isDark, colors } = useAppTheme();
+  const { isPremium } = usePremium();
+  const router = useRouter();
   const bg      = isDark ? colors.bg        : G.foam;
   const cardBg  = isDark ? colors.bgCard    : G.cloud;
   const textPrim= isDark ? colors.text      : G.forest;
@@ -54,10 +56,6 @@ export default function PlantDetailScreen() {
   const [plant, setPlant] = useState<Plant | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [harvests, setHarvests] = useState<Harvest[]>([]);
-  const [photos, setPhotos] = useState<PlantPhoto[]>([]);
-  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
-  const [uploading, setUploading] = useState(false);
-  const [photoLoadError, setPhotoLoadError] = useState<string | null>(null);
   const [wikiImageUrl, setWikiImageUrl] = useState<string | null>(null);
   const [frostInfo, setFrostInfo] = useState<FrostInfo | null>(null);
   const [plantingWindow, setPlantingWindow] = useState<PlantingWindow | null>(null);
@@ -123,29 +121,7 @@ export default function PlantDetailScreen() {
       .then((h) => setHarvests(h as any))
       .catch(() => {});
 
-    pb.collection('plant_photos')
-      .getFullList({ filter: `plant_id = "${id}"` })
-      .then((ph) => {
-        const sorted = [...ph].sort((a, b) =>
-          new Date(b.created).getTime() - new Date(a.created).getTime()
-        );
-        setPhotos(sorted as any);
-        setPhotoLoadError(null);
-      })
-      .catch((e) => setPhotoLoadError(e?.message ?? 'Could not load photos'));
   }, [id]);
-
-  useEffect(() => {
-    photos.forEach((photo: any) => {
-      if (photoUrls[photo.id]) return;
-      // photo field may be string or array (multi-file)
-      const filename: string | undefined = Array.isArray(photo.photo)
-        ? photo.photo[0]
-        : photo.photo;
-      if (!filename) return;
-      setPhotoUrls((prev) => ({ ...prev, [photo.id]: fileUrl(photo, filename) }));
-    });
-  }, [photos]);
 
   async function updateHealth(status: HealthStatus) {
     if (!plant || !user) return;
@@ -233,64 +209,6 @@ export default function PlantDetailScreen() {
     ]);
   }
 
-  async function addPhoto() {
-    if (!user || !plant) return;
-
-    Alert.alert('Log Progress Photo', 'How would you like to add a photo?', [
-      {
-        text: '📷 Take Photo',
-        onPress: async () => {
-          const { status } = await ImagePicker.requestCameraPermissionsAsync();
-          if (status !== 'granted') {
-            Alert.alert('Permission needed', 'Camera access is required to take photos.');
-            return;
-          }
-          const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-          if (!result.canceled && result.assets[0]) uploadPhoto(result.assets[0].uri);
-        },
-      },
-      {
-        text: '🖼️ Choose from Library',
-        onPress: async () => {
-          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (status !== 'granted') {
-            Alert.alert('Permission needed', 'Photo library access is required to select photos.');
-            return;
-          }
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            quality: 0.8,
-          });
-          if (!result.canceled && result.assets[0]) uploadPhoto(result.assets[0].uri);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }
-
-  async function uploadPhoto(uri: string) {
-    if (!user || !plant) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      if (Platform.OS === 'web') {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        formData.append('photo', blob as any, `photo_${Date.now()}.jpg`);
-      } else {
-        formData.append('photo', { uri, type: 'image/jpeg', name: `photo_${Date.now()}.jpg` } as any);
-      }
-      formData.append('plant_id', plant.id);
-      formData.append('user_id', user.id);
-      formData.append('taken_at', new Date().toISOString());
-      const data = await pb.collection('plant_photos').create(formData);
-      setPhotos((p) => [data as any, ...p]);
-    } catch (e: any) {
-      Alert.alert('Upload failed', e?.message ?? 'Unknown error');
-    } finally {
-      setUploading(false);
-    }
-  }
 
   if (loadError) {
     return (
@@ -370,11 +288,6 @@ export default function PlantDetailScreen() {
           <Text style={[styles.actionText, { color: textPrim }]}>Log Harvest</Text>
         </TouchableOpacity>
         <View style={[styles.actionDivider, { backgroundColor: border }]} />
-        <TouchableOpacity style={styles.actionButton} onPress={addPhoto} disabled={uploading}>
-          <Text style={styles.actionEmoji}>{uploading ? '⏳' : '📷'}</Text>
-          <Text style={[styles.actionText, { color: textPrim }]}>Log Progress</Text>
-        </TouchableOpacity>
-        <View style={[styles.actionDivider, { backgroundColor: border }]} />
         <TouchableOpacity style={styles.actionButton} onPress={() => generateSinglePlantPdf(plant)}>
           <Text style={styles.actionEmoji}>📄</Text>
           <Text style={[styles.actionText, { color: textPrim }]}>Print Card</Text>
@@ -404,19 +317,19 @@ export default function PlantDetailScreen() {
 
       {/* ── Info card ───────────────────────────────────────────────────── */}
       <View style={[styles.infoCard, { backgroundColor: cardBg }]}>
-        {plant.variety && <InfoRow label="Variety" value={plant.variety} />}
-        {plant.planted_date && <InfoRow label="Planted" value={new Date(plant.planted_date).toLocaleDateString()} />}
+        {plant.variety && <InfoRow label="Variety" value={plant.variety} tc={textSec} vc={textPrim} />}
+        {plant.planted_date && <InfoRow label="Planted" value={new Date(plant.planted_date).toLocaleDateString()} tc={textSec} vc={textPrim} />}
         {plant.expected_harvest_date && (
-          <InfoRow label="Expected harvest" value={new Date(plant.expected_harvest_date).toLocaleDateString()} />
+          <InfoRow label="Expected harvest" value={new Date(plant.expected_harvest_date).toLocaleDateString()} tc={textSec} vc={textPrim} />
         )}
         {plant.last_watered && (
-          <InfoRow label="Last watered" value={new Date(plant.last_watered).toLocaleDateString()} />
+          <InfoRow label="Last watered" value={new Date(plant.last_watered).toLocaleDateString()} tc={textSec} vc={textPrim} />
         )}
         {plant.water_interval_days && (
-          <InfoRow label="Water every" value={`${plant.water_interval_days} days`} />
+          <InfoRow label="Water every" value={`${plant.water_interval_days} days`} tc={textSec} vc={textPrim} />
         )}
-        <InfoRow label="Total yield" value={`${totalYieldKg} kg`} />
-        {plant.notes && <InfoRow label="Notes" value={plant.notes} />}
+        <InfoRow label="Total yield" value={`${totalYieldKg} kg`} tc={textSec} vc={textPrim} />
+        {plant.notes && <InfoRow label="Notes" value={plant.notes} tc={textSec} vc={textPrim} />}
       </View>
 
       {/* ── Catalog growing info ────────────────────────────────────────── */}
@@ -538,7 +451,18 @@ export default function PlantDetailScreen() {
       <View style={[styles.catalogCard, { backgroundColor: cardBg }]}>
         <Text style={[styles.sectionTitle, { color: textPrim, paddingHorizontal: 0, marginBottom: 14 }]}>🌡️ Frost & Planting</Text>
 
-        {frostInfo && frostZoneLabel ? (
+        {!isPremium ? (
+          <View style={[styles.proBox, { backgroundColor: isDark ? colors.bgElement : '#f0f7ee', borderColor: isDark ? colors.border : G.mist }]}>
+            <Text style={styles.proBoxEmoji}>🌱</Text>
+            <Text style={[styles.proBoxTitle, { color: textPrim }]}>Pro Feature</Text>
+            <Text style={[styles.proBoxText, { color: textSec }]}>
+              Unlock frost dates, planting windows, and personalized growing timelines for {plant.name}. Upgrade to Pro.
+            </Text>
+            <TouchableOpacity style={styles.proBoxBtn} onPress={() => router.push('/subscription' as any)}>
+              <Text style={styles.proBoxBtnText}>Upgrade to Pro →</Text>
+            </TouchableOpacity>
+          </View>
+        ) : frostInfo && frostZoneLabel ? (
             <>
               {/* Zone + season length */}
               <View style={[styles.frostZoneBadge, { backgroundColor: isDark ? colors.bgElement : '#e8f5e9', borderColor: isDark ? colors.border : '#a5d6a7' }]}>
@@ -609,56 +533,24 @@ export default function PlantDetailScreen() {
             </>
           ) : (
             <Text style={[styles.frostNoLocation, { color: textSec }]}>
-              Add a location to this plant's garden to see frost dates and planting recommendations.
+              Set a location on this garden (Garden → Edit → Location tab) to see frost dates and planting windows.
             </Text>
           )}
         </View>
 
-      {/* ── Progress log ─────────────────────────────────────────────────── */}
-      <View style={[styles.catalogCard, { backgroundColor: cardBg }]}>
-        <View style={styles.progressHeader}>
-          <Text style={[styles.sectionTitle, { color: textPrim, marginBottom: 0 }]}>📷 Progress Log</Text>
-          <TouchableOpacity style={styles.logProgressBtn} onPress={addPhoto} disabled={uploading}>
-            <Text style={styles.logProgressBtnText}>{uploading ? '⏳ Uploading…' : '+ Log Progress'}</Text>
-          </TouchableOpacity>
-        </View>
-        {photoLoadError ? (
-          <Text style={[styles.progressEmpty, { color: '#e03131' }]}>⚠️ {photoLoadError}</Text>
-        ) : photos.length > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginTop: 12 }}
-            contentContainerStyle={styles.photoStripContent}
-          >
-            {photos.map((photo) =>
-              photoUrls[photo.id] ? (
-                <Image key={photo.id} source={{ uri: photoUrls[photo.id] }} style={styles.photoThumb} resizeMode="cover" />
-              ) : (
-                <View key={photo.id} style={[styles.photoThumb, styles.photoThumbLoading]}>
-                  <Text>📷</Text>
-                </View>
-              )
-            )}
-          </ScrollView>
-        ) : (
-          <Text style={[styles.progressEmpty, { color: textSec }]}>No progress photos yet. Tap "+ Log Progress" to document growth.</Text>
-        )}
-      </View>
-
       {/* ── Harvest log ─────────────────────────────────────────────────── */}
       {harvests.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🧺 Harvest Log</Text>
+          <Text style={[styles.sectionTitle, { color: textPrim }]}>🧺 Harvest Log</Text>
           {harvests.map((h) => (
-            <View key={h.id} style={[styles.harvestRow, { borderColor: border }]}>
+            <View key={h.id} style={[styles.harvestRow, { borderColor: border, backgroundColor: cardBg }]}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.harvestDate}>{new Date((h.harvested_at || (h as any).created) || new Date()).toLocaleDateString()}</Text>
-                <Text style={styles.harvestYield}>
+                <Text style={[styles.harvestDate, { color: textSec }]}>{new Date((h.harvested_at || (h as any).created) || new Date()).toLocaleDateString()}</Text>
+                <Text style={[styles.harvestYield, { color: textPrim }]}>
                   {h.notes?.match(/^\d+ pieces?/)?.[0] ?? (h.yield_grams > 0 ? `${h.yield_grams} piece${h.yield_grams !== 1 ? 's' : ''}` : '—')}
                 </Text>
                 {h.notes && !h.notes.match(/^\d+ pieces?/) && (
-                  <Text style={styles.harvestNotes}>{h.notes}</Text>
+                  <Text style={[styles.harvestNotes, { color: textSec }]}>{h.notes}</Text>
                 )}
               </View>
               <View style={styles.harvestActions}>
@@ -762,11 +654,11 @@ export default function PlantDetailScreen() {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, tc, vc }: { label: string; value: string; tc?: string; vc?: string }) {
   return (
     <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
+      <Text style={[styles.infoLabel, tc ? { color: tc } : undefined]}>{label}</Text>
+      <Text style={[styles.infoValue, vc ? { color: vc } : undefined]}>{value}</Text>
     </View>
   );
 }
@@ -810,16 +702,6 @@ const styles = StyleSheet.create({
   heroBottom: { gap: 2 },
   heroName: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   heroVariety: { fontSize: 14, color: 'rgba(255,255,255,0.75)' },
-  // Photo strip
-  photoStripContent: { paddingBottom: 4, gap: 8, flexDirection: 'row' },
-  photoThumb: {
-    width: 80,
-    height: 80,
-    borderRadius: R.md,
-    overflow: 'hidden',
-  },
-  photoThumbLoading: { backgroundColor: G.dew, justifyContent: 'center', alignItems: 'center' },
-
   // Sections
   section: { paddingHorizontal: 16, marginTop: 16 },
   label: { fontSize: 11, fontWeight: '700', color: G.stone, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
@@ -864,17 +746,6 @@ const styles = StyleSheet.create({
   actionEmoji: { fontSize: 20 },
   actionText: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
 
-  // Progress log section
-  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  logProgressBtn: {
-    backgroundColor: G.hunter,
-    borderRadius: R.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  logProgressBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-  progressEmpty: { fontSize: 13, marginTop: 12, lineHeight: 18 },
-
   // Wiki credit
   wikiCredit: { position: 'absolute', bottom: 8, right: 12, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   wikiCreditText: { fontSize: 9, color: 'rgba(255,255,255,0.8)' },
@@ -899,6 +770,14 @@ const styles = StyleSheet.create({
   goodChipText: { fontSize: 12, fontWeight: '600', color: '#2b8a3e' },
   badChip: { backgroundColor: '#ffe3e3', borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 5 },
   badChipText: { fontSize: 12, fontWeight: '600', color: '#c92a2a' },
+
+  // Pro upsell box
+  proBox:         { borderRadius: R.lg, borderWidth: 1.5, padding: 16, alignItems: 'center', gap: 8 },
+  proBoxEmoji:    { fontSize: 32, marginBottom: 4 },
+  proBoxTitle:    { fontSize: 16, fontWeight: '800' },
+  proBoxText:     { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  proBoxBtn:      { backgroundColor: G.hunter, borderRadius: R.full, paddingHorizontal: 20, paddingVertical: 10, marginTop: 4 },
+  proBoxBtnText:  { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   // Frost & planting
   frostZoneBadge:     { borderRadius: R.full, borderWidth: 1.5, paddingHorizontal: 12, paddingVertical: 6, alignSelf: 'flex-start', marginBottom: 14 },

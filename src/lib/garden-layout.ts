@@ -117,7 +117,7 @@ export function sortGardens<T extends { created?: string }>(gardens: T[]): T[] {
   return [...gardens].sort((a, b) => {
     const ya = (yearFromGarden(a) ?? currentYear);
     const yb = (yearFromGarden(b) ?? currentYear);
-    if (yb !== ya) return yb - ya;
+    if (yb !== ya) return ya - yb;
     return new Date(b.created ?? 0).getTime() - new Date(a.created ?? 0).getTime();
   });
 }

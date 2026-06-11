@@ -11,7 +11,7 @@ import OfflineBanner from '@/components/ui/OfflineBanner';
 const TABS = [
   { name: 'index',    label: 'Home',     emoji: '🏡' },
   { name: 'garden',   label: 'Garden',   emoji: '🌻' },
-  { name: 'plants',   label: 'Plants',   emoji: '🌿' },
+  { name: 'plants',   label: 'Catalogue', emoji: '🌿' },
   { name: 'schedule', label: 'Schedule', emoji: '📅' },
   { name: 'profile',  label: 'Profile',  emoji: '👤' },
 ];

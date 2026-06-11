@@ -215,6 +215,20 @@ export default function GardenScreen() {
   const [editPlantQty, setEditPlantQty] = useState(1);
   const [savingEditPlant, setSavingEditPlant] = useState(false);
 
+  const [dismissedYearBanners, setDismissedYearBanners] = useState<Set<string>>(new Set());
+
+  async function updateGardenYear(garden: Garden, newYear: number) {
+    if (!user) return;
+    const layout = layoutFromGarden(garden);
+    const tileSizeCm = tileSizeInFromGarden(garden) * 2.54;
+    const newLayoutStr = serializeLayout(layout ?? makeLayout(garden.rows, garden.cols), tileSizeCm, newYear);
+    await offlineUpdate('gardens', user.id, garden.id, { layout: newLayoutStr });
+    const applyUpdate = (g: Garden): Garden => g.id === garden.id ? { ...g, layout: newLayoutStr } : g;
+    setGardens(prev => prev.map(applyUpdate));
+    setSharedEntries(prev => prev.map(e => ({ ...e, garden: applyUpdate(e.garden) })));
+    setDismissedYearBanners(prev => new Set([...prev, garden.id]));
+  }
+
   const editPlantCatalogItems = useMemo(() => {
     if (editPlantSearch.trim()) return searchPlants(editPlantSearch, 40);
     return Object.entries(PLANT_CATALOG)
@@ -760,6 +774,34 @@ export default function GardenScreen() {
           </ScrollView>
         </View>
 
+        {/* Old year banner */}
+        {isOwned && (() => {
+          const gardenYear = yearFromGarden(garden);
+          const curYear = new Date().getFullYear();
+          if (!gardenYear || gardenYear >= curYear || dismissedYearBanners.has(garden.id)) return null;
+          return (
+            <View style={[styles.yearBanner, { backgroundColor: isDark ? '#2d2a00' : '#fff9db', borderColor: isDark ? '#6b5900' : '#ffe066' }]}>
+              <Text style={[styles.yearBannerText, { color: isDark ? '#ffd43b' : '#7d5a00' }]}>
+                📅 This garden is from {gardenYear}. Update to {curYear} or dismiss?
+              </Text>
+              <View style={styles.yearBannerBtns}>
+                <TouchableOpacity
+                  style={[styles.yearBannerBtn, { backgroundColor: isDark ? '#3d3800' : '#fff3bf', borderColor: isDark ? '#6b5900' : '#ffe066' }]}
+                  onPress={() => updateGardenYear(garden, curYear)}
+                >
+                  <Text style={[styles.yearBannerBtnText, { color: isDark ? '#ffd43b' : '#7d5a00' }]}>Update to {curYear}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.yearBannerBtn, { backgroundColor: isDark ? colors.bgElement : '#f1f3f5', borderColor: isDark ? colors.border : '#dee2e6' }]}
+                  onPress={() => setDismissedYearBanners(prev => new Set([...prev, garden.id]))}
+                >
+                  <Text style={[styles.yearBannerBtnText, { color: textSec }]}>Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })()}
+
         {/* Grid — tiles scale to fill screen width, no horizontal scroll needed */}
         <View style={styles.gridWrapper}>
           {Array.from({ length: garden.rows }).map((_, row) => (
@@ -1164,7 +1206,7 @@ export default function GardenScreen() {
       </Modal>
 
       {/* ── Plant Action Sheet ─────────────────────────────────────────── */}
-      <Modal visible={!!plantAction && !showGardenHarvest} transparent animationType="slide">
+      <Modal visible={!!plantAction && !showGardenHarvest && !showEditPlant} transparent animationType="slide">
         <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
           {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setPlantAction(null)} />}
           <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
@@ -1704,12 +1746,12 @@ export default function GardenScreen() {
 
                   {/* Water interval */}
                   <View style={styles.waterRow}>
-                    <Text style={styles.fieldLabel}>Water every</Text>
+                    <Text style={[styles.fieldLabel, { color: textSec }]}>Water every</Text>
                     <View style={styles.waterStepper}>
                       <TouchableOpacity style={styles.stepBtn} onPress={() => setPlaceWaterDays((d) => Math.max(1, d - 1))}>
                         <Text style={styles.stepBtnText}>−</Text>
                       </TouchableOpacity>
-                      <Text style={styles.stepValue}>{placeWaterDays} days</Text>
+                      <Text style={[styles.stepValue, { color: textPrim }]}>{placeWaterDays} days</Text>
                       <TouchableOpacity style={styles.stepBtn} onPress={() => setPlaceWaterDays((d) => Math.min(30, d + 1))}>
                         <Text style={styles.stepBtnText}>+</Text>
                       </TouchableOpacity>
@@ -1718,12 +1760,12 @@ export default function GardenScreen() {
 
                   {/* Quantity */}
                   <View style={styles.waterRow}>
-                    <Text style={styles.fieldLabel}>Quantity</Text>
+                    <Text style={[styles.fieldLabel, { color: textSec }]}>Quantity</Text>
                     <View style={styles.waterStepper}>
                       <TouchableOpacity style={styles.stepBtn} onPress={() => setPlaceQuantity((q) => Math.max(1, q - 1))}>
                         <Text style={styles.stepBtnText}>−</Text>
                       </TouchableOpacity>
-                      <Text style={styles.stepValue}>{placeQuantity} plant{placeQuantity !== 1 ? 's' : ''}</Text>
+                      <Text style={[styles.stepValue, { color: textPrim }]}>{placeQuantity} plant{placeQuantity !== 1 ? 's' : ''}</Text>
                       <TouchableOpacity style={styles.stepBtn} onPress={() => setPlaceQuantity((q) => Math.min(99, q + 1))}>
                         <Text style={styles.stepBtnText}>+</Text>
                       </TouchableOpacity>
@@ -2229,4 +2271,9 @@ const styles = StyleSheet.create({
   },
   confirmBtn:     { backgroundColor: G.hunter, borderRadius: R.md, paddingHorizontal: 24, paddingVertical: 12 },
   confirmBtnText: { color: G.cloud, fontWeight: '600', fontSize: 15 },
+  yearBanner:     { marginHorizontal: 16, borderRadius: R.md, borderWidth: 1.5, padding: 12, marginBottom: 8, gap: 8 },
+  yearBannerText: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  yearBannerBtns: { flexDirection: 'row', gap: 8 },
+  yearBannerBtn:  { borderRadius: R.sm, borderWidth: 1, paddingVertical: 6, paddingHorizontal: 12 },
+  yearBannerBtnText: { fontSize: 12, fontWeight: '700' },
 });
