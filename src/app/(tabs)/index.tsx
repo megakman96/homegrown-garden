@@ -134,24 +134,6 @@ export default function DashboardScreen() {
     </FadeInView>
   );
 
-  // Plan banner
-  const planBanner = (
-    <FadeInView delay={90} from="bottom" style={isDesktop ? { marginHorizontal: 0 } : { marginHorizontal: 16, marginBottom: 12 }}>
-      <PressableScale onPress={() => router.push('/(tabs)/plan')} style={[styles.planBanner, { borderColor: isDark ? colors.border : G.mist }]}>
-        <LinearGradient colors={isDark ? ['#1a3326', '#122b1e'] : ['#e9f5ee', '#d4edda']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.planBannerInner}>
-          <View style={styles.planBannerLeft}>
-            <Text style={styles.planBannerEmoji}>🗓️</Text>
-            <View>
-              <Text style={[styles.planBannerTitle, { color: textPrimary }]}>Plan a Future Garden</Text>
-              <Text style={[styles.planBannerSub, { color: textSecondary }]}>Build a planting calendar, save plans, convert to a garden</Text>
-            </View>
-          </View>
-          <Text style={[styles.planBannerArrow, { color: G.sage }]}>›</Text>
-        </LinearGradient>
-      </PressableScale>
-    </FadeInView>
-  );
-
   // Stats row
   const statsRow = (
     <View style={[styles.statsRow, isDesktop && styles.statsRowDesktop]}>
@@ -278,7 +260,6 @@ export default function DashboardScreen() {
         <View style={styles.desktopPadding}>
           {heroSection}
           {weatherCard}
-          {planBanner}
           {statsRow}
           <View style={styles.desktopColumns}>
             <View style={styles.desktopCol}>
@@ -301,7 +282,6 @@ export default function DashboardScreen() {
       {heroSection}
       <View style={{ height: 16 }} />
       {weatherCard}
-      {planBanner}
       {statsRow}
       {waterSection}
       {harvestSection}
@@ -372,15 +352,6 @@ const styles = StyleSheet.create({
   harvestChipEmoji: { fontSize: 22 },
   harvestChipName:  { fontSize: 13, fontWeight: '700', maxWidth: 100 },
   harvestChipSub:   { fontSize: 11, marginTop: 1 },
-
-  // Plan banner
-  planBanner:       { borderRadius: R.lg, overflow: 'hidden', borderWidth: 1, ...Shadow.soft, marginBottom: 12 },
-  planBannerInner:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 },
-  planBannerLeft:   { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  planBannerEmoji:  { fontSize: 28 },
-  planBannerTitle:  { fontSize: 14, fontWeight: '700' },
-  planBannerSub:    { fontSize: 12, marginTop: 2, lineHeight: 16 },
-  planBannerArrow:  { fontSize: 26, fontWeight: '700', marginLeft: 8 },
 
   // Empty
   empty:          { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },

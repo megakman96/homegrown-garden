@@ -4,7 +4,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAppTheme, formatTemp } from '@/contexts/theme-context';
 import { G, R, Shadow } from '@/constants/theme';
 import type { WeatherData, WeatherDay } from '@/lib/weather';
-import { getMoonPhase, getMoonSign, getSunSign, getGardeningTip } from '@/lib/astronomy';
 
 // ─── Fun facts ────────────────────────────────────────────────────────────────
 
@@ -164,16 +163,7 @@ export default function GardenDailyCard({ weather, tempUnit, onPressWeather }: P
   const tod  = getTimeOfDay(hour);
   const conf = SCENES[tod];
 
-  // Celestial data — computed once on mount, stable for the session
-  const [moonPhase] = useState(() => getMoonPhase());
-  const [moonSign]  = useState(() => getMoonSign());
-  const [sunSign]   = useState(() => getSunSign());
-  const [gardenTip] = useState(() => getGardeningTip(getMoonPhase(), getMoonSign()));
-
-  // Use actual moon phase emoji in night/dusk scenes
-  const effectiveConf = (tod === 'night' || tod === 'dusk')
-    ? { ...conf, orb: moonPhase.emoji }
-    : conf;
+  const effectiveConf = conf;
 
   const [floaters] = useState<Floater[]>(() => makeFloaters(effectiveConf.floaters));
   const [fact]     = useState<string>(
@@ -338,38 +328,6 @@ export default function GardenDailyCard({ weather, tempUnit, onPressWeather }: P
           </TouchableOpacity>
         )}
 
-        {/* Celestial — moon phase, moon sign, sun sign */}
-        <View style={[styles.celestialBox, { backgroundColor: isDark ? '#1a1030' : '#f5f0ff', borderColor: isDark ? '#3a2060' : '#d4b8ff' }]}>
-          <Text style={[styles.celestialTitle, { color: isDark ? '#c8a8ff' : '#6b3fa0' }]}>✨ Tonight's Sky</Text>
-          <View style={styles.chipsRow}>
-            <View style={[styles.chip, { backgroundColor: isDark ? '#2a1848' : '#ede0ff', borderColor: isDark ? '#4a2880' : '#c4a0e8' }]}>
-              <Text style={styles.chipEmoji}>{moonPhase.emoji}</Text>
-              <View>
-                <Text style={[styles.chipLabel, { color: isDark ? '#c8a8ff' : '#6b3fa0' }]}>MOON</Text>
-                <Text style={[styles.chipVal, { color: isDark ? '#f0e8ff' : '#3d1a6b' }]}>{moonPhase.name}</Text>
-                <Text style={[styles.chipSub, { color: isDark ? '#a080d0' : '#8b5fcf' }]}>{moonPhase.illumination}% lit</Text>
-              </View>
-            </View>
-            <View style={[styles.chip, { backgroundColor: isDark ? '#1a2040' : '#e8eeff', borderColor: isDark ? '#304080' : '#a0b4e8' }]}>
-              <Text style={styles.chipEmoji}>{moonSign.emoji}</Text>
-              <View>
-                <Text style={[styles.chipLabel, { color: isDark ? '#a0b8ff' : '#2a4090' }]}>MOON IN</Text>
-                <Text style={[styles.chipVal, { color: isDark ? '#e0e8ff' : '#1a306b' }]}>{moonSign.name}</Text>
-                <Text style={[styles.chipSub, { color: isDark ? '#8090c0' : '#5060a0' }]}>{moonSign.element}</Text>
-              </View>
-            </View>
-            <View style={[styles.chip, { backgroundColor: isDark ? '#201818' : '#fff3e0', borderColor: isDark ? '#604030' : '#ffb74d' }]}>
-              <Text style={styles.chipEmoji}>{sunSign.emoji}</Text>
-              <View>
-                <Text style={[styles.chipLabel, { color: isDark ? '#ffb080' : '#bf6000' }]}>SUN IN</Text>
-                <Text style={[styles.chipVal, { color: isDark ? '#ffe0b8' : '#6b3000' }]}>{sunSign.name}</Text>
-                <Text style={[styles.chipSub, { color: isDark ? '#c09060' : '#a06030' }]}>{sunSign.element}</Text>
-              </View>
-            </View>
-          </View>
-          <Text style={[styles.gardenTip, { color: isDark ? '#b898e8' : '#5a3890' }]}>{gardenTip}</Text>
-        </View>
-
         {/* Fun fact */}
         <View style={[styles.factBox, { backgroundColor: isDark ? colors.bgElement : G.foam, borderColor: borderCol }]}>
           <Text style={[styles.factLabel, { color: G.sage }]}>🌿 Garden Fact</Text>
@@ -454,13 +412,4 @@ const styles = StyleSheet.create({
   factLabel: { fontSize: 11, fontWeight: '700', marginBottom: 5, letterSpacing: 0.3 },
   factText:  { fontSize: 13, lineHeight: 19 },
 
-  celestialBox: {
-    borderRadius: R.md,
-    borderWidth: 1.5,
-    padding: 12,
-    gap: 10,
-  },
-  celestialTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
-  chipSub:  { fontSize: 9, marginTop: 1 },
-  gardenTip: { fontSize: 12, lineHeight: 18, fontStyle: 'italic' },
 });

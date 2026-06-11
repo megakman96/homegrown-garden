@@ -58,7 +58,7 @@ export default function StatisticsScreen() {
       const byYear = new Map<number, Map<string, PlantStats>>();
 
       for (const h of harvests as any[]) {
-        const date = new Date(h.harvested_at ?? h.created);
+        const date = new Date(h.harvested_at || h.created);
         const year = date.getFullYear();
         const plant = plantMap.get(h.plant_id);
         const plantName = plant?.name ?? 'Unknown Plant';

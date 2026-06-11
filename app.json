@@ -9,7 +9,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.homegrown.garden",
-      "buildNumber": "11",
+      "buildNumber": "12",
       "supportsTablet": true,
       "icon": "./assets/images/icon.png",
       "infoPlist": {
