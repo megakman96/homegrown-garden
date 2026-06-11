@@ -516,6 +516,9 @@ export default function ProfileScreen() {
                   <Text style={styles.statLab}>Shared</Text>
                 </View>
               </View>
+              <TouchableOpacity style={styles.desktopStatsBtn} onPress={() => router.push('/statistics' as any)}>
+                <Text style={styles.desktopStatsBtnText}>📊 Harvest Statistics</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.desktopWipeBtn} onPress={confirmWipeData} disabled={wipingData}>
                 <Text style={styles.desktopWipeText}>{wipingData ? 'Resetting…' : '🔄 Reset All Data'}</Text>
               </TouchableOpacity>
@@ -571,6 +574,16 @@ export default function ProfileScreen() {
           </Text>
         </View>
         <Text style={{ fontSize: 18, color: isPremium ? '#52b788' : '#e67700' }}>›</Text>
+      </TouchableOpacity>
+
+      {/* Harvest Statistics */}
+      <TouchableOpacity
+        style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
+        onPress={() => router.push('/statistics' as any)}
+      >
+        <Text style={styles.collapsibleEmoji}>📊</Text>
+        <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>Harvest Statistics</Text>
+        <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>›</Text>
       </TouchableOpacity>
 
       {/* Notifications — collapsed behind a button */}
@@ -754,7 +767,9 @@ const styles = StyleSheet.create({
   subCardEmoji: { fontSize: 26 },
   subCardTitle: { fontSize: 15, fontWeight: '700' },
   subCardSub:   { fontSize: 12, marginTop: 2 },
-  desktopWipeBtn: { marginTop: 12, backgroundColor: '#fff3e0', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ffcc80' },
+  desktopStatsBtn: { marginTop: 12, backgroundColor: '#e8f5e9', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7' },
+  desktopStatsBtnText: { color: '#2d6a4f', fontWeight: '700', fontSize: 13 },
+  desktopWipeBtn: { marginTop: 8, backgroundColor: '#fff3e0', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ffcc80' },
   desktopWipeText: { color: '#e65100', fontWeight: '600', fontSize: 13 },
   desktopAdminBtn: { marginTop: 8, backgroundColor: '#e8f5e9', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7' },
   desktopAdminText: { color: '#2d6a4f', fontWeight: '600', fontSize: 13 },

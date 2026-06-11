@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,6 +13,7 @@ import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
 import { useAppTheme, isBirthdayToday, loadBirthday, formatTemp } from '@/contexts/theme-context';
 import { fetchWeather, loadSavedLocation, type WeatherData } from '@/lib/weather';
+import GardenDailyCard from '@/components/ui/GardenDailyCard';
 import { subscribe } from '@/lib/events';
 import type { Plant } from '@/lib/types';
 
@@ -86,9 +87,6 @@ export default function DashboardScreen() {
     .sort((a, b) => a.harvestDate.getTime() - b.harvestDate.getTime())
     .slice(0, 4);
 
-  const todayWeather = weather?.days.find(d => d.date === now.toISOString().slice(0, 10));
-  const next3Rain = weather?.days.filter(d => d.isFuture && d.isRainy).slice(0, 3) ?? [];
-
   const bg = isDark ? colors.bg : G.foam;
   const cardBg = isDark ? colors.bgCard : G.cloud;
   const textPrimary = isDark ? colors.text : G.forest;
@@ -125,41 +123,32 @@ export default function DashboardScreen() {
     </FadeInView>
   );
 
-  // Weather card (compact)
+  // Daily nature card (animated scene + sunrise/sunset + fun fact + rain forecast)
   const weatherCard = (
-    <FadeInView delay={60} from="bottom" style={{ marginHorizontal: isDesktop ? 0 : 16, marginBottom: 12 }}>
-      <TouchableOpacity
-        style={[styles.weatherCard, { backgroundColor: cardBg, borderColor }]}
-        onPress={() => router.push('/(tabs)/schedule')}
-        activeOpacity={0.85}
-      >
-        {weatherLoading ? (
-          <ActivityIndicator color={G.sage} size="small" />
-        ) : weather && todayWeather ? (
-          <View style={styles.weatherRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.weatherTemp, { color: textPrimary }]}>
-                {formatTemp(todayWeather.tempMaxC, tempUnit)} / {formatTemp(todayWeather.tempMinC, tempUnit)}
-              </Text>
-              <Text style={[styles.weatherLoc, { color: textSecondary }]}>
-                📍 {weather.locationName ?? 'Your location'} · {todayWeather.isRainy ? '🌧️ Rain today' : '☀️ Clear today'}
-              </Text>
-              {next3Rain.length > 0 && (
-                <Text style={[styles.weatherRain, { color: G.sage }]}>
-                  🌧️ Rain expected {next3Rain.map(d =>
-                    new Date(d.date + 'T12:00').toLocaleDateString(undefined, { weekday: 'short' })
-                  ).join(', ')}
-                </Text>
-              )}
+    <FadeInView delay={60} from="bottom" style={isDesktop ? { marginHorizontal: 0 } : undefined}>
+      <GardenDailyCard
+        weather={weatherLoading ? null : weather}
+        tempUnit={tempUnit}
+        onPressWeather={() => router.push('/(tabs)/schedule')}
+      />
+    </FadeInView>
+  );
+
+  // Plan banner
+  const planBanner = (
+    <FadeInView delay={90} from="bottom" style={isDesktop ? { marginHorizontal: 0 } : { marginHorizontal: 16, marginBottom: 12 }}>
+      <PressableScale onPress={() => router.push('/(tabs)/plan')} style={[styles.planBanner, { borderColor: isDark ? colors.border : G.mist }]}>
+        <LinearGradient colors={isDark ? ['#1a3326', '#122b1e'] : ['#e9f5ee', '#d4edda']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.planBannerInner}>
+          <View style={styles.planBannerLeft}>
+            <Text style={styles.planBannerEmoji}>🗓️</Text>
+            <View>
+              <Text style={[styles.planBannerTitle, { color: textPrimary }]}>Plan a Future Garden</Text>
+              <Text style={[styles.planBannerSub, { color: textSecondary }]}>Build a planting calendar, save plans, convert to a garden</Text>
             </View>
-            <Text style={styles.weatherEmoji}>{todayWeather.isRainy ? '🌧️' : '☀️'}</Text>
           </View>
-        ) : (
-          <Text style={[styles.weatherLoc, { color: textSecondary }]}>
-            📍 Set a location in the Schedule tab for weather
-          </Text>
-        )}
-      </TouchableOpacity>
+          <Text style={[styles.planBannerArrow, { color: G.sage }]}>›</Text>
+        </LinearGradient>
+      </PressableScale>
     </FadeInView>
   );
 
@@ -289,6 +278,7 @@ export default function DashboardScreen() {
         <View style={styles.desktopPadding}>
           {heroSection}
           {weatherCard}
+          {planBanner}
           {statsRow}
           <View style={styles.desktopColumns}>
             <View style={styles.desktopCol}>
@@ -311,6 +301,7 @@ export default function DashboardScreen() {
       {heroSection}
       <View style={{ height: 16 }} />
       {weatherCard}
+      {planBanner}
       {statsRow}
       {waterSection}
       {harvestSection}
@@ -347,20 +338,6 @@ const styles = StyleSheet.create({
   heroLeaves:  { position: 'absolute', right: 20, bottom: 16, flexDirection: 'row', gap: 4 },
   heroLeaf:    { fontSize: 28, opacity: 0.3 },
 
-  // Weather
-  weatherCard: {
-    borderRadius: R.lg,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    ...Shadow.soft,
-  },
-  weatherRow:  { flexDirection: 'row', alignItems: 'center' },
-  weatherTemp: { fontSize: 20, fontWeight: '700' },
-  weatherLoc:  { fontSize: 12, marginTop: 3 },
-  weatherRain: { fontSize: 12, marginTop: 4 },
-  weatherEmoji:{ fontSize: 32, marginLeft: 12 },
-
   // Stats
   statsRow:       { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 12 },
   statsRowDesktop:{ paddingHorizontal: 0, marginBottom: 16 },
@@ -395,6 +372,15 @@ const styles = StyleSheet.create({
   harvestChipEmoji: { fontSize: 22 },
   harvestChipName:  { fontSize: 13, fontWeight: '700', maxWidth: 100 },
   harvestChipSub:   { fontSize: 11, marginTop: 1 },
+
+  // Plan banner
+  planBanner:       { borderRadius: R.lg, overflow: 'hidden', borderWidth: 1, ...Shadow.soft, marginBottom: 12 },
+  planBannerInner:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 },
+  planBannerLeft:   { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  planBannerEmoji:  { fontSize: 28 },
+  planBannerTitle:  { fontSize: 14, fontWeight: '700' },
+  planBannerSub:    { fontSize: 12, marginTop: 2, lineHeight: 16 },
+  planBannerArrow:  { fontSize: 26, fontWeight: '700', marginLeft: 8 },
 
   // Empty
   empty:          { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },

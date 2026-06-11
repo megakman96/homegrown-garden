@@ -35,6 +35,8 @@ export interface WeatherDay {
   evapotranspirationMm: number; // water lost from soil/plants
   isRainy: boolean;         // precipMm > 2
   isFuture: boolean;
+  sunrise?: string;         // ISO datetime e.g. "2024-06-15T05:32"
+  sunset?: string;          // ISO datetime e.g. "2024-06-15T20:45"
 }
 
 export interface WeatherData {
@@ -60,6 +62,8 @@ export async function fetchWeather(location: Location): Promise<WeatherData> {
       'temperature_2m_max',
       'temperature_2m_min',
       'et0_fao_evapotranspiration',
+      'sunrise',
+      'sunset',
     ].join(','),
     timezone: 'auto',
     past_days: '7',
@@ -82,6 +86,8 @@ export async function fetchWeather(location: Location): Promise<WeatherData> {
       evapotranspirationMm: json.daily.et0_fao_evapotranspiration[i] ?? 0,
       isRainy: precip > 2,
       isFuture: date >= today,
+      sunrise: json.daily.sunrise?.[i] ?? undefined,
+      sunset:  json.daily.sunset?.[i]  ?? undefined,
     };
   });
 

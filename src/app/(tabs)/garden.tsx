@@ -149,15 +149,6 @@ export default function GardenScreen() {
   const [savingGardenHarvest, setSavingGardenHarvest] = useState(false);
   const [gardenUploading, setGardenUploading] = useState(false);
 
-  // Plan modal
-  const [showPlan, setShowPlan] = useState(false);
-  const [planYear, setPlanYear] = useState(new Date().getFullYear());
-
-  const [planLastFrost, setPlanLastFrost] = useState('04/15');
-  const [planFirstFrost, setPlanFirstFrost] = useState('10/15');
-  const [planSelectedKeys, setPlanSelectedKeys] = useState<string[]>([]);
-  const [planSearch, setPlanSearch] = useState('');
-
   // History modal
   const [showHistory, setShowHistory] = useState(false);
   const [historyLog, setHistoryLog] = useState<ActivityEntry[]>([]);
@@ -632,57 +623,6 @@ export default function GardenScreen() {
     setShowHistory(true);
   }
 
-  // ── Plan ──────────────────────────────────────────────────────────────────
-
-  const COOL_SEASON_KEYS = new Set([
-    'lettuce','spinach','kale','broccoli','cabbage','cauliflower',
-    'brussels_sprouts','pea','carrot','radish','beet','turnip','parsnip',
-    'chard','arugula','bok_choy','collard_greens',
-  ]);
-
-  const planItems = useMemo(() => {
-    if (!planSelectedKeys.length) return [];
-    function parseMMDD(mmdd: string, year: number): Date | null {
-      const [m, d] = mmdd.split('/').map(Number);
-      if (isNaN(m) || isNaN(d)) return null;
-      return new Date(year, m - 1, d);
-    }
-    const lastFrost = parseMMDD(planLastFrost, planYear);
-    const firstFrost = parseMMDD(planFirstFrost, planYear);
-    if (!lastFrost || !firstFrost) return [];
-    return planSelectedKeys.map(key => {
-      const entry = PLANT_CATALOG[key];
-      if (!entry) return null;
-      const matMin = entry.daysToMaturity?.min ?? 60;
-      const matMax = entry.daysToMaturity?.max ?? 90;
-      const isCool = COOL_SEASON_KEYS.has(key);
-      const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
-      const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      let directSow: Date;
-      let seedStart: Date | null = null;
-      let transplant: Date | null = null;
-      if (isCool) {
-        directSow = addDays(lastFrost, -42);
-      } else {
-        directSow = lastFrost;
-        if (matMin >= 60) { seedStart = addDays(lastFrost, -56); transplant = lastFrost; }
-      }
-      return {
-        key, entry,
-        seedStart: seedStart ? fmt(seedStart) : null,
-        transplant: transplant ? fmt(transplant) : null,
-        directSow: fmt(directSow),
-        harvestRange: `${fmt(addDays(directSow, matMin))} – ${fmt(addDays(directSow, matMax))}`,
-      };
-    }).filter(Boolean) as NonNullable<typeof planSelectedKeys>[number] extends string ? any[] : any[];
-  }, [planSelectedKeys, planYear, planLastFrost, planFirstFrost]);
-
-  const planCatalogueList = useMemo(() => {
-    if (planSearch.trim()) return searchPlants(planSearch, 60);
-    return Object.entries(PLANT_CATALOG).map(([key, entry]) => ({ key, entry }))
-      .sort((a, b) => a.entry.name.localeCompare(b.entry.name));
-  }, [planSearch]);
-
   // Build compatibility summary for placement modal
   function buildCompatSummary() {
     if (!placement || !placeName.trim()) return null;
@@ -765,10 +705,6 @@ export default function GardenScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerActionsScroll}>
             <View style={styles.headerActions}>
               <GardenBtn emoji="📋" label="History" onPress={openHistory} />
-              <GardenBtn emoji="🗓️" label="Plan" onPress={() => {
-                if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
-                setShowPlan(true);
-              }} />
               <GardenBtn emoji="📄" label="Print" onPress={() => {
                 if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
                 setReportPreview({ garden, plants: pagePlants, layout: pageGardenLayout });
@@ -922,10 +858,6 @@ export default function GardenScreen() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerActionsScroll}>
                   <View style={[styles.headerActions, { paddingHorizontal: 16, paddingBottom: 12 }]}>
                     <GardenBtn emoji="📋" label="History" onPress={() => { activate(); openHistory(); }} />
-                    <GardenBtn emoji="🗓️" label="Plan" onPress={() => {
-                      if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
-                      activate(); setShowPlan(true);
-                    }} />
                     <GardenBtn emoji="📄" label="Print" onPress={() => {
                       if (!isPremium && isOwned) { router.push('/subscription' as any); return; }
                       activate(); setReportPreview({ garden, plants: pagePlants, layout: pageLayout });
@@ -1805,101 +1737,6 @@ export default function GardenScreen() {
         </View>
       </Modal>
 
-      {/* ── Plan Modal ────────────────────────────────────────────────── */}
-      <Modal visible={showPlan} transparent animationType="slide">
-        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
-          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowPlan(false)} />}
-          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, maxHeight: '88%', backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
-            {!isDesktop && <View style={styles.modalHandle} />}
-            <Text style={[styles.modalTitle, { color: textPrim }]}>🗓️ Season Plan — {selectedGarden?.name}</Text>
-
-            {/* Year picker */}
-            <View style={styles.planYearRow}>
-              <TouchableOpacity style={styles.planYearBtn} onPress={() => setPlanYear(y => Math.max(new Date().getFullYear() - 1, y - 1))}>
-                <Text style={[styles.stepBtnText, { color: textPrim }]}>−</Text>
-              </TouchableOpacity>
-              <Text style={[styles.planYearVal, { color: textPrim }]}>{planYear}</Text>
-              <TouchableOpacity style={styles.planYearBtn} onPress={() => setPlanYear(y => y + 1)}>
-                <Text style={[styles.stepBtnText, { color: textPrim }]}>+</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Frost dates */}
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.fieldLabel, { color: textSec }]}>Last Spring Frost</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, marginBottom: 0 }]}
-                  value={planLastFrost} onChangeText={setPlanLastFrost}
-                  placeholder="MM/DD" placeholderTextColor={textSec} maxLength={5}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.fieldLabel, { color: textSec }]}>First Fall Frost</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim, marginBottom: 0 }]}
-                  value={planFirstFrost} onChangeText={setPlanFirstFrost}
-                  placeholder="MM/DD" placeholderTextColor={textSec} maxLength={5}
-                />
-              </View>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Plant picker */}
-              <TextInput
-                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
-                placeholder="Search plants to add to plan..."
-                placeholderTextColor={textSec}
-                value={planSearch} onChangeText={setPlanSearch}
-              />
-              {planCatalogueList.slice(0, planSearch.trim() ? 60 : 20).map(({ key, entry }) => {
-                const sel = planSelectedKeys.includes(key);
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    style={[styles.catItem, { borderBottomColor: border, backgroundColor: sel ? (isDark ? colors.bgElement : '#d8f3dc') : undefined }]}
-                    onPress={() => setPlanSelectedKeys(prev => sel ? prev.filter(k => k !== key) : [...prev, key])}
-                  >
-                    <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
-                      <Text style={[styles.catItemMeta, { color: textSec }]}>
-                        {entry.daysToMaturity?.min ?? '?'}–{entry.daysToMaturity?.max ?? '?'} days
-                      </Text>
-                    </View>
-                    {sel && <Text style={{ fontSize: 16 }}>✅</Text>}
-                  </TouchableOpacity>
-                );
-              })}
-
-              {/* Schedule */}
-              {planItems.length > 0 && (
-                <>
-                  <Text style={[styles.catSectionLabel, { color: textSec, marginTop: 16 }]}>
-                    📅 {planYear} Planting Schedule
-                  </Text>
-                  {planItems.map((item: any) => (
-                    <View key={item.key} style={[styles.planCard, { backgroundColor: isDark ? colors.bgElement : '#f8fffe', borderColor: border }]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <Text style={{ fontSize: 22 }}>{getPlantIcon(item.entry.name).emoji}</Text>
-                        <Text style={[styles.catItemName, { color: textPrim, fontSize: 16 }]}>{item.entry.name}</Text>
-                      </View>
-                      {item.seedStart && <Text style={[styles.catItemMeta, { color: textSec }]}>🏠 Start seeds indoors: {item.seedStart}</Text>}
-                      {item.transplant && <Text style={[styles.catItemMeta, { color: textSec }]}>🌱 Transplant outside: {item.transplant}</Text>}
-                      {!item.seedStart && <Text style={[styles.catItemMeta, { color: textSec }]}>🌱 Direct sow: {item.directSow}</Text>}
-                      <Text style={[styles.catItemMeta, { color: textSec }]}>🧺 Expected harvest: {item.harvestRange}</Text>
-                    </View>
-                  ))}
-                </>
-              )}
-            </ScrollView>
-
-            <TouchableOpacity onPress={() => setShowPlan(false)} style={[styles.actionCancel]}>
-              <Text style={styles.cancelText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }

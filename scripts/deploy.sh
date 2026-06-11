@@ -6,11 +6,19 @@ LXC_ID="112"
 DIST="$(dirname "$0")/../dist"
 
 echo "🔍 Getting tunnel URL from LXC $LXC_ID..."
+# Try named tunnel hostname first (from config.yml ingress)
 TUNNEL_URL=$(ssh "$PROXMOX" \
-  "pct exec $LXC_ID -- journalctl -u cloudflared --no-pager -n 50" \
-  | grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1)
+  "pct exec $LXC_ID -- grep -oP 'hostname: \K\S+' /root/.cloudflared/config.yml 2>/dev/null | head -1" \
+  | sed 's/^/https:\/\//')
 
-if [ -z "$TUNNEL_URL" ]; then
+# Fall back to quick-tunnel URL in journal logs
+if [ -z "$TUNNEL_URL" ] || [ "$TUNNEL_URL" = "https://" ]; then
+  TUNNEL_URL=$(ssh "$PROXMOX" \
+    "pct exec $LXC_ID -- journalctl -u cloudflared --no-pager -n 200" \
+    | grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1)
+fi
+
+if [ -z "$TUNNEL_URL" ] || [ "$TUNNEL_URL" = "https://" ]; then
   echo "❌ Could not find tunnel URL. Is cloudflared running on LXC $LXC_ID?"
   echo "   Run: ssh $PROXMOX \"pct exec $LXC_ID -- systemctl status cloudflared\""
   exit 1

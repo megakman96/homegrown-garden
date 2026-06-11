@@ -105,6 +105,7 @@ function ThemedApp() {
           <Stack.Screen name="new-garden" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
           <Stack.Screen name="admin" options={{ animation: 'slide_from_bottom', animationDuration: 260 }} />
           <Stack.Screen name="subscription" options={{ headerShown: false, animation: 'slide_from_bottom', animationDuration: 300 }} />
+          <Stack.Screen name="statistics" options={{ headerShown: true, title: 'Harvest Statistics', headerBackTitle: 'Back', animation: 'slide_from_right', animationDuration: 220 }} />
         </Stack>
       </AuthGuard>
     </ThemeProvider>
