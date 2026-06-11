@@ -66,6 +66,10 @@ export default function PlantDetailScreen() {
   const [harvestCount, setHarvestCount] = useState(1);
   const [harvestNotes, setHarvestNotes] = useState('');
   const [savingHarvest, setSavingHarvest] = useState(false);
+  const [editingHarvest, setEditingHarvest] = useState<Harvest | null>(null);
+  const [editHarvestCount, setEditHarvestCount] = useState(1);
+  const [editHarvestNotes, setEditHarvestNotes] = useState('');
+  const [savingEditHarvest, setSavingEditHarvest] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -193,6 +197,42 @@ export default function PlantDetailScreen() {
     }
   }
 
+  function openEditHarvest(h: Harvest) {
+    setEditingHarvest(h);
+    setEditHarvestCount(h.yield_grams || 1);
+    setEditHarvestNotes(h.notes?.match(/^\d+ pieces?/) ? '' : (h.notes ?? ''));
+  }
+
+  async function saveEditHarvest() {
+    if (!editingHarvest) return;
+    setSavingEditHarvest(true);
+    try {
+      const autoNote = `${editHarvestCount} piece${editHarvestCount !== 1 ? 's' : ''} harvested`;
+      const notes = editHarvestNotes.trim() || autoNote;
+      await pb.collection('harvests').update(editingHarvest.id, { yield_grams: editHarvestCount, notes });
+      setHarvests(prev => prev.map(h => h.id === editingHarvest.id ? { ...h, yield_grams: editHarvestCount, notes } : h));
+      setEditingHarvest(null);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not update harvest');
+    } finally {
+      setSavingEditHarvest(false);
+    }
+  }
+
+  function confirmDeleteHarvest(h: Harvest) {
+    Alert.alert('Delete Harvest', 'Remove this harvest record?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await pb.collection('harvests').delete(h.id);
+          setHarvests(prev => prev.filter(r => r.id !== h.id));
+        } catch (e: any) {
+          Alert.alert('Error', e?.message ?? 'Could not delete');
+        }
+      }},
+    ]);
+  }
+
   async function addPhoto() {
     if (!user || !plant) return;
 
@@ -242,6 +282,7 @@ export default function PlantDetailScreen() {
       }
       formData.append('plant_id', plant.id);
       formData.append('user_id', user.id);
+      formData.append('taken_at', new Date().toISOString());
       const data = await pb.collection('plant_photos').create(formData);
       setPhotos((p) => [data as any, ...p]);
     } catch (e: any) {
@@ -610,18 +651,64 @@ export default function PlantDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🧺 Harvest Log</Text>
           {harvests.map((h) => (
-            <View key={h.id} style={styles.harvestRow}>
-              <Text style={styles.harvestDate}>{new Date(h.harvested_at ?? (h as any).created).toLocaleDateString()}</Text>
-              <Text style={styles.harvestYield}>
-                {h.notes?.match(/^\d+ pieces?/)?.[0] ?? (h.yield_grams > 0 ? `${h.yield_grams} piece${h.yield_grams !== 1 ? 's' : ''}` : '—')}
-              </Text>
-              {h.notes && !h.notes.match(/^\d+ pieces?/) && (
-                <Text style={styles.harvestNotes}>{h.notes}</Text>
-              )}
+            <View key={h.id} style={[styles.harvestRow, { borderColor: border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.harvestDate}>{new Date((h.harvested_at || (h as any).created) || new Date()).toLocaleDateString()}</Text>
+                <Text style={styles.harvestYield}>
+                  {h.notes?.match(/^\d+ pieces?/)?.[0] ?? (h.yield_grams > 0 ? `${h.yield_grams} piece${h.yield_grams !== 1 ? 's' : ''}` : '—')}
+                </Text>
+                {h.notes && !h.notes.match(/^\d+ pieces?/) && (
+                  <Text style={styles.harvestNotes}>{h.notes}</Text>
+                )}
+              </View>
+              <View style={styles.harvestActions}>
+                <TouchableOpacity onPress={() => openEditHarvest(h)} style={styles.harvestActionBtn} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                  <Text style={{ fontSize: 15 }}>✏️</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => confirmDeleteHarvest(h)} style={styles.harvestActionBtn} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                  <Text style={{ fontSize: 15 }}>🗑️</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>
       )}
+
+      {/* ── Edit harvest modal ──────────────────────────────────────────── */}
+      <Modal visible={!!editingHarvest} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modal, { backgroundColor: cardBg }]}>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>✏️ Edit Harvest</Text>
+            <View style={styles.stepper}>
+              <TouchableOpacity style={styles.stepBtn} onPress={() => setEditHarvestCount(v => Math.max(1, v - 1))}>
+                <Text style={styles.stepBtnText}>−</Text>
+              </TouchableOpacity>
+              <View style={styles.stepValueWrap}>
+                <Text style={styles.stepValue}>{editHarvestCount}</Text>
+                <Text style={styles.stepUnit}>{editHarvestCount === 1 ? 'piece' : 'pieces'}</Text>
+              </View>
+              <TouchableOpacity style={styles.stepBtn} onPress={() => setEditHarvestCount(v => v + 1)}>
+                <Text style={styles.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+              placeholder="Notes (optional)"
+              placeholderTextColor={textSec}
+              value={editHarvestNotes}
+              onChangeText={setEditHarvestNotes}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingHarvest(null)} disabled={savingEditHarvest}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, savingEditHarvest && { opacity: 0.5 }]} onPress={saveEditHarvest} disabled={savingEditHarvest}>
+                <Text style={styles.buttonText}>{savingEditHarvest ? 'Saving…' : 'Save Changes'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Harvest modal ────────────────────────────────────────────────── */}
       <Modal visible={showHarvest} transparent animationType="slide">
@@ -830,6 +917,8 @@ const styles = StyleSheet.create({
   frostTimelineDate:  { fontSize: 16, fontWeight: '800' },
 
   // Harvest log
+  harvestActions: { flexDirection: 'row', gap: 4, alignItems: 'center' },
+  harvestActionBtn: { padding: 6 },
   harvestRow: {
     backgroundColor: G.cloud,
     borderRadius: R.md,

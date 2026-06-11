@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View, Text, StyleSheet, TextInput, ScrollView,
   useWindowDimensions, Alert, ActivityIndicator, Platform,
@@ -62,6 +63,8 @@ const MAX_COLS = 14;
 export default function NewGardenScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const { noSkip } = useLocalSearchParams<{ noSkip?: string }>();
+  const showSkip = !noSkip;
   const { width } = useWindowDimensions();
 
   const [step, setStep] = useState<Step>('name');
@@ -192,9 +195,11 @@ export default function NewGardenScreen() {
           <Text style={styles.backText}>✕</Text>
         </PressableScale>
         <Text style={styles.headerTitle}>New Garden</Text>
-        <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.skipBtn}>
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
+        {showSkip && (
+          <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.skipBtn}>
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        )}
       </LinearGradient>
 
       {/* Step indicator */}
@@ -430,7 +435,7 @@ export default function NewGardenScreen() {
                 >
                   {saving
                     ? <ActivityIndicator color={G.cloud} />
-                    : <Text style={styles.nextBtnText}>🌱  Create Garden</Text>
+                    : <Text style={styles.nextBtnText} numberOfLines={1}>🌱 Create Garden</Text>
                   }
                 </LinearGradient>
               </PressableScale>
@@ -628,6 +633,6 @@ const styles = StyleSheet.create({
   backStepText:    { color: G.stone, fontWeight: '700', fontSize: 15 },
   nextBtn:         { flex: 1, maxWidth: 280, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   nextBtnDisabled: { opacity: 0.5 },
-  nextBtnGradient: { paddingVertical: 15, alignItems: 'center' },
+  nextBtnGradient: { paddingVertical: 15, paddingHorizontal: 16, alignItems: 'center' },
   nextBtnText:     { color: G.cloud, fontWeight: '800', fontSize: 16 },
 });

@@ -216,8 +216,8 @@ export default function ProfileScreen() {
 
       setGardens([]);
       setShares([]);
-      // Navigate to home so all tabs refresh with empty state
-      router.replace('/(tabs)');
+      // Return to garden creation so the account is truly fresh
+      router.replace('/new-garden');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not wipe data. Please try again.');
     } finally {

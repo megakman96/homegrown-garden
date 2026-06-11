@@ -208,6 +208,44 @@ export default function GardenScreen() {
   const [editLocationSearching, setEditLocationSearching] = useState(false);
   const [editSelectedLocation, setEditSelectedLocation] = useState<Location | null>(null);
 
+  // Edit plant tile modal
+  const [showEditPlant, setShowEditPlant] = useState(false);
+  const [editPlantSearch, setEditPlantSearch] = useState('');
+  const [editPlantDate, setEditPlantDate] = useState('');
+  const [editPlantQty, setEditPlantQty] = useState(1);
+  const [savingEditPlant, setSavingEditPlant] = useState(false);
+
+  const editPlantCatalogItems = useMemo(() => {
+    if (editPlantSearch.trim()) return searchPlants(editPlantSearch, 40);
+    return Object.entries(PLANT_CATALOG)
+      .map(([key, entry]) => ({ key, entry }))
+      .sort((a, b) => a.entry.name.localeCompare(b.entry.name))
+      .slice(0, 40);
+  }, [editPlantSearch]);
+
+  async function saveEditPlant(newName: string) {
+    if (!plantAction) return;
+    setSavingEditPlant(true);
+    try {
+      const payload: Record<string, any> = { name: newName };
+      if (editPlantDate.trim()) payload.planted_date = editPlantDate.trim();
+      if (editPlantQty > 0) payload.quantity = editPlantQty;
+      await offlineUpdate('plants', plantAction.user_id, plantAction.id, payload);
+      const updated = { ...plantAction, name: newName, planted_date: payload.planted_date ?? plantAction.planted_date, quantity: editPlantQty };
+      setPlantsMap(prev => {
+        const gardenId = plantAction.garden_id;
+        const list = (prev[gardenId] ?? []).map(p => p.id === plantAction.id ? updated as any : p);
+        return { ...prev, [gardenId]: list };
+      });
+      setShowEditPlant(false);
+      setPlantAction(null);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not update plant');
+    } finally {
+      setSavingEditPlant(false);
+    }
+  }
+
   useEffect(() => {
     if (!user) return;
     setGardensLoaded(false);
@@ -805,7 +843,7 @@ export default function GardenScreen() {
           <Text style={styles.emptyEmoji}>🌻</Text>
           <Text style={styles.emptyTitle}>No garden yet</Text>
           <Text style={styles.emptySub}>Let's set one up — it only takes a minute.</Text>
-          <PressableScale onPress={() => router.push('/new-garden')} style={styles.emptyBtn}>
+          <PressableScale onPress={() => router.push('/new-garden?noSkip=true' as any)} style={styles.emptyBtn}>
             <LinearGradient colors={[G.sage, G.forest]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyBtnGradient}>
               <Text style={styles.emptyBtnText}>🌱  Create my first garden</Text>
             </LinearGradient>
@@ -1024,7 +1062,7 @@ export default function GardenScreen() {
           if (!isPremium && gardens.length >= FREE_LIMITS.gardens) {
             router.push('/subscription' as any);
           } else {
-            router.push('/new-garden');
+            router.push('/new-garden?noSkip=true' as any);
           }
         }}
       >
@@ -1162,6 +1200,15 @@ export default function GardenScreen() {
               <Text style={[styles.actionRowText, { color: textPrim }]}>👁  View Plant Details</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={[styles.actionRow, { borderBottomColor: isDark ? colors.border : undefined }]} onPress={() => {
+              setEditPlantSearch('');
+              setEditPlantDate(plantAction?.planted_date ?? '');
+              setEditPlantQty(plantAction?.quantity ?? 1);
+              setShowEditPlant(true);
+            }}>
+              <Text style={[styles.actionRowText, { color: textPrim }]}>✏️  Edit Plant</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={[styles.actionRow, { borderBottomWidth: 0 }]} onPress={unplantPlant}>
               <Text style={[styles.actionRowText, { color: textPrim }]}>⬜  Remove from this square</Text>
               <Text style={[styles.actionRowSub, { color: textSec }]}>Plant stays in your Plants list</Text>
@@ -1213,6 +1260,82 @@ export default function GardenScreen() {
                 disabled={savingGardenHarvest}
               >
                 <Text style={styles.confirmBtnText}>{savingGardenHarvest ? 'Saving…' : 'Log Harvest'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Edit Plant Modal ──────────────────────────────────────────── */}
+      <Modal visible={showEditPlant} transparent animationType="slide">
+        <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
+          {!isDesktop && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowEditPlant(false)} />}
+          <View style={[styles.modal, { paddingTop: isDesktop ? 24 : 12, backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
+            {!isDesktop && <View style={styles.modalHandle} />}
+            <Text style={[styles.modalTitle, { color: textPrim }]}>✏️ Edit Plant</Text>
+
+            {/* Plant type */}
+            <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 6 }]}>Plant Type</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: inputBg, borderColor: border, color: textPrim, marginBottom: 8 }]}
+              placeholder="Search for a plant…"
+              placeholderTextColor={textSec}
+              value={editPlantSearch || plantAction?.name || ''}
+              onChangeText={setEditPlantSearch}
+            />
+            {editPlantSearch.trim().length > 0 && (
+              <View style={{ borderRadius: R.md, borderWidth: 1, borderColor: border, maxHeight: 180, overflow: 'hidden', marginBottom: 4 }}>
+                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  {editPlantCatalogItems.map(({ key, entry }) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.catItem, { borderBottomColor: border }]}
+                      onPress={() => { setEditPlantSearch(entry.name); saveEditPlant(entry.name); }}
+                    >
+                      <Text style={styles.catItemEmoji}>{getPlantIcon(entry.name).emoji}</Text>
+                      <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Planted date */}
+            <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 6, marginTop: 12 }]}>Date Planted</Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={textSec}
+              value={editPlantDate}
+              onChangeText={setEditPlantDate}
+              maxLength={10}
+            />
+
+            {/* Quantity */}
+            <Text style={[styles.fieldLabel, { color: textSec, marginBottom: 6, marginTop: 12 }]}>Quantity</Text>
+            <View style={[styles.harvestStepper, { marginBottom: 16 }]}>
+              <TouchableOpacity style={styles.harvestStepBtn} onPress={() => setEditPlantQty(v => Math.max(1, v - 1))}>
+                <Text style={styles.harvestStepBtnText}>−</Text>
+              </TouchableOpacity>
+              <View style={styles.harvestStepValueWrap}>
+                <Text style={[styles.harvestStepValue, { color: textPrim }]}>{editPlantQty}</Text>
+                <Text style={[styles.harvestStepUnit, { color: textSec }]}>{editPlantQty === 1 ? 'plant' : 'plants'}</Text>
+              </View>
+              <TouchableOpacity style={styles.harvestStepBtn} onPress={() => setEditPlantQty(v => v + 1)}>
+                <Text style={styles.harvestStepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEditPlant(false)} disabled={savingEditPlant}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, savingEditPlant && { opacity: 0.5 }]}
+                onPress={() => saveEditPlant(editPlantSearch.trim() || plantAction?.name || '')}
+                disabled={savingEditPlant}
+              >
+                <Text style={styles.confirmBtnText}>{savingEditPlant ? 'Saving…' : 'Save Changes'}</Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -58,13 +58,14 @@ export default function StatisticsScreen() {
       const byYear = new Map<number, Map<string, PlantStats>>();
 
       for (const h of harvests as any[]) {
-        const date = new Date(h.harvested_at || h.created);
-        const year = date.getFullYear();
+        const dateStr = h.harvested_at || (h as any).created || '';
+        const date = new Date(dateStr);
+        const year = isNaN(date.getFullYear()) ? new Date().getFullYear() : date.getFullYear();
         const plant = plantMap.get(h.plant_id);
         const plantName = plant?.name ?? 'Unknown Plant';
         const gardenId = plant?.garden_id ?? '';
         const isShared = sharedGardenIds.has(gardenId);
-        const pieces = Number(h.yield_grams ?? 0);
+        const pieces = Number(h.yield_grams) || 0;
 
         if (!byYear.has(year)) byYear.set(year, new Map());
         const yearMap = byYear.get(year)!;

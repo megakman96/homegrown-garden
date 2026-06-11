@@ -11,9 +11,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
-import { useAppTheme, isBirthdayToday, loadBirthday, formatTemp } from '@/contexts/theme-context';
-import { fetchWeather, loadSavedLocation, type WeatherData } from '@/lib/weather';
-import GardenDailyCard from '@/components/ui/GardenDailyCard';
+import { useAppTheme, isBirthdayToday, loadBirthday } from '@/contexts/theme-context';
 import { subscribe } from '@/lib/events';
 import type { Plant } from '@/lib/types';
 
@@ -33,12 +31,10 @@ const BIRTHDAY_MSGS = [
 
 export default function DashboardScreen() {
   const { user } = useAuth();
-  const { isDark, colors, tempUnit } = useAppTheme();
+  const { isDark, colors } = useAppTheme();
   const router = useRouter();
   const { isDesktop } = useBreakpoint();
   const [plants, setPlants] = useState<Plant[]>([]);
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const firstName = user?.name?.split(' ')?.[0] || 'Gardener';
@@ -59,14 +55,6 @@ export default function DashboardScreen() {
   useFocusEffect(useCallback(() => { loadPlants(); }, [loadPlants]));
 
   useEffect(() => subscribe('plants:changed', () => loadPlants()), [loadPlants]);
-
-  useEffect(() => {
-    setWeatherLoading(true);
-    loadSavedLocation()
-      .then(loc => loc ? fetchWeather(loc) : null)
-      .then(wx => { setWeather(wx); setWeatherLoading(false); })
-      .catch(() => setWeatherLoading(false));
-  }, []);
 
   const now = new Date();
 
@@ -120,17 +108,6 @@ export default function DashboardScreen() {
           <Text style={styles.heroLeaf}>🍃</Text>
         </View>
       </LinearGradient>
-    </FadeInView>
-  );
-
-  // Daily nature card (animated scene + sunrise/sunset + fun fact + rain forecast)
-  const weatherCard = (
-    <FadeInView delay={60} from="bottom" style={isDesktop ? { marginHorizontal: 0 } : undefined}>
-      <GardenDailyCard
-        weather={weatherLoading ? null : weather}
-        tempUnit={tempUnit}
-        onPressWeather={() => router.push('/(tabs)/schedule')}
-      />
     </FadeInView>
   );
 
@@ -259,7 +236,6 @@ export default function DashboardScreen() {
       <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.desktopContent} showsVerticalScrollIndicator={false}>
         <View style={styles.desktopPadding}>
           {heroSection}
-          {weatherCard}
           {statsRow}
           <View style={styles.desktopColumns}>
             <View style={styles.desktopCol}>
@@ -281,7 +257,6 @@ export default function DashboardScreen() {
     <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.mobileContent} showsVerticalScrollIndicator={false}>
       {heroSection}
       <View style={{ height: 16 }} />
-      {weatherCard}
       {statsRow}
       {waterSection}
       {harvestSection}
