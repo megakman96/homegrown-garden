@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
+import * as Updates from 'expo-updates';
 import { offlineList } from '@/lib/offline-db';
 
 // On native, PocketBase ClientResponseErrors from unhandled async chains crash
@@ -66,12 +67,22 @@ function ThemedApp() {
     if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
-    // Notifications + RevenueCat init (native only)
     setupNotificationChannel();
+    if (!__DEV__ && Platform.OS !== 'web') {
+      Updates.checkForUpdateAsync()
+        .then(({ isAvailable }) => {
+          if (isAvailable) return Updates.fetchUpdateAsync().then(() => Updates.reloadAsync());
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
-    if (user?.id) initPurchases(user.id);
+    if (user?.id) {
+      initPurchases(user.id);
+      // Refresh the stored user record so promo_expires (and any server fields) are current
+      pb.collection('users').authRefresh().catch(() => {});
+    }
   }, [user?.id]);
 
   // Preload plants + gardens into the offline cache as soon as the user is known,

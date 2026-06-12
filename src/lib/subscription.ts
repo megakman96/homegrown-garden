@@ -23,8 +23,8 @@ export const REVENUECAT_API_KEY_IOS     = 'appl_REPLACE_WITH_YOUR_KEY';
 export const REVENUECAT_API_KEY_ANDROID = 'goog_REPLACE_WITH_YOUR_KEY';
 export const ENTITLEMENT_ID = 'premium';
 
-// Test coupon codes — validated locally during development.
-// In production, RevenueCat Offer Codes handle this on-device via Apple/Google.
+// Test coupon codes — validated server-side (stored in PocketBase users.promo_expires).
+// In production, RevenueCat Offer Codes handle IAP promos via Apple/Google.
 export const TEST_PROMO_CODES: Record<string, string> = {
   'GROWFREE':    'Beta tester — free premium access',
   'GARDENTEST':  'Internal tester',
@@ -47,8 +47,7 @@ export async function initPurchases(userId: string) {
 }
 
 export async function checkPremium(): Promise<boolean> {
-  // Also check local promo code grant
-  if (await hasLocalPromoGrant()) return true;
+  if (hasServerPromoGrant()) return true;
   if (Platform.OS === 'web' || !initialized) return false;
   try {
     const Purchases = (await import('react-native-purchases')).default;
@@ -95,38 +94,33 @@ export async function presentOfferCodeSheet() {
   } catch {}
 }
 
-// ── Local promo code grant (dev / beta testing) ───────────────────────────────
+// ── Server-side promo code grant (stored in PocketBase users.promo_expires) ──
+// Requires PocketBase users collection to have:
+//   promo_expires  DateTime (optional)
+//   promo_code     Text (optional)
 
-function promoKey(): string {
-  const uid = (pb.authStore.model as any)?.id ?? 'anonymous';
-  return `gg_promo_grant:${uid}`;
-}
-
-async function getStorage() {
-  if (Platform.OS === 'web') return null;
-  return (await import('@react-native-async-storage/async-storage')).default;
-}
-
-export async function hasLocalPromoGrant(): Promise<boolean> {
+export function hasServerPromoGrant(): boolean {
   try {
-    if (Platform.OS === 'web') {
-      return !!localStorage.getItem(promoKey());
-    }
-    const store = await getStorage();
-    return !!(await store?.getItem(promoKey()));
+    const user = (pb.authStore.record ?? pb.authStore.model) as any;
+    if (!user?.promo_expires) return false;
+    return new Date(user.promo_expires) > new Date();
   } catch { return false; }
 }
 
 export async function redeemPromoCode(code: string): Promise<{ success: boolean; message: string }> {
   const upper = code.trim().toUpperCase();
+
+  // Known test codes — try server redemption
   if (TEST_PROMO_CODES[upper]) {
     try {
-      if (Platform.OS === 'web') {
-        localStorage.setItem(promoKey(), upper);
-      } else {
-        const store = await getStorage();
-        await store?.setItem(promoKey(), upper);
-      }
+      // Server validates the code and writes promo_expires — client cannot forge this
+      await pb.send('/api/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: upper }),
+      });
+      // Refresh auth store so hasServerPromoGrant reads the updated record immediately
+      await pb.collection('users').authRefresh();
       return { success: true, message: `✅ Code applied! ${TEST_PROMO_CODES[upper]}` };
     } catch {
       return { success: false, message: 'Could not save code. Try again.' };
@@ -140,15 +134,4 @@ export async function redeemPromoCode(code: string): Promise<{ success: boolean;
   }
 
   return { success: false, message: 'Invalid code. Check and try again.' };
-}
-
-export async function clearPromoGrant() {
-  try {
-    if (Platform.OS === 'web') {
-      localStorage.removeItem(promoKey());
-    } else {
-      const store = await getStorage();
-      await store?.removeItem(promoKey());
-    }
-  } catch {}
 }
