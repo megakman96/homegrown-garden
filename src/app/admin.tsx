@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Modal, Alert, Platform, ActivityIndicator, Image,
@@ -15,9 +15,20 @@ import {
   loadPlantIconOverrides,
   uploadPlantIcon, deletePlantIcon, invalidateIconCache,
 } from '@/lib/plant-icon-overrides';
+import { pb } from '@/lib/pb';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const OVERRIDES_KEY = 'gg_catalog_overrides';
+
+type AdminTab = 'plants' | 'premium';
+
+interface PremiumUser {
+  id: string;
+  email: string;
+  name: string;
+  promo_expires: string | null;
+  promo_code: string | null;
+}
 
 type PlantOverride = Partial<CatalogEntry> & { emoji?: string; deleted?: boolean };
 type OverrideMap = Record<string, PlantOverride>;
@@ -79,6 +90,9 @@ export default function AdminScreen() {
   const border  = isDark ? colors.border    : '#e2e8f0';
   const inputBg = isDark ? colors.bgElement : '#f1f5f9';
 
+  const [activeTab, setActiveTab]   = useState<AdminTab>('plants');
+
+  // Plant catalogue state
   const [overrides, setOverrides]   = useState<OverrideMap>({});
   const [iconUrls, setIconUrls]     = useState<Record<string, string>>({});
   const [search, setSearch]         = useState('');
@@ -89,6 +103,40 @@ export default function AdminScreen() {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadKey = useRef<string | null>(null);
+
+  // Premium users state
+  const [premiumUsers, setPremiumUsers]       = useState<PremiumUser[]>([]);
+  const [premiumLoading, setPremiumLoading]   = useState(false);
+  const [premiumSearch, setPremiumSearch]     = useState('');
+  const [actingOn, setActingOn]               = useState<string | null>(null);
+
+  const fetchPremiumUsers = useCallback(async () => {
+    setPremiumLoading(true);
+    try {
+      const res = await pb.send('/api/admin/premium-users', { method: 'GET' });
+      setPremiumUsers(res.users ?? []);
+    } catch {
+      Alert.alert('Error', 'Could not load users.');
+    } finally {
+      setPremiumLoading(false);
+    }
+  }, []);
+
+  async function grantRevoke(userId: string, action: 'grant' | 'revoke') {
+    setActingOn(userId);
+    try {
+      await pb.send('/api/admin/grant-premium', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, action }),
+      });
+      await fetchPremiumUsers();
+    } catch {
+      Alert.alert('Error', 'Action failed. Try again.');
+    } finally {
+      setActingOn(null);
+    }
+  }
 
   function goBack() {
     try { router.back(); } catch {}
@@ -119,6 +167,12 @@ export default function AdminScreen() {
       setLoading(false);
     });
   }, [user]);
+
+  useEffect(() => {
+    if (activeTab === 'premium' && premiumUsers.length === 0) {
+      fetchPremiumUsers();
+    }
+  }, [activeTab]);
 
   // Wire up the hidden file input (web only)
   useEffect(() => {
@@ -274,19 +328,151 @@ export default function AdminScreen() {
             <Text style={[styles.navBackLabel, { color: textPrim }]}>Back to Profile</Text>
           </TouchableOpacity>
           <View style={styles.navBrand}>
-            <Text style={[styles.navTitle, { color: textPrim }]}>Plant Catalogue</Text>
-            <Text style={[styles.navSub, { color: textSec }]}>Admin · {filtered.length} plants</Text>
+            <Text style={[styles.navTitle, { color: textPrim }]}>Admin</Text>
+            <Text style={[styles.navSub, { color: textSec }]}>
+              {activeTab === 'plants' ? `Plant Catalogue · ${filtered.length} plants` : `Premium Users`}
+            </Text>
           </View>
-          <TouchableOpacity onPress={openAddNew} style={styles.navAddBtn}>
-            <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.navAddGrad}>
-              <Text style={styles.navAddText}>+ Add Plant</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          <View style={[styles.tabSwitcher, { borderColor: border }]}>
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'plants' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('plants')}
+            >
+              <Text style={[styles.tabBtnText, { color: activeTab === 'plants' ? '#fff' : textSec }]}>Plants</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'premium' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('premium')}
+            >
+              <Text style={[styles.tabBtnText, { color: activeTab === 'premium' ? '#fff' : textSec }]}>Premium</Text>
+            </TouchableOpacity>
+          </View>
+          {activeTab === 'plants' && (
+            <TouchableOpacity onPress={openAddNew} style={styles.navAddBtn}>
+              <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.navAddGrad}>
+                <Text style={styles.navAddText}>+ Add Plant</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+          {activeTab === 'premium' && (
+            <TouchableOpacity onPress={fetchPremiumUsers} style={styles.navAddBtn}>
+              <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.navAddGrad}>
+                <Text style={styles.navAddText}>↻ Refresh</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
       {/* Main content */}
       <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
+
+        {/* ── Premium Users Tab ── */}
+        {activeTab === 'premium' && (
+          <View>
+            {/* Search */}
+            <View style={[styles.toolbar, { backgroundColor: cardBg, borderColor: border }]}>
+              <TextInput
+                style={[styles.searchInput, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+                placeholder="Search by email or name…"
+                placeholderTextColor={textSec}
+                value={premiumSearch}
+                onChangeText={setPremiumSearch}
+              />
+              <Text style={[styles.toolbarCount, { color: textSec }]}>
+                {premiumUsers.length} users
+              </Text>
+            </View>
+
+            {premiumLoading ? (
+              <View style={{ alignItems: 'center', padding: 48 }}>
+                <ActivityIndicator color={G.hunter} size="large" />
+                <Text style={[styles.loadingText, { color: textSec }]}>Loading users…</Text>
+              </View>
+            ) : (
+              <View style={[styles.table, { backgroundColor: cardBg, borderColor: border }]}>
+                {/* Header */}
+                <View style={[styles.tableHeader, { borderBottomColor: border }]}>
+                  <Text style={[styles.thName, { color: textSec }]}>User</Text>
+                  <Text style={[styles.thMeta, { color: textSec, width: 100 }]}>Status</Text>
+                  <Text style={[styles.thMeta, { color: textSec, width: 160 }]}>Expires</Text>
+                  <Text style={[styles.thMeta, { color: textSec, width: 120 }]}>Code</Text>
+                  <Text style={[styles.thActions, { color: textSec }]}>Actions</Text>
+                </View>
+
+                {premiumUsers
+                  .filter(u => {
+                    const q = premiumSearch.toLowerCase();
+                    return !q || u.email.toLowerCase().includes(q) || (u.name || '').toLowerCase().includes(q);
+                  })
+                  .map((u, idx) => {
+                    const isPremium = !!u.promo_expires && new Date(u.promo_expires) > new Date();
+                    const expiry = u.promo_expires
+                      ? isPremium && u.promo_expires.startsWith('2099') ? 'Lifetime' : new Date(u.promo_expires).toLocaleDateString()
+                      : '—';
+                    const isEven = idx % 2 === 0;
+                    const acting = actingOn === u.id;
+                    return (
+                      <View
+                        key={u.id}
+                        style={[
+                          styles.tableRow,
+                          { borderBottomColor: border },
+                          isEven && { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#fafafa' },
+                        ]}
+                      >
+                        <View style={styles.tdName}>
+                          <Text style={[styles.plantName, { color: textPrim }]} numberOfLines={1}>{u.email}</Text>
+                          {!!u.name && <Text style={[styles.plantKey, { color: textSec }]}>{u.name}</Text>}
+                        </View>
+                        <View style={[styles.tdMeta, { width: 100 }]}>
+                          <View style={[styles.statusBadge, isPremium ? styles.statusPremium : styles.statusFree]}>
+                            <Text style={[styles.statusText, { color: isPremium ? '#166534' : '#92400e' }]}>
+                              {isPremium ? 'Premium' : 'Free'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.tdMeta, { color: textSec, width: 160 }]}>{expiry}</Text>
+                        <Text style={[styles.tdMeta, { color: textSec, width: 120, fontSize: 11 }]}>{u.promo_code ?? '—'}</Text>
+                        <View style={styles.tdActions}>
+                          {acting ? (
+                            <ActivityIndicator color={G.hunter} size="small" />
+                          ) : isPremium ? (
+                            <TouchableOpacity
+                              style={[styles.actionBtn, styles.actionBtnDanger]}
+                              onPress={() => Alert.alert('Revoke Premium', `Remove premium from ${u.email}?`, [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Revoke', style: 'destructive', onPress: () => grantRevoke(u.id, 'revoke') },
+                              ])}
+                            >
+                              <Text style={styles.actionBtnDangerText}>Revoke</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity
+                              style={[styles.actionBtn, styles.actionBtnGrant]}
+                              onPress={() => grantRevoke(u.id, 'grant')}
+                            >
+                              <Text style={styles.actionBtnGrantText}>Grant Premium</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+
+                {premiumUsers.length === 0 && (
+                  <View style={styles.emptyRow}>
+                    <Text style={[styles.emptyText, { color: textSec }]}>No users found.</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            <View style={{ height: 60 }} />
+          </View>
+        )}
+
+        {/* ── Plant Catalogue Tab ── */}
+        {activeTab === 'plants' && <>
 
         {/* Setup banner */}
         {collectionOk === false && (
@@ -441,6 +627,7 @@ export default function AdminScreen() {
         )}
 
         <View style={{ height: 60 }} />
+        </> /* end plants tab */}
       </ScrollView>
 
       {/* Edit / Add Modal — centered dialog */}
@@ -651,4 +838,20 @@ const styles = StyleSheet.create({
   stepBtn:      { width: 36, height: 36, borderRadius: R.full, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
   stepBtnText:  { fontSize: 20, fontWeight: '700', lineHeight: 22 },
   stepValue:    { fontSize: 16, fontWeight: '700', minWidth: 70, textAlign: 'center' },
+
+  // Tab switcher
+  tabSwitcher:  { flexDirection: 'row', borderRadius: R.md, borderWidth: 1, overflow: 'hidden' },
+  tabBtn:       { paddingVertical: 8, paddingHorizontal: 16 },
+  tabBtnActive: { backgroundColor: G.hunter },
+  tabBtnText:   { fontSize: 13, fontWeight: '700' },
+
+  // Premium status badges
+  statusBadge:   { paddingHorizontal: 8, paddingVertical: 3, borderRadius: R.full, alignSelf: 'flex-start' },
+  statusPremium: { backgroundColor: '#dcfce7' },
+  statusFree:    { backgroundColor: '#fef3c7' },
+  statusText:    { fontSize: 11, fontWeight: '700' },
+
+  // Grant button
+  actionBtnGrant:      { borderColor: '#a7f3d0', backgroundColor: '#ecfdf5' },
+  actionBtnGrantText:  { color: '#065f46', fontSize: 12, fontWeight: '600' },
 });
