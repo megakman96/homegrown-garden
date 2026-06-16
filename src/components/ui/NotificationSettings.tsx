@@ -20,27 +20,40 @@ function TimePicker({ label, hour, minute, onChange, textSec, textPrim, border, 
   const pad = (n: number) => String(n).padStart(2, '0');
 
   return (
-    <View style={tp.row}>
-      <Text style={[tp.label, { color: textSec }]}>{label}</Text>
-      <View style={tp.controls}>
-        <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
-          onPress={() => onChange((hour + 23) % 24, minute)}>
-          <Text style={[tp.arrow, { color: textPrim }]}>−</Text>
-        </TouchableOpacity>
-        <Text style={[tp.value, { color: textPrim }]}>{pad(hour)}:{pad(minute)}</Text>
-        <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
-          onPress={() => onChange((hour + 1) % 24, minute)}>
-          <Text style={[tp.arrow, { color: textPrim }]}>+</Text>
-        </TouchableOpacity>
-        {/* minute: jump by 15 */}
-        <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg, marginLeft: 8 }]}
-          onPress={() => onChange(hour, (minute + 45) % 60)}>
-          <Text style={[tp.arrow, { color: textSec }]}>−15m</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
-          onPress={() => onChange(hour, (minute + 15) % 60)}>
-          <Text style={[tp.arrow, { color: textSec }]}>+15m</Text>
-        </TouchableOpacity>
+    <View style={[tp.block, { marginTop: 8 }]}>
+      <Text style={[tp.blockLabel, { color: textSec }]}>{label}</Text>
+      <View style={tp.timeRow}>
+        {/* Hour */}
+        <View style={tp.spinnerCol}>
+          <Text style={[tp.spinnerLabel, { color: textSec }]}>HH</Text>
+          <View style={tp.spinnerControls}>
+            <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
+              onPress={() => onChange((hour + 23) % 24, minute)}>
+              <Text style={[tp.arrow, { color: textPrim }]}>−</Text>
+            </TouchableOpacity>
+            <Text style={[tp.value, { color: textPrim }]}>{pad(hour)}</Text>
+            <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
+              onPress={() => onChange((hour + 1) % 24, minute)}>
+              <Text style={[tp.arrow, { color: textPrim }]}>+</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <Text style={[tp.timeSep, { color: textPrim }]}>:</Text>
+        {/* Minute */}
+        <View style={tp.spinnerCol}>
+          <Text style={[tp.spinnerLabel, { color: textSec }]}>MM</Text>
+          <View style={tp.spinnerControls}>
+            <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
+              onPress={() => onChange(hour, (minute + 45) % 60)}>
+              <Text style={[tp.arrow, { color: textPrim }]}>−</Text>
+            </TouchableOpacity>
+            <Text style={[tp.value, { color: textPrim }]}>{pad(minute)}</Text>
+            <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
+              onPress={() => onChange(hour, (minute + 15) % 60)}>
+              <Text style={[tp.arrow, { color: textPrim }]}>+</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -52,18 +65,19 @@ function Stepper({ label, value, min, max, unit, onChange, textSec, textPrim, in
   textSec: string; textPrim: string; inputBg: string; border: string;
 }) {
   return (
-    <View style={[tp.row, { marginTop: 8 }]}>
-      <Text style={[tp.label, { color: textSec }]}>{label}</Text>
-      <View style={tp.controls}>
+    <View style={[tp.block, { marginTop: 8 }]}>
+      <Text style={[tp.blockLabel, { color: textSec }]}>{label}</Text>
+      <View style={tp.spinnerControls}>
         <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
           onPress={() => onChange(Math.max(min, value - 1))}>
           <Text style={[tp.arrow, { color: textPrim }]}>−</Text>
         </TouchableOpacity>
-        <Text style={[tp.value, { color: textPrim }]}>{value} {unit}</Text>
+        <Text style={[tp.value, { color: textPrim }]}>{value}</Text>
         <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
           onPress={() => onChange(Math.min(max, value + 1))}>
           <Text style={[tp.arrow, { color: textPrim }]}>+</Text>
         </TouchableOpacity>
+        <Text style={[tp.unitText, { color: textSec }]}>{unit}</Text>
       </View>
     </View>
   );
@@ -228,10 +242,15 @@ const s = StyleSheet.create({
 });
 
 const tp = StyleSheet.create({
-  row:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  label:    { fontSize: 12, flex: 1 },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  btn:      { borderRadius: R.sm, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5, minWidth: 32, alignItems: 'center' },
-  arrow:    { fontSize: 13, fontWeight: '700' },
-  value:    { fontSize: 14, fontWeight: '700', minWidth: 54, textAlign: 'center' },
+  block:           { marginBottom: 6 },
+  blockLabel:      { fontSize: 11, marginBottom: 6 },
+  timeRow:         { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  spinnerCol:      { alignItems: 'center', gap: 4 },
+  spinnerLabel:    { fontSize: 10, letterSpacing: 0.5 },
+  spinnerControls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  timeSep:         { fontSize: 20, fontWeight: '700', marginTop: 14 },
+  btn:             { borderRadius: R.sm, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6, minWidth: 34, alignItems: 'center' },
+  arrow:           { fontSize: 14, fontWeight: '700' },
+  value:           { fontSize: 16, fontWeight: '700', minWidth: 36, textAlign: 'center' },
+  unitText:        { fontSize: 12, marginLeft: 4 },
 });
