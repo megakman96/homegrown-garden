@@ -12,7 +12,7 @@ import { clearActivityLogAsync } from '@/lib/activity-log';
 import { usePremium } from '@/hooks/use-premium';
 import NotificationSettingsUI from '@/components/ui/NotificationSettings';
 import UpgradePrompt from '@/components/ui/UpgradePrompt';
-import type { Garden, GardenShare } from '@/lib/types';
+import type { Garden, GardenShare, Plant } from '@/lib/types';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const VENMO_USER  = 'kaleb-ward-8';
@@ -32,6 +32,7 @@ export default function ProfileScreen() {
   const { mode, setMode, isDark, colors, tempUnit, setTempUnit, waterTime, setWaterTime } = useAppTheme();
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [shares, setShares] = useState<GardenShare[]>([]);
+  const [plants, setPlants] = useState<Plant[]>([]);
   const [showShare, setShowShare] = useState(false);
   const [shareGardenId, setShareGardenId] = useState('');
   const [shareEmail, setShareEmail] = useState('');
@@ -113,9 +114,11 @@ export default function ProfileScreen() {
     Promise.all([
       pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }),
       pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` }),
-    ]).then(([gardenList, shareList]) => {
+      pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` }),
+    ]).then(([gardenList, shareList, plantList]) => {
       setGardens(gardenList as any);
       setShares(shareList as any);
+      setPlants(plantList as any);
       if (gardenList.length) setShareGardenId(gardenList[0].id);
     });
   }, [user]);
@@ -617,7 +620,7 @@ export default function ProfileScreen() {
           {isPremium ? (showNotifications ? '▲' : '▼') : 'Pro'}
         </Text>
       </TouchableOpacity>
-      {showNotifications && isPremium && <NotificationSettingsUI />}
+      {showNotifications && isPremium && <NotificationSettingsUI plants={plants} />}
 
       {sharesSection}
 

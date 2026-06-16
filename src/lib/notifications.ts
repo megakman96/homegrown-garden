@@ -113,7 +113,7 @@ export async function scheduleWateringReminder(plant: Plant) {
     id,
     `💧 Time to water ${plant.name}`,
     `${plant.name} is due for water${settings.watering.hoursBefore > 0 ? ` in ${settings.watering.hoursBefore}h` : ''}. Don't let it get thirsty!`,
-    { type: 'date', date: remindAt },
+    { date: remindAt },
   );
 }
 
@@ -147,7 +147,7 @@ export async function scheduleHarvestAlert(plant: Plant) {
     id,
     `🧺 ${plant.name} ready to harvest ${daysText}!`,
     `Your ${plant.name} is almost ready. Prepare for harvest on ${harvestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`,
-    { type: 'date', date: remindAt },
+    { date: remindAt },
   );
 }
 
@@ -171,7 +171,7 @@ export async function scheduleDailyCheckIn() {
     id,
     '🌱 Good morning, gardener!',
     'Time to check on your garden. Anything thirsty today?',
-    { type: 'daily', hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute },
+    { hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute, repeats: true },
   );
 }
 
