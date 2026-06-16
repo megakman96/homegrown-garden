@@ -124,7 +124,7 @@ export default function SubscriptionScreen() {
   // Monthly / annual package details from RevenueCat, or fallback display prices
   const monthlyPkg = offerings?.current?.availablePackages?.find((p: any) => p.packageType === 'MONTHLY');
   const annualPkg  = offerings?.current?.availablePackages?.find((p: any) => p.packageType === 'ANNUAL');
-  const monthlyPrice = monthlyPkg?.product?.priceString ?? '$2.99';
+  const monthlyPrice = monthlyPkg?.product?.priceString ?? '$1.99';
   const annualPrice  = annualPkg?.product?.priceString  ?? '$19.99';
 
   return (
@@ -167,12 +167,12 @@ export default function SubscriptionScreen() {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={[styles.planName, { color: textPrim }]}>Annual</Text>
-              <View style={styles.saveBadge}><Text style={styles.saveBadgeText}>SAVE 44%</Text></View>
+              <View style={styles.saveBadge}><Text style={styles.saveBadgeText}>SAVE 16%</Text></View>
             </View>
             <Text style={[styles.planPrice, { color: textSec }]}>{annualPrice}/year · after 14-day free trial</Text>
           </View>
           <Text style={[styles.planPriceRight, { color: G.hunter }]}>
-            {annualPrice === '$19.99' ? '$1.67' : ''}/mo
+            {annualPrice === '$19.99' ? '$1.67' : annualPrice}/mo
           </Text>
         </TouchableOpacity>
 

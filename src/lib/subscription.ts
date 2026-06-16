@@ -5,7 +5,7 @@
  * 1. Create a RevenueCat account at revenuecat.com
  * 2. Create a project → add iOS app (bundle: com.homegrown.garden) + Android
  * 3. In App Store Connect: create a subscription product "gardengrid_premium_monthly"
- *    with a 14-day free trial ($2.99/month) and "gardengrid_premium_annual" ($19.99/year)
+ *    with a 14-day free trial ($1.99/month) and "gardengrid_premium_annual" ($19.99/year)
  * 4. In RevenueCat dashboard: create an Entitlement "premium", an Offering "default",
  *    and add both packages to it
  * 5. Create an iOS Offer Code "GROWFREE" (free for 12 months) in App Store Connect →
