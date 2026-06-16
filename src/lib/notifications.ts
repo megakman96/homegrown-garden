@@ -54,10 +54,15 @@ export async function setupNotificationChannel() {
 
 // ── Schedule / cancel helpers ─────────────────────────────────────────────────
 
-async function cancelByIdentifier(id: string) {
+async function cancelByPrefix(prefix: string) {
   try {
     const Notifications = await import('expo-notifications');
-    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      scheduled
+        .filter(n => n.identifier.startsWith(prefix))
+        .map(n => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {}))
+    );
   } catch {}
 }
 
@@ -72,87 +77,90 @@ async function scheduleLocal(
     await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
     await Notifications.scheduleNotificationAsync({
       identifier: id,
-      content: {
-        title,
-        body,
-        sound: true,
-        data: {},
-      },
+      content: { title, body, sound: true, data: {} },
       trigger: { ...trigger, channelId: 'garden' } as any,
     });
   } catch {}
 }
 
-// ── Watering reminders ────────────────────────────────────────────────────────
+// ── Watering reminders — one grouped notification per due date ────────────────
 
-export async function scheduleWateringReminder(plant: Plant) {
-  if (Platform.OS === 'web') return;
+async function scheduleWateringReminders(plants: Plant[]) {
+  await cancelByPrefix('water_day_');
+
   const settings = await loadNotificationSettings();
-  const id = `water_${plant.id}`;
+  if (!settings.masterEnabled || !settings.watering.enabled) return;
 
-  if (!settings.masterEnabled || !settings.watering.enabled) {
-    await cancelByIdentifier(id);
-    return;
+  // Group plants by the calendar day their reminder fires
+  const byDay: Record<string, { remindAt: Date; names: string[] }> = {};
+  const now = new Date();
+
+  for (const plant of plants) {
+    if (!plant.last_watered || !plant.water_interval_days) continue;
+
+    const due = new Date(plant.last_watered);
+    due.setDate(due.getDate() + plant.water_interval_days);
+
+    const remindAt = new Date(due.getTime() - settings.watering.hoursBefore * 3_600_000);
+    if (remindAt <= now) continue;
+
+    const dayKey = remindAt.toISOString().slice(0, 10); // YYYY-MM-DD
+    if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [] };
+    byDay[dayKey].names.push(plant.name);
   }
-  if (!plant.last_watered || !plant.water_interval_days) {
-    await cancelByIdentifier(id);
-    return;
+
+  for (const [dayKey, { remindAt, names }] of Object.entries(byDay)) {
+    const count = names.length;
+    const title = count === 1
+      ? `💧 Time to water ${names[0]}`
+      : `💧 ${count} plants need watering`;
+    const body = count === 1
+      ? `${names[0]} is due for water today. Don't let it get thirsty!`
+      : names.join(', ');
+
+    await scheduleLocal(`water_day_${dayKey}`, title, body, { date: remindAt });
   }
-
-  const due = new Date(plant.last_watered);
-  due.setDate(due.getDate() + plant.water_interval_days);
-
-  // Remind X hours before due, but not in the past
-  const remindAt = new Date(due.getTime() - settings.watering.hoursBefore * 3_600_000);
-  if (remindAt <= new Date()) {
-    await cancelByIdentifier(id);
-    return;
-  }
-
-  await scheduleLocal(
-    id,
-    `💧 Time to water ${plant.name}`,
-    `${plant.name} is due for water${settings.watering.hoursBefore > 0 ? ` in ${settings.watering.hoursBefore}h` : ''}. Don't let it get thirsty!`,
-    { date: remindAt },
-  );
 }
 
-export async function cancelWateringReminder(plantId: string) {
-  await cancelByIdentifier(`water_${plantId}`);
-}
+// ── Harvest alerts — one grouped notification per reminder date ───────────────
 
-// ── Harvest alerts ────────────────────────────────────────────────────────────
+async function scheduleHarvestAlerts(plants: Plant[]) {
+  await cancelByPrefix('harvest_day_');
 
-export async function scheduleHarvestAlert(plant: Plant) {
-  if (Platform.OS === 'web') return;
   const settings = await loadNotificationSettings();
-  const id = `harvest_${plant.id}`;
+  if (!settings.masterEnabled || !settings.harvest.enabled) return;
 
-  if (!settings.masterEnabled || !settings.harvest.enabled || !plant.expected_harvest_date) {
-    await cancelByIdentifier(id);
-    return;
+  const byDay: Record<string, { remindAt: Date; names: string[]; harvestDate: Date }> = {};
+  const now = new Date();
+
+  for (const plant of plants) {
+    if (!plant.expected_harvest_date) continue;
+
+    const harvestDate = new Date(plant.expected_harvest_date);
+    const remindAt = new Date(harvestDate.getTime() - settings.harvest.daysBefore * 86_400_000);
+    remindAt.setHours(8, 0, 0, 0);
+
+    if (remindAt <= now) continue;
+
+    const dayKey = remindAt.toISOString().slice(0, 10);
+    if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [], harvestDate };
+    byDay[dayKey].names.push(plant.name);
   }
 
-  const harvestDate = new Date(plant.expected_harvest_date);
-  const remindAt = new Date(harvestDate.getTime() - settings.harvest.daysBefore * 86_400_000);
-  remindAt.setHours(8, 0, 0, 0);
+  for (const [dayKey, { remindAt, names, harvestDate }] of Object.entries(byDay)) {
+    const count = names.length;
+    const daysText = settings.harvest.daysBefore === 1 ? 'tomorrow' : `in ${settings.harvest.daysBefore} days`;
+    const dateStr = harvestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-  if (remindAt <= new Date()) {
-    await cancelByIdentifier(id);
-    return;
+    const title = count === 1
+      ? `🧺 ${names[0]} ready to harvest ${daysText}!`
+      : `🧺 ${count} plants ready to harvest ${daysText}!`;
+    const body = count === 1
+      ? `Your ${names[0]} is almost ready. Prepare for harvest on ${dateStr}.`
+      : names.join(', ');
+
+    await scheduleLocal(`harvest_day_${dayKey}`, title, body, { date: remindAt });
   }
-
-  const daysText = settings.harvest.daysBefore === 1 ? 'tomorrow' : `in ${settings.harvest.daysBefore} days`;
-  await scheduleLocal(
-    id,
-    `🧺 ${plant.name} ready to harvest ${daysText}!`,
-    `Your ${plant.name} is almost ready. Prepare for harvest on ${harvestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`,
-    { date: remindAt },
-  );
-}
-
-export async function cancelHarvestAlert(plantId: string) {
-  await cancelByIdentifier(`harvest_${plantId}`);
 }
 
 // ── Daily check-in ────────────────────────────────────────────────────────────
@@ -163,7 +171,10 @@ export async function scheduleDailyCheckIn() {
   const id = 'daily_checkin';
 
   if (!settings.masterEnabled || !settings.dailyCheckIn.enabled) {
-    await cancelByIdentifier(id);
+    try {
+      const Notifications = await import('expo-notifications');
+      await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+    } catch {}
     return;
   }
 
@@ -175,18 +186,12 @@ export async function scheduleDailyCheckIn() {
   );
 }
 
-export async function cancelDailyCheckIn() {
-  await cancelByIdentifier('daily_checkin');
-}
-
-// ── Reschedule all notifications for a user's plants ─────────────────────────
+// ── Reschedule all notifications ──────────────────────────────────────────────
 
 export async function rescheduleAllNotifications(plants: Plant[]) {
   if (Platform.OS === 'web') return;
-  for (const plant of plants) {
-    await scheduleWateringReminder(plant);
-    await scheduleHarvestAlert(plant);
-  }
+  await scheduleWateringReminders(plants);
+  await scheduleHarvestAlerts(plants);
   await scheduleDailyCheckIn();
 }
 
