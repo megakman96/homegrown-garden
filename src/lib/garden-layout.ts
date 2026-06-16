@@ -112,13 +112,13 @@ export function yearFromGarden(garden: any): number | null {
   return null;
 }
 
-export function sortGardens<T extends { created?: string }>(gardens: T[]): T[] {
+export function sortGardens<T extends { created_at?: string }>(gardens: T[]): T[] {
   const currentYear = new Date().getFullYear();
   return [...gardens].sort((a, b) => {
     const ya = (yearFromGarden(a) ?? currentYear);
     const yb = (yearFromGarden(b) ?? currentYear);
     if (yb !== ya) return ya - yb;
-    return new Date(b.created ?? 0).getTime() - new Date(a.created ?? 0).getTime();
+    return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
   });
 }
 

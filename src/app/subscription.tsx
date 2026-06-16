@@ -50,7 +50,7 @@ export default function SubscriptionScreen() {
     if (!offerings) {
       Alert.alert('Not available', Platform.OS === 'web'
         ? 'Subscriptions require the iOS or Android app.'
-        : 'Subscriptions require a full app build (not Expo Go). Use a promo code below to get access during testing.');
+        : 'Subscriptions require a full app build (not Expo Go). Use the admin panel to grant yourself access during testing.');
       return;
     }
     const pkg = selectedPkg === 'annual'
@@ -197,7 +197,7 @@ export default function SubscriptionScreen() {
           <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBtnGrad}>
             {purchasing
               ? <ActivityIndicator color={G.cloud} />
-              : <Text style={styles.ctaBtnText}>Start Free 7-Day Trial</Text>}
+              : <Text style={styles.ctaBtnText}>Start Free 14-Day Trial</Text>}
           </LinearGradient>
         </PressableScale>
         <Text style={[styles.ctaNote, { color: textSec }]}>

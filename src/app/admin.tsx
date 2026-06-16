@@ -28,7 +28,6 @@ interface PremiumUser {
   email: string;
   name: string;
   promo_expires: string | null;
-  promo_code: string | null;
 }
 
 type PlantOverride = Partial<CatalogEntry> & { emoji?: string; deleted?: boolean };

@@ -95,7 +95,7 @@ export default function ScheduleScreen() {
         sharedIds.add(g.id);
         gl.push(g);
         validGardenIds.add(g.id);
-        const sharedPlants = await offlineList('plants', `${user.id}:${g.id}`, `garden_id = "${g.id}" && health_status != "dead" && health_status != "harvested"`).catch(() => []);
+        const sharedPlants = await offlineList('plants', user.id, `garden_id = "${g.id}" && health_status != "dead" && health_status != "harvested"`).catch(() => []);
         pl.push(...(sharedPlants as Plant[]));
       }));
     } catch {}

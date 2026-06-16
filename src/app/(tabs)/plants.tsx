@@ -8,6 +8,7 @@ import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { offlineList, offlineCreate } from '@/lib/offline-db';
 import { useAuth } from '@/hooks/use-auth';
+import { usePremium, FREE_LIMITS } from '@/hooks/use-premium';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { G, Shadow, R } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
@@ -30,6 +31,7 @@ const CATEGORIES = ['All', ...Array.from(new Set(ALL_ITEMS.map(i => i.entry.cate
 
 export default function PlantCatalogueScreen() {
   const { user } = useAuth();
+  const { isPremium } = usePremium();
   const { isDark, colors } = useAppTheme();
   const { isDesktop } = useBreakpoint();
   const router = useRouter();
@@ -82,7 +84,7 @@ export default function PlantCatalogueScreen() {
     setWizardTile(null);
     setWizardStep('tile');
     if (user) {
-      offlineList('plants', `${user.id}:${garden.id}`, `garden_id = "${garden.id}"`)
+      offlineList('plants', user.id, `garden_id = "${garden.id}"`)
         .then(data => setWizardGardenPlants(data as any))
         .catch(() => {});
     }
@@ -90,6 +92,15 @@ export default function PlantCatalogueScreen() {
 
   async function confirmPlace() {
     if (!user || !selected || !wizardGarden) return;
+    if (!isPremium) {
+      const allPlants = await offlineList('plants', user.id, `user_id = "${user.id}"`).catch(() => []);
+      if (allPlants.length >= FREE_LIMITS.plants) {
+        closeWizard();
+        setSelected(null);
+        router.push('/subscription' as any);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const entry = selected.entry;

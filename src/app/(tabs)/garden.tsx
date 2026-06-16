@@ -269,7 +269,7 @@ export default function GardenScreen() {
         setGardens(sortGardens(list as any));
         // Preload plants for every garden so icons are ready immediately when switching
         for (const garden of list) {
-          offlineList('plants', `${user.id}:${(garden as any).id}`, `garden_id = "${(garden as any).id}"`)
+          offlineList('plants', user.id, `garden_id = "${(garden as any).id}"`)
             .then(data => setPlantsMap(prev => ({ ...prev, [(garden as any).id]: data as any })))
             .catch(() => {});
         }
