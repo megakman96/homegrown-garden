@@ -19,7 +19,9 @@ export async function getExpoPushToken(): Promise<string | null> {
   if (Platform.OS === 'web') return null;
   try {
     const Notifications = await import('expo-notifications');
-    const { data } = await Notifications.getExpoPushTokenAsync();
+    const { data } = await Notifications.getExpoPushTokenAsync({
+      projectId: '2688ec85-48b4-473e-8c20-f52b516c10cb',
+    });
     return data;
   } catch { return null; }
 }
@@ -27,15 +29,24 @@ export async function getExpoPushToken(): Promise<string | null> {
 // ── Notification channel (Android) ───────────────────────────────────────────
 
 export async function setupNotificationChannel() {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS === 'web') return;
   try {
     const Notifications = await import('expo-notifications');
-    await Notifications.setNotificationChannelAsync('garden', {
-      name: 'GardenGrid',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#52b788',
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
     });
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('garden', {
+        name: 'GardenGrid',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#52b788',
+      });
+    }
   } catch {}
 }
 
@@ -52,7 +63,7 @@ async function scheduleLocal(
   id: string,
   title: string,
   body: string,
-  trigger: any,
+  trigger: Record<string, unknown>,
 ) {
   try {
     const Notifications = await import('expo-notifications');
@@ -65,7 +76,7 @@ async function scheduleLocal(
         sound: true,
         data: {},
       },
-      trigger: { ...trigger, channelId: 'garden' },
+      trigger: { ...trigger, channelId: 'garden' } as any,
     });
   } catch {}
 }
@@ -100,7 +111,7 @@ export async function scheduleWateringReminder(plant: Plant) {
     id,
     `💧 Time to water ${plant.name}`,
     `${plant.name} is due for water${settings.watering.hoursBefore > 0 ? ` in ${settings.watering.hoursBefore}h` : ''}. Don't let it get thirsty!`,
-    { date: remindAt },
+    { type: 'date', date: remindAt },
   );
 }
 
@@ -134,7 +145,7 @@ export async function scheduleHarvestAlert(plant: Plant) {
     id,
     `🧺 ${plant.name} ready to harvest ${daysText}!`,
     `Your ${plant.name} is almost ready. Prepare for harvest on ${harvestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}.`,
-    { date: remindAt },
+    { type: 'date', date: remindAt },
   );
 }
 
@@ -158,7 +169,7 @@ export async function scheduleDailyCheckIn() {
     id,
     '🌱 Good morning, gardener!',
     'Time to check on your garden. Anything thirsty today?',
-    { hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute, repeats: true },
+    { type: 'daily', hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute },
   );
 }
 

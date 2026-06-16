@@ -37,10 +37,17 @@ export default function StatisticsScreen() {
   const border = isDark ? colors.border : G.mist;
 
   useEffect(() => {
-    navigation.setOptions({ title: 'Harvest Statistics', headerShown: true, headerBackTitle: 'Back' });
+    navigation.setOptions({
+      title: 'Harvest Statistics',
+      headerShown: true,
+      headerBackTitle: 'Back',
+      headerStyle: { backgroundColor: isDark ? colors.bgCard : G.foam },
+      headerTintColor: isDark ? colors.tint : G.forest,
+      headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+    });
     if (!user) return;
     loadStats();
-  }, [user]);
+  }, [user, isDark]);
 
   async function loadStats() {
     if (!user) return;

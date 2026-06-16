@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, Alert, FlatList,
+  TextInput, Modal, Alert, FlatList, ActivityIndicator, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -16,7 +16,9 @@ import {
   PLANT_CATALOG, SUN_EMOJIS, SUN_LABELS, searchPlants,
   type CatalogEntry,
 } from '@/lib/plant-catalog';
+import { layoutFromGarden, TILE_COLORS, type GardenLayout } from '@/lib/garden-layout';
 import type { Garden } from '@/lib/types';
+import type { Plant } from '@/lib/types';
 
 type CatalogItem = { key: string; entry: CatalogEntry };
 
@@ -39,12 +41,19 @@ export default function PlantCatalogueScreen() {
   const border  = isDark ? colors.border    : G.mist;
   const inputBg = isDark ? colors.bgElement : '#f0f7ee';
 
+  const { width: screenWidth } = useWindowDimensions();
+
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [selected, setSelected] = useState<CatalogItem | null>(null);
   const [gardens, setGardens] = useState<Garden[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [addingToGarden, setAddingToGarden] = useState(false);
+
+  // Wizard state
+  const [wizardStep, setWizardStep] = useState<'garden' | 'tile' | null>(null);
+  const [wizardGarden, setWizardGarden] = useState<Garden | null>(null);
+  const [wizardGardenPlants, setWizardGardenPlants] = useState<Plant[]>([]);
+  const [wizardTile, setWizardTile] = useState<{ row: number; col: number } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useFocusEffect(useCallback(() => {
     if (!user) return;
@@ -61,29 +70,50 @@ export default function PlantCatalogueScreen() {
     return items;
   }, [query, activeCategory]);
 
-  async function addToGarden(gardenId: string) {
-    if (!user || !selected) return;
-    setAddingToGarden(true);
+  function closeWizard() {
+    setWizardStep(null);
+    setWizardGarden(null);
+    setWizardGardenPlants([]);
+    setWizardTile(null);
+  }
+
+  async function selectWizardGarden(garden: Garden) {
+    setWizardGarden(garden);
+    setWizardTile(null);
+    setWizardStep('tile');
+    if (user) {
+      offlineList('plants', `${user.id}:${garden.id}`, `garden_id = "${garden.id}"`)
+        .then(data => setWizardGardenPlants(data as any))
+        .catch(() => {});
+    }
+  }
+
+  async function confirmPlace() {
+    if (!user || !selected || !wizardGarden) return;
+    setSaving(true);
     try {
       const entry = selected.entry;
       await offlineCreate('plants', user.id, {
         user_id: user.id,
-        garden_id: gardenId,
+        garden_id: wizardGarden.id,
         name: entry.name,
-        row: null,
-        col: null,
+        row: wizardTile?.row ?? null,
+        col: wizardTile?.col ?? null,
         health_status: 'healthy',
         sun_requirement: entry.sunRequirement,
         water_interval_days: entry.waterIntervalDays,
         total_yield_grams: 0,
       });
-      Alert.alert('Added! 🌱', `${entry.name} has been added to your garden. Place it on the grid from the Garden tab.`);
-      setShowAddModal(false);
+      const msg = wizardTile
+        ? `${entry.name} planted at row ${wizardTile.row + 1}, column ${wizardTile.col + 1} in ${wizardGarden.name}.`
+        : `${entry.name} added to ${wizardGarden.name}. Place it on the grid from the Garden tab.`;
+      Alert.alert('Planted! 🌱', msg);
+      closeWizard();
       setSelected(null);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not add plant');
     } finally {
-      setAddingToGarden(false);
+      setSaving(false);
     }
   }
 
@@ -170,14 +200,108 @@ export default function PlantCatalogueScreen() {
         }
       />
 
-      {/* Plant detail modal */}
-      <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
+      {/* Plant detail / wizard modal — single modal, content swaps based on wizardStep */}
+      <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => { if (wizardStep) { closeWizard(); } else { setSelected(null); } }}>
         <View style={styles.detailBackdrop}>
-          <TouchableOpacity style={styles.detailDismiss} activeOpacity={1} onPress={() => setSelected(null)} />
+          <TouchableOpacity style={styles.detailDismiss} activeOpacity={1} onPress={() => { if (wizardStep) { closeWizard(); } else { setSelected(null); } }} />
           <View style={[styles.detailSheet, { backgroundColor: cardBg }]}>
             <View style={styles.detailHandle} />
 
-            {selected && (() => {
+            {/* ── Wizard: garden picker ── */}
+            {wizardStep === 'garden' && selected && (
+              <>
+                <Text style={[styles.wizardTitle, { color: textPrim }]}>Choose a Garden</Text>
+                <Text style={[styles.wizardSub, { color: textSec }]}>Where should {selected.entry.name} go?</Text>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {gardens.map(g => (
+                    <TouchableOpacity key={g.id} style={[styles.gardenRow, { borderColor: border }]} onPress={() => selectWizardGarden(g)}>
+                      <Text style={styles.gardenRowEmoji}>🌻</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.gardenRowName, { color: textPrim }]}>{g.name}</Text>
+                        <Text style={[styles.gardenRowSub, { color: textSec }]}>{g.rows} × {g.cols} grid</Text>
+                      </View>
+                      <Text style={[styles.gardenRowArrow, { color: textSec }]}>›</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={styles.pickCancel} onPress={closeWizard}>
+                  <Text style={[styles.pickCancelText, { color: textSec }]}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* ── Wizard: tile picker ── */}
+            {wizardStep === 'tile' && selected && wizardGarden && (() => {
+              const layout: GardenLayout = layoutFromGarden(wizardGarden);
+              const occupied = new Set(
+                wizardGardenPlants.filter(p => p.row != null && p.col != null).map(p => `${p.row}:${p.col}`)
+              );
+              const tileSize = Math.max(28, Math.min(48, Math.floor((screenWidth - 80) / wizardGarden.cols)));
+              const plantIcon = getPlantIcon(selected.entry.name).emoji;
+              return (
+                <>
+                  <View style={styles.wizardTitleRow}>
+                    <TouchableOpacity onPress={() => { setWizardStep('garden'); setWizardTile(null); }}>
+                      <Text style={[styles.wizardBack, { color: G.hunter }]}>← Back</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.wizardTitle, { color: textPrim, flex: 1, textAlign: 'center' }]}>Pick a Tile</Text>
+                    <View style={{ width: 48 }} />
+                  </View>
+                  <Text style={[styles.wizardSub, { color: textSec, textAlign: 'center' }]}>
+                    Tap an empty tile in {wizardGarden.name}
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gridScroll}>
+                    <View style={styles.gridWrap}>
+                      {layout.map((rowArr, r) => (
+                        <View key={r} style={styles.gridRow}>
+                          {rowArr.map((cell, c) => {
+                            const isInactive = cell === 'inactive';
+                            const isOccupied = occupied.has(`${r}:${c}`);
+                            const isChosen = wizardTile?.row === r && wizardTile?.col === c;
+                            const occupant = wizardGardenPlants.find(p => p.row === r && p.col === c);
+                            return (
+                              <TouchableOpacity
+                                key={c}
+                                disabled={isInactive || isOccupied}
+                                onPress={() => setWizardTile(isChosen ? null : { row: r, col: c })}
+                                style={[styles.wizardTile, {
+                                  width: tileSize, height: tileSize,
+                                  backgroundColor: isInactive ? TILE_COLORS.inactive : isChosen ? G.hunter : TILE_COLORS[cell],
+                                  opacity: isOccupied ? 0.5 : 1,
+                                  borderWidth: isChosen ? 2 : 0,
+                                  borderColor: G.cloud,
+                                }]}
+                              >
+                                <Text style={{ fontSize: tileSize * 0.45 }}>
+                                  {isChosen ? plantIcon : isOccupied ? getPlantIcon(occupant?.name ?? '').emoji : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                  <View style={styles.wizardLegend}>
+                    <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: TILE_COLORS.full_sun }]} /><Text style={[styles.legendText, { color: textSec }]}>Full Sun</Text></View>
+                    <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: TILE_COLORS.partial_sun }]} /><Text style={[styles.legendText, { color: textSec }]}>Partial</Text></View>
+                    <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: TILE_COLORS.shade }]} /><Text style={[styles.legendText, { color: textSec }]}>Shade</Text></View>
+                    <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: TILE_COLORS.inactive }]} /><Text style={[styles.legendText, { color: textSec }]}>Path</Text></View>
+                  </View>
+                  <TouchableOpacity style={[styles.addBtn, { marginTop: 12 }]} onPress={confirmPlace} disabled={saving}>
+                    <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.addBtnGradient}>
+                      {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.addBtnText}>{wizardTile ? 'Plant here ✓' : 'Add without placing'}</Text>}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.pickCancel} onPress={closeWizard}>
+                    <Text style={[styles.pickCancelText, { color: textSec }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
+
+            {/* ── Plant detail ── */}
+            {!wizardStep && selected && (() => {
               const { key, entry } = selected;
               const icon = getPlantIcon(entry.name).emoji;
               return (
@@ -262,16 +386,29 @@ export default function PlantCatalogueScreen() {
                     </View>
                   )}
 
+                  {/* Varieties */}
+                  {entry.varieties && entry.varieties.length > 0 && (
+                    <View style={[styles.companionSection]}>
+                      <Text style={[styles.sectionLabel, { color: textSec }]}>Varieties</Text>
+                      {entry.varieties.map((v, i) => (
+                        <View key={i} style={[styles.varietyRow, { borderColor: border }]}>
+                          <Text style={[styles.varietyName, { color: textPrim }]}>{v.name}</Text>
+                          {v.notes && <Text style={[styles.varietyNotes, { color: textSec }]}>{v.notes}</Text>}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
                   {/* Add to garden button */}
                   <TouchableOpacity
                     style={[styles.addBtn, { marginTop: 20 }]}
                     onPress={() => {
                       if (!user) { router.push('/login' as any); return; }
                       if (gardens.length === 0) {
-                        Alert.alert('No Gardens', 'Create a garden first, then add plants.');
+                        Alert.alert('No Gardens', 'Create a garden first from the Garden tab, then add plants.');
                         return;
                       }
-                      setShowAddModal(true);
+                      setWizardStep('garden');
                     }}
                   >
                     <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.addBtnGradient}>
@@ -285,32 +422,6 @@ export default function PlantCatalogueScreen() {
         </View>
       </Modal>
 
-      {/* Pick garden modal */}
-      <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={() => setShowAddModal(false)}>
-        <View style={[styles.pickBackdrop]}>
-          <View style={[styles.pickSheet, { backgroundColor: cardBg }]}>
-            <Text style={[styles.pickTitle, { color: textPrim }]}>Add to which garden?</Text>
-            <Text style={[styles.pickSub, { color: textSec }]}>{selected?.entry.name} will be added without a grid position. Place it from the Garden tab.</Text>
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 280 }}>
-              {gardens.map(g => (
-                <TouchableOpacity
-                  key={g.id}
-                  style={[styles.gardenRow, { borderColor: border }]}
-                  onPress={() => addToGarden(g.id)}
-                  disabled={addingToGarden}
-                >
-                  <Text style={styles.gardenRowEmoji}>🌻</Text>
-                  <Text style={[styles.gardenRowName, { color: textPrim }]}>{g.name}</Text>
-                  <Text style={[styles.gardenRowArrow, { color: textSec }]}>›</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={styles.pickCancel} onPress={() => setShowAddModal(false)}>
-              <Text style={[styles.pickCancelText, { color: textSec }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -323,9 +434,9 @@ const styles = StyleSheet.create({
 
   categoryBar: { flexGrow: 0, borderBottomWidth: 1 },
   categoryBarContent: { paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
-  categoryChip: { borderRadius: R.full, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 6 },
+  categoryChip: { borderRadius: R.full, borderWidth: 1.5, paddingHorizontal: 16, paddingVertical: 10, minHeight: 38, justifyContent: 'center', alignItems: 'center' },
   categoryChipActive: { backgroundColor: G.hunter, borderColor: G.hunter },
-  categoryChipText: { fontSize: 13, fontWeight: '600' },
+  categoryChipText: { fontSize: 14, fontWeight: '600' },
   categoryChipTextActive: { color: '#fff' },
 
   list: { paddingHorizontal: 16, paddingVertical: 12, gap: 8, paddingBottom: 40 },
@@ -375,19 +486,33 @@ const styles = StyleSheet.create({
   badChip: { backgroundColor: '#ffe3e3', borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 5 },
   badChipText: { fontSize: 12, fontWeight: '600', color: '#c92a2a' },
 
+  varietyRow: { paddingVertical: 8, borderBottomWidth: 1, gap: 2 },
+  varietyName: { fontSize: 13, fontWeight: '700' },
+  varietyNotes: { fontSize: 12, lineHeight: 17 },
+
   addBtn: { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   addBtnGradient: { paddingVertical: 16, alignItems: 'center' },
   addBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 
-  // Pick garden modal
-  pickBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
-  pickSheet: { borderRadius: R.xl, padding: 24, width: '100%', maxWidth: 440 },
-  pickTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6 },
-  pickSub: { fontSize: 13, lineHeight: 18, marginBottom: 16 },
   gardenRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, gap: 10 },
   gardenRowEmoji: { fontSize: 24 },
-  gardenRowName: { flex: 1, fontSize: 15, fontWeight: '600' },
+  gardenRowName: { fontSize: 15, fontWeight: '600' },
+  gardenRowSub: { fontSize: 12, marginTop: 1 },
   gardenRowArrow: { fontSize: 20, fontWeight: '300' },
-  pickCancel: { marginTop: 16, alignItems: 'center', paddingVertical: 12 },
+  pickCancel: { marginTop: 12, alignItems: 'center', paddingVertical: 10 },
   pickCancelText: { fontSize: 15, fontWeight: '600' },
+
+  // Wizard
+  wizardTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  wizardBack: { fontSize: 15, fontWeight: '600', paddingVertical: 4, paddingRight: 8, width: 48 },
+  wizardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  wizardSub: { fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  gridScroll: { alignItems: 'center', paddingVertical: 8 },
+  gridWrap: { gap: 2 },
+  gridRow: { flexDirection: 'row', gap: 2 },
+  wizardTile: { borderRadius: 4, justifyContent: 'center', alignItems: 'center' },
+  wizardLegend: { flexDirection: 'row', justifyContent: 'center', gap: 14, marginTop: 10, marginBottom: 4 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendSwatch: { width: 14, height: 14, borderRadius: 3 },
+  legendText: { fontSize: 11, fontWeight: '600' },
 });

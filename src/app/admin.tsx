@@ -21,6 +21,7 @@ const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const OVERRIDES_KEY = 'gg_catalog_overrides';
 
 type AdminTab = 'plants' | 'premium';
+type PremiumDuration = 'week' | 'month' | 'year' | 'forever';
 
 interface PremiumUser {
   id: string;
@@ -109,6 +110,14 @@ export default function AdminScreen() {
   const [premiumLoading, setPremiumLoading]   = useState(false);
   const [premiumSearch, setPremiumSearch]     = useState('');
   const [actingOn, setActingOn]               = useState<string | null>(null);
+  const [grantingFor, setGrantingFor]         = useState<string | null>(null);
+
+  // Add user modal state
+  const [addUserOpen, setAddUserOpen]         = useState(false);
+  const [newEmail, setNewEmail]               = useState('');
+  const [newDuration, setNewDuration]         = useState<PremiumDuration | 'none'>('none');
+  const [addingUser, setAddingUser]           = useState(false);
+  const [addUserError, setAddUserError]       = useState<string | null>(null);
 
   const fetchPremiumUsers = useCallback(async () => {
     setPremiumLoading(true);
@@ -122,19 +131,45 @@ export default function AdminScreen() {
     }
   }, []);
 
-  async function grantRevoke(userId: string, action: 'grant' | 'revoke') {
+  async function grantRevoke(userId: string, action: 'grant' | 'revoke', duration?: PremiumDuration) {
     setActingOn(userId);
+    setGrantingFor(null);
     try {
       await pb.send('/api/admin/grant-premium', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, action }),
+        body: JSON.stringify({ user_id: userId, action, duration }),
       });
       await fetchPremiumUsers();
     } catch {
       Alert.alert('Error', 'Action failed. Try again.');
     } finally {
       setActingOn(null);
+    }
+  }
+
+  function closeAddUser() {
+    setAddUserOpen(false);
+    setNewEmail('');
+    setNewDuration('none');
+    setAddUserError(null);
+  }
+
+  async function addUser() {
+    if (!newEmail.trim()) return;
+    setAddingUser(true);
+    setAddUserError(null);
+    try {
+      await pb.send('/api/admin/grant-by-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: newEmail.trim(), duration: newDuration }),
+      });
+      closeAddUser();
+    } catch (e: any) {
+      setAddUserError(e?.response?.message ?? e?.message ?? 'No account found with that email.');
+    } finally {
+      setAddingUser(false);
     }
   }
 
@@ -355,11 +390,18 @@ export default function AdminScreen() {
             </TouchableOpacity>
           )}
           {activeTab === 'premium' && (
-            <TouchableOpacity onPress={fetchPremiumUsers} style={styles.navAddBtn}>
-              <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.navAddGrad}>
-                <Text style={styles.navAddText}>↻ Refresh</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity onPress={fetchPremiumUsers} style={styles.navAddBtn}>
+                <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.navAddGrad}>
+                  <Text style={styles.navAddText}>↻ Refresh</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setAddUserError(null); setNewEmail(''); setNewDuration('none'); setAddUserOpen(true); }} style={styles.navAddBtn}>
+                <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.navAddGrad}>
+                  <Text style={styles.navAddText}>+ Add User</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </View>
@@ -437,23 +479,46 @@ export default function AdminScreen() {
                         <View style={styles.tdActions}>
                           {acting ? (
                             <ActivityIndicator color={G.hunter} size="small" />
-                          ) : isPremium ? (
-                            <TouchableOpacity
-                              style={[styles.actionBtn, styles.actionBtnDanger]}
-                              onPress={() => Alert.alert('Revoke Premium', `Remove premium from ${u.email}?`, [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Revoke', style: 'destructive', onPress: () => grantRevoke(u.id, 'revoke') },
-                              ])}
-                            >
-                              <Text style={styles.actionBtnDangerText}>Revoke</Text>
-                            </TouchableOpacity>
+                          ) : grantingFor === u.id ? (
+                            <>
+                              {(['week', 'month', 'year', 'forever'] as PremiumDuration[]).map(d => (
+                                <TouchableOpacity
+                                  key={d}
+                                  style={[styles.actionBtn, styles.actionBtnGrant, { paddingHorizontal: 6 }]}
+                                  onPress={() => grantRevoke(u.id, 'grant', d)}
+                                >
+                                  <Text style={[styles.actionBtnGrantText, { fontSize: 11 }]}>
+                                    {d === 'week' ? '1 wk' : d === 'month' ? '1 mo' : d === 'year' ? '1 yr' : '∞'}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                              <TouchableOpacity
+                                style={[styles.actionBtn, { borderColor: border, paddingHorizontal: 7 }]}
+                                onPress={() => setGrantingFor(null)}
+                              >
+                                <Text style={{ fontSize: 12, color: textSec }}>✕</Text>
+                              </TouchableOpacity>
+                            </>
                           ) : (
-                            <TouchableOpacity
-                              style={[styles.actionBtn, styles.actionBtnGrant]}
-                              onPress={() => grantRevoke(u.id, 'grant')}
-                            >
-                              <Text style={styles.actionBtnGrantText}>Grant Premium</Text>
-                            </TouchableOpacity>
+                            <>
+                              {isPremium && (
+                                <TouchableOpacity
+                                  style={[styles.actionBtn, styles.actionBtnDanger]}
+                                  onPress={() => Alert.alert('Revoke Premium', `Remove premium from ${u.email}?`, [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    { text: 'Revoke', style: 'destructive', onPress: () => grantRevoke(u.id, 'revoke') },
+                                  ])}
+                                >
+                                  <Text style={styles.actionBtnDangerText}>Revoke</Text>
+                                </TouchableOpacity>
+                              )}
+                              <TouchableOpacity
+                                style={[styles.actionBtn, styles.actionBtnGrant]}
+                                onPress={() => setGrantingFor(u.id)}
+                              >
+                                <Text style={styles.actionBtnGrantText}>{isPremium ? 'Modify ▾' : 'Grant ▾'}</Text>
+                              </TouchableOpacity>
+                            </>
                           )}
                         </View>
                       </View>
@@ -629,6 +694,63 @@ export default function AdminScreen() {
         <View style={{ height: 60 }} />
         </> /* end plants tab */}
       </ScrollView>
+
+      {/* Add User Modal */}
+      <Modal visible={addUserOpen} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeAddUser} />
+          <View style={[styles.modalDialog, { backgroundColor: cardBg, borderColor: border, maxWidth: 440 }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: border }]}>
+              <Text style={[styles.modalTitle, { color: textPrim }]}>Send Access Email</Text>
+              <TouchableOpacity onPress={closeAddUser} style={[styles.modalClose, { borderColor: border }]}>
+                <Text style={[styles.modalCloseText, { color: textSec }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              {addUserError && (
+                <View style={{ backgroundColor: '#fff5f5', borderRadius: R.md, padding: 12, marginBottom: 14, borderLeftWidth: 3, borderLeftColor: '#e03131' }}>
+                  <Text style={{ fontSize: 13, color: '#c0392b' }}>⚠️ {addUserError}</Text>
+                </View>
+              )}
+              <Text style={[styles.fieldLabel, { color: textSec, marginTop: 0 }]}>Email</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+                value={newEmail} onChangeText={setNewEmail}
+                placeholder="user@example.com" placeholderTextColor={textSec}
+                autoCapitalize="none" keyboardType="email-address" autoFocus
+                returnKeyType="go" onSubmitEditing={addUser}
+              />
+              <Text style={[styles.fieldLabel, { color: textSec }]}>Grant Premium</Text>
+              <View style={styles.chipRow}>
+                {(['none', 'week', 'month', 'year', 'forever'] as const).map(d => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.chip, { borderColor: border }, newDuration === d && styles.chipActive]}
+                    onPress={() => setNewDuration(d)}
+                  >
+                    <Text style={[styles.chipText, { color: textSec }, newDuration === d && styles.chipTextActive]}>
+                      {d === 'none' ? 'None' : d === 'week' ? '1 Week' : d === 'month' ? '1 Month' : d === 'year' ? '1 Year' : 'Lifetime'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={[styles.modalFooter, { borderTopColor: border }]}>
+              <TouchableOpacity style={[styles.footerBtn, styles.footerBtnCancel, { borderColor: border }]} onPress={closeAddUser}>
+                <Text style={[styles.footerBtnCancelText, { color: textSec }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.footerBtn, styles.footerBtnSave, (addingUser || !newEmail.trim()) && { opacity: 0.5 }]}
+                onPress={addUser} disabled={addingUser || !newEmail.trim()}
+              >
+                <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.footerBtnGrad}>
+                  <Text style={styles.footerBtnSaveText}>{addingUser ? 'Sending…' : 'Send Email'}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Edit / Add Modal — centered dialog */}
       <Modal visible={!!editState} transparent animationType="fade">

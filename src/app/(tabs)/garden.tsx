@@ -404,21 +404,9 @@ export default function GardenScreen() {
       .sort((a, b) => a.entry.name.localeCompare(b.entry.name));
   }
 
-  async function placePlant() {
+  async function doPlacePlant() {
     const garden = getActiveGarden();
     if (!user || !garden || !placement || !placeName.trim()) return;
-    const isSharedGarden = sharedEntries.some(e => e.garden.id === garden.id);
-    if (!isPremium && !isSharedGarden) {
-      const ownGardenIds = new Set(gardens.map(g => g.id));
-      const ownPlantCount = Object.entries(plantsMap)
-        .filter(([gid]) => ownGardenIds.has(gid))
-        .reduce((sum, [, arr]) => sum + arr.length, 0);
-      if (ownPlantCount >= FREE_LIMITS.plants) {
-        setPlacement(null);
-        router.push('/subscription' as any);
-        return;
-      }
-    }
     const { record: data } = await offlineCreate('plants', user.id, {
       user_id: user.id,
       garden_id: garden.id,
@@ -439,6 +427,38 @@ export default function GardenScreen() {
     setPlacement(null);
     setPlaceSelected(false);
     setCatalogueSearch('');
+  }
+
+  async function placePlant() {
+    const garden = getActiveGarden();
+    if (!user || !garden || !placement || !placeName.trim()) return;
+    const isSharedGarden = sharedEntries.some(e => e.garden.id === garden.id);
+    if (!isPremium && !isSharedGarden) {
+      const ownGardenIds = new Set(gardens.map(g => g.id));
+      const ownPlantCount = Object.entries(plantsMap)
+        .filter(([gid]) => ownGardenIds.has(gid))
+        .reduce((sum, [, arr]) => sum + arr.length, 0);
+      if (ownPlantCount >= FREE_LIMITS.plants) {
+        setPlacement(null);
+        router.push('/subscription' as any);
+        return;
+      }
+    }
+    const tileSizeCm = tileSizeInFromGarden(garden) * 2.54;
+    const catalogKey = findPlantKey(placeName.trim());
+    const spacingCm = catalogKey ? PLANT_CATALOG[catalogKey]?.spacingCm : null;
+    if (spacingCm && tileSizeCm < spacingCm) {
+      Alert.alert(
+        '⚠️ Tile May Be Too Small',
+        `${placeName.trim()} needs ${spacingCm}cm of space, but your tiles are ~${Math.round(tileSizeCm)}cm wide. Plants may be crowded. Continue anyway?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Plant Anyway', onPress: doPlacePlant },
+        ],
+      );
+      return;
+    }
+    await doPlacePlant();
   }
 
   // ── Plant quick actions (from grid tile) ─────────────────────────────────

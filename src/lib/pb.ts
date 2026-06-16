@@ -1,8 +1,27 @@
 import PocketBase, { AsyncAuthStore, LocalAuthStore } from 'pocketbase';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PB_URL = process.env.EXPO_PUBLIC_PB_URL!;
 const STORE_KEY = 'pb_auth';
+const INSTALL_FLAG = 'app_installed_v1';
+
+// AsyncStorage is wiped on uninstall; SecureStore (Keychain) is not.
+// On first launch after a fresh install, clear any stale Keychain credentials
+// so the user is prompted to log in again.
+async function clearStaleKeychainIfFreshInstall() {
+  if (Platform.OS === 'web') return;
+  try {
+    const flag = await AsyncStorage.getItem(INSTALL_FLAG);
+    if (!flag) {
+      const SecureStore = require('expo-secure-store');
+      await SecureStore.deleteItemAsync(STORE_KEY);
+      await AsyncStorage.setItem(INSTALL_FLAG, '1');
+    }
+  } catch {}
+}
+
+clearStaleKeychainIfFreshInstall();
 
 function createStore() {
   if (Platform.OS === 'web') {

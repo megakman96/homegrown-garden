@@ -39,6 +39,10 @@ export default function LoginScreen() {
   const [firstName, setFirstName] = useState('');
   const [birthday, setBirthday] = useState(''); // MM/DD
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const logoFloat = useSharedValue(0);
 
@@ -56,6 +60,20 @@ export default function LoginScreen() {
   const logoStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: logoFloat.value }],
   }));
+
+  async function handleForgotPassword() {
+    if (!forgotEmail.trim()) return;
+    setForgotLoading(true);
+    try {
+      await pb.collection('users').requestPasswordReset(forgotEmail.trim());
+      setForgotSent(true);
+    } catch {
+      // Always show success to avoid exposing which emails exist
+      setForgotSent(true);
+    } finally {
+      setForgotLoading(false);
+    }
+  }
 
   async function handleAuth() {
     if (!email || !password) return;
@@ -129,6 +147,54 @@ export default function LoginScreen() {
           </FadeInView>
 
           <FadeInView delay={240} style={styles.card}>
+            {forgotMode ? (
+              forgotSent ? (
+                <>
+                  <Text style={styles.cardTitle}>Check your email 📬</Text>
+                  <Text style={[styles.switchText, { color: G.stone, marginBottom: 20, lineHeight: 20 }]}>
+                    If an account exists for {forgotEmail}, we've sent a password reset link.
+                  </Text>
+                  <PressableScale onPress={() => { setForgotMode(false); setForgotSent(false); setForgotEmail(''); }} style={styles.btn} haptic>
+                    <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.btnGradient}>
+                      <Text style={styles.btnText}>Back to Sign In</Text>
+                    </LinearGradient>
+                  </PressableScale>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.cardTitle}>Reset Password</Text>
+                  <View style={styles.inputWrap}>
+                    <Text style={styles.label}>Email</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="you@example.com"
+                      placeholderTextColor={G.stone}
+                      value={forgotEmail}
+                      onChangeText={setForgotEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoFocus
+                      returnKeyType="go"
+                      onSubmitEditing={handleForgotPassword}
+                    />
+                  </View>
+                  <PressableScale onPress={handleForgotPassword} style={styles.btn} haptic>
+                    <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.btnGradient}>
+                      {forgotLoading
+                        ? <ActivityIndicator color={G.cloud} />
+                        : <Text style={styles.btnText}>Send Reset Link</Text>
+                      }
+                    </LinearGradient>
+                  </PressableScale>
+                  <PressableScale onPress={() => setForgotMode(false)} style={styles.switchBtn} haptic={false}>
+                    <Text style={styles.switchText}>
+                      <Text style={styles.switchLink}>← Back to Sign In</Text>
+                    </Text>
+                  </PressableScale>
+                </>
+              )
+            ) : (
+            <>
             <Text style={styles.cardTitle}>{isSignUp ? 'Create Account' : 'Welcome back'}</Text>
 
             {errorMsg && (
@@ -190,6 +256,8 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry
                 autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                returnKeyType={isSignUp ? 'next' : 'go'}
+                onSubmitEditing={isSignUp ? undefined : handleAuth}
               />
             </View>
 
@@ -209,6 +277,8 @@ export default function LoginScreen() {
                   onChangeText={setConfirmPassword}
                   secureTextEntry
                   autoComplete="new-password"
+                  returnKeyType="go"
+                  onSubmitEditing={handleAuth}
                 />
                 {confirmPassword.length > 0 && confirmPassword !== password && (
                   <Text style={styles.matchError}>Passwords do not match</Text>
@@ -240,6 +310,20 @@ export default function LoginScreen() {
                 <Text style={styles.switchLink}>{isSignUp ? 'Sign In' : 'Sign Up'}</Text>
               </Text>
             </PressableScale>
+
+            {!isSignUp && (
+              <PressableScale
+                onPress={() => { setForgotMode(true); setForgotEmail(email); setForgotSent(false); }}
+                style={[styles.switchBtn, { marginTop: 4 }]}
+                haptic={false}
+              >
+                <Text style={[styles.switchText, { color: G.stone }]}>
+                  Forgot your password?
+                </Text>
+              </PressableScale>
+            )}
+            </>
+            )}
           </FadeInView>
 
           <FadeInView delay={360} style={styles.leafRow}>

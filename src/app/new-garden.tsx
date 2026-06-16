@@ -426,32 +426,35 @@ export default function NewGardenScreen() {
               </LinearGradient>
             </PressableScale>
           ) : (
-            <>
-              {!location && (
-                <PressableScale onPress={save} style={styles.backStepBtn} disabled={saving}>
-                  <Text style={styles.backStepText}>Skip →</Text>
-                </PressableScale>
-              )}
-              <PressableScale
-                onPress={save}
-                style={[styles.nextBtn, saving && { opacity: 0.7 }]}
-                disabled={saving}
-              >
-                <LinearGradient
-                  colors={[G.sage, G.forest]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.nextBtnGradient}
-                >
-                  {saving
-                    ? <ActivityIndicator color={G.cloud} />
-                    : <Text style={styles.nextBtnText} numberOfLines={1}>🌱 Create Garden</Text>
-                  }
-                </LinearGradient>
+            !location && (
+              <PressableScale onPress={save} style={styles.backStepBtn} disabled={saving}>
+                <Text style={styles.backStepText}>Skip →</Text>
               </PressableScale>
-            </>
+            )
           )}
         </View>
       </ScrollView>
+
+      {step === 'location' && (
+        <View style={[styles.createBtnWrap, { backgroundColor: isDark ? colors.bg : G.foam }]}>
+          <PressableScale
+            onPress={save}
+            style={[styles.createBtn, saving && { opacity: 0.7 }]}
+            disabled={saving}
+          >
+            <LinearGradient
+              colors={[G.sage, G.forest]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={styles.createBtnGradient}
+            >
+              {saving
+                ? <ActivityIndicator color={G.cloud} />
+                : <Text style={styles.createBtnText}>🌱 Create Garden</Text>
+              }
+            </LinearGradient>
+          </PressableScale>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -645,4 +648,8 @@ const styles = StyleSheet.create({
   nextBtnDisabled: { opacity: 0.5 },
   nextBtnGradient: { paddingVertical: 15, paddingHorizontal: 16, alignItems: 'center' },
   nextBtnText:     { color: G.cloud, fontWeight: '800', fontSize: 16 },
+  createBtnWrap:   { paddingHorizontal: 24, paddingVertical: 16, paddingBottom: Platform.OS === 'ios' ? 32 : 16, borderTopWidth: 1, borderTopColor: G.mist },
+  createBtn:       { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  createBtnGradient: { paddingVertical: 18, alignItems: 'center' },
+  createBtnText:   { color: G.cloud, fontWeight: '800', fontSize: 18 },
 });

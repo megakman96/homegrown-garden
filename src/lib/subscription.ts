@@ -19,8 +19,8 @@
 import { Platform } from 'react-native';
 import { pb } from './pb';
 
-export const REVENUECAT_API_KEY_IOS     = 'appl_REPLACE_WITH_YOUR_KEY';
-export const REVENUECAT_API_KEY_ANDROID = 'goog_REPLACE_WITH_YOUR_KEY';
+export const REVENUECAT_API_KEY_IOS     = 'appl_rhKjEZvNGBqMXlRakWxPIkFMfut';
+export const REVENUECAT_API_KEY_ANDROID = 'test_nAYeLrnFeNqsVeXKFKcuOFMGbqO';
 export const ENTITLEMENT_ID = 'premium';
 
 // Test coupon codes — validated server-side (stored in PocketBase users.promo_expires).

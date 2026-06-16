@@ -1,4 +1,4 @@
-const CACHE = 'homegrown-v2';
+const CACHE = 'homegrown-v3';
 
 const PRECACHE = ['/'];
 

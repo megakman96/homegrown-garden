@@ -26,6 +26,10 @@ export function useAuth() {
     if (pb.authStore.isValid) {
       setUser(modelToUser(pb.authStore.model));
       setLoading(false);
+    } else {
+      // No stored session — resolve immediately so the auth guard redirects to login
+      // without waiting for onChange or a timeout
+      setLoading(false);
     }
 
     const unsub = pb.authStore.onChange((_, model) => {
@@ -33,13 +37,7 @@ export function useAuth() {
       setLoading(false);
     });
 
-    // Fallback: resolve loading after 2s in case onChange never fires
-    const timeout = setTimeout(() => setLoading(false), 2000);
-
-    return () => {
-      unsub();
-      clearTimeout(timeout);
-    };
+    return () => unsub();
   }, []);
 
   const signOut = () => pb.authStore.clear();

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Modal, Alert, Platform, Linking,
+  TextInput, Modal, Alert, Platform, Linking, KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
@@ -227,6 +227,10 @@ export default function ProfileScreen() {
 
   const changePwModal = (
     <Modal visible={showChangePw} transparent animationType="fade">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
       <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
         <View style={[styles.modal, isDesktop && styles.modalCenter]}>
           <Text style={[styles.modalTitle, { color: textPrimary }]}>Change Password</Text>
@@ -276,6 +280,7 @@ export default function ProfileScreen() {
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -530,6 +535,12 @@ export default function ProfileScreen() {
               <TouchableOpacity style={styles.desktopVenmoBtn} onPress={openVenmo}>
                 <Text style={styles.desktopVenmoText}>💚 Support on Venmo</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.desktopVenmoBtn, { marginTop: 6, backgroundColor: '#f0f7ff', borderColor: '#a5c6e8' }]}
+                onPress={() => Linking.openURL('mailto:support@greenplot.us?subject=GreenPlot%20Support')}
+              >
+                <Text style={[styles.desktopVenmoText, { color: '#1a5c99' }]}>✉️ Contact Support</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.desktopSignOut} onPress={signOut}>
                 <Text style={styles.desktopSignOutText}>Sign out</Text>
               </TouchableOpacity>
@@ -632,6 +643,12 @@ export default function ProfileScreen() {
       )}
       <TouchableOpacity style={styles.venmoButton} onPress={openVenmo}>
         <Text style={styles.venmoText}>💚 Support GardenGrid on Venmo</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.venmoButton, { backgroundColor: '#f0f7ff', borderColor: '#a5c6e8', marginTop: 0 }]}
+        onPress={() => Linking.openURL('mailto:support@greenplot.us?subject=GreenPlot%20Support')}
+      >
+        <Text style={[styles.venmoText, { color: '#1a5c99' }]}>✉️ Contact Support</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
