@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, Linking,
+  Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,7 +10,7 @@ import { useAppTheme } from '@/contexts/theme-context';
 import { PressableScale } from '@/components/ui/PressableScale';
 import {
   getOfferings, purchasePackage, restorePurchases,
-  checkPremium, redeemPromoCode,
+  checkPremium, presentOfferCodeSheet,
 } from '@/lib/subscription';
 import { notifyPremiumChanged } from '@/hooks/use-premium';
 
@@ -37,9 +37,6 @@ export default function SubscriptionScreen() {
   const [purchasing, setPurchasing] = useState(false);
   const [selectedPkg, setSelectedPkg] = useState<'monthly' | 'annual'>('annual');
   const [isPremium, setIsPremium] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
-  const [showPromo, setShowPromo] = useState(false);
-  const [promoLoading, setPromoLoading] = useState(false);
 
   useEffect(() => {
     Promise.all([checkPremium(), getOfferings()]).then(([premium, offs]) => {
@@ -93,21 +90,6 @@ export default function SubscriptionScreen() {
       Alert.alert('Error', e?.message ?? 'Could not restore purchases.');
     } finally {
       setPurchasing(false);
-    }
-  }
-
-  async function handlePromoCode() {
-    if (!promoCode.trim()) return;
-    setPromoLoading(true);
-    const result = await redeemPromoCode(promoCode);
-    setPromoLoading(false);
-    Alert.alert(result.success ? '✅ Success' : '❌ Invalid Code', result.message);
-    if (result.success) {
-      setIsPremium(true);
-      notifyPremiumChanged();
-      setPromoCode('');
-      setShowPromo(false);
-      setTimeout(() => router.back(), 800);
     }
   }
 
@@ -222,33 +204,11 @@ export default function SubscriptionScreen() {
           Cancel anytime before trial ends and you won't be charged.
         </Text>
 
-        {/* Promo code */}
-        <TouchableOpacity onPress={() => setShowPromo(v => !v)} style={styles.promoToggle}>
-          <Text style={[styles.promoToggleText, { color: textSec }]}>
-            Have a promo code? {showPromo ? '▲' : '▼'}
-          </Text>
-        </TouchableOpacity>
-        {showPromo && (
-          <View style={[styles.promoRow, { borderColor: border }]}>
-            <TextInput
-              style={[styles.promoInput, { backgroundColor: isDark ? colors.bgElement : G.foam, color: textPrim, borderColor: border }]}
-              placeholder="Enter access code"
-              placeholderTextColor={textSec}
-              value={promoCode}
-              onChangeText={setPromoCode}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              style={[styles.promoApplyBtn, promoLoading && { opacity: 0.6 }]}
-              onPress={handlePromoCode}
-              disabled={promoLoading}
-            >
-              {promoLoading
-                ? <ActivityIndicator color={G.cloud} size="small" />
-                : <Text style={styles.promoApplyText}>Apply</Text>}
-            </TouchableOpacity>
-          </View>
+        {/* Apple Offer Code */}
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity onPress={presentOfferCodeSheet} style={styles.promoToggle}>
+            <Text style={[styles.promoToggleText, { color: textSec }]}>Redeem an offer code</Text>
+          </TouchableOpacity>
         )}
 
         {/* Restore */}
@@ -294,12 +254,8 @@ const styles = StyleSheet.create({
   ctaBtnGrad:    { paddingVertical: 16, alignItems: 'center' },
   ctaBtnText:    { color: G.cloud, fontWeight: '800', fontSize: 17 },
   ctaNote:       { fontSize: 12, textAlign: 'center', marginTop: 8, lineHeight: 18 },
-  promoToggle:   { alignItems: 'center', marginTop: 20 },
+  promoToggle:    { alignItems: 'center', marginTop: 20 },
   promoToggleText:{ fontSize: 13 },
-  promoRow:      { flexDirection: 'row', gap: 8, marginTop: 10, borderRadius: R.md, overflow: 'hidden' },
-  promoInput:    { flex: 1, borderRadius: R.md, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
-  promoApplyBtn: { backgroundColor: G.hunter, borderRadius: R.md, paddingHorizontal: 18, justifyContent: 'center' },
-  promoApplyText:{ color: G.cloud, fontWeight: '700', fontSize: 14 },
   restoreBtn:    { alignItems: 'center', marginTop: 16 },
   restoreText:   { fontSize: 13 },
   legalText:     { fontSize: 11, textAlign: 'center', marginTop: 16, lineHeight: 17 },

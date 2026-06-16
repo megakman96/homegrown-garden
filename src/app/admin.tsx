@@ -438,7 +438,6 @@ export default function AdminScreen() {
                   <Text style={[styles.thName, { color: textSec }]}>User</Text>
                   <Text style={[styles.thMeta, { color: textSec, width: 100 }]}>Status</Text>
                   <Text style={[styles.thMeta, { color: textSec, width: 160 }]}>Expires</Text>
-                  <Text style={[styles.thMeta, { color: textSec, width: 120 }]}>Code</Text>
                   <Text style={[styles.thActions, { color: textSec }]}>Actions</Text>
                 </View>
 
@@ -475,7 +474,6 @@ export default function AdminScreen() {
                           </View>
                         </View>
                         <Text style={[styles.tdMeta, { color: textSec, width: 160 }]}>{expiry}</Text>
-                        <Text style={[styles.tdMeta, { color: textSec, width: 120, fontSize: 11 }]}>{u.promo_code ?? '—'}</Text>
                         <View style={styles.tdActions}>
                           {acting ? (
                             <ActivityIndicator color={G.hunter} size="small" />

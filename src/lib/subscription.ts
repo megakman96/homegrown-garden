@@ -23,14 +23,6 @@ export const REVENUECAT_API_KEY_IOS     = 'appl_rhKjEZvNGBqMXlRakWxPIkFMfut';
 export const REVENUECAT_API_KEY_ANDROID = 'test_nAYeLrnFeNqsVeXKFKcuOFMGbqO';
 export const ENTITLEMENT_ID = 'premium';
 
-// Test coupon codes — validated server-side (stored in PocketBase users.promo_expires).
-// In production, RevenueCat Offer Codes handle IAP promos via Apple/Google.
-export const TEST_PROMO_CODES: Record<string, string> = {
-  'GROWFREE':    'Beta tester — free premium access',
-  'GARDENTEST':  'Internal tester',
-  'FRIEND2024':  'Friend & family access',
-};
-
 let initialized = false;
 
 export async function initPurchases(userId: string) {
@@ -107,31 +99,3 @@ export function hasServerPromoGrant(): boolean {
   } catch { return false; }
 }
 
-export async function redeemPromoCode(code: string): Promise<{ success: boolean; message: string }> {
-  const upper = code.trim().toUpperCase();
-
-  // Known test codes — try server redemption
-  if (TEST_PROMO_CODES[upper]) {
-    try {
-      // Server validates the code and writes promo_expires — client cannot forge this
-      await pb.send('/api/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: upper }),
-      });
-      // Refresh auth store so hasServerPromoGrant reads the updated record immediately
-      await pb.collection('users').authRefresh();
-      return { success: true, message: `✅ Code applied! ${TEST_PROMO_CODES[upper]}` };
-    } catch {
-      return { success: false, message: 'Could not save code. Try again.' };
-    }
-  }
-
-  // On iOS, try RevenueCat / App Store offer code flow
-  if (Platform.OS === 'ios' && initialized) {
-    await presentOfferCodeSheet();
-    return { success: true, message: 'Apple redemption sheet opened.' };
-  }
-
-  return { success: false, message: 'Invalid code. Check and try again.' };
-}
