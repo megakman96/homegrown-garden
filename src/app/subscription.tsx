@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView,
+  Alert, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -128,6 +128,12 @@ export default function SubscriptionScreen() {
               <Text style={styles.doneBtnText}>Back to app</Text>
             </LinearGradient>
           </PressableScale>
+          <TouchableOpacity
+            style={styles.manageBtn}
+            onPress={() => Linking.openURL('itms-apps://apps.apple.com/account/subscriptions')}
+          >
+            <Text style={[styles.manageText, { color: textSec }]}>Manage or cancel subscription</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -304,4 +310,6 @@ const styles = StyleSheet.create({
   doneBtn:       { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card, width: '100%' },
   doneBtnGrad:   { paddingVertical: 16, alignItems: 'center' },
   doneBtnText:   { color: G.cloud, fontWeight: '800', fontSize: 16 },
+  manageBtn:     { marginTop: 20 },
+  manageText:    { fontSize: 13, textDecorationLine: 'underline' },
 });

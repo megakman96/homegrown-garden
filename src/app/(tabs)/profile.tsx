@@ -573,7 +573,13 @@ export default function ProfileScreen() {
       {/* Subscription card */}
       <TouchableOpacity
         style={[styles.subCard, { backgroundColor: isPremium ? '#e8f5e9' : '#fff9db', borderColor: isPremium ? '#a5d6a7' : '#ffe066' }]}
-        onPress={() => router.push('/subscription' as any)}
+        onPress={() => {
+          if (isPremium) {
+            Linking.openURL('itms-apps://apps.apple.com/account/subscriptions');
+          } else {
+            router.push('/subscription' as any);
+          }
+        }}
       >
         <Text style={styles.subCardEmoji}>{isPremium ? '🌟' : '🌱'}</Text>
         <View style={{ flex: 1 }}>
@@ -581,7 +587,7 @@ export default function ProfileScreen() {
             {isPremium ? 'GardenGrid Pro — Active' : 'Upgrade to Pro'}
           </Text>
           <Text style={[styles.subCardSub, { color: isPremium ? '#52796f' : '#9c6f00' }]}>
-            {isPremium ? 'All features unlocked. Thank you! 🙏' : '14-day free trial · Unlimited gardens & more'}
+            {isPremium ? 'Tap to manage or cancel subscription' : '14-day free trial · Unlimited gardens & more'}
           </Text>
         </View>
         <Text style={{ fontSize: 18, color: isPremium ? '#52b788' : '#e67700' }}>›</Text>
