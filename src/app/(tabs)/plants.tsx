@@ -410,6 +410,22 @@ export default function PlantCatalogueScreen() {
                     </View>
                   )}
 
+                  {/* Zone viability upsell (free users) */}
+                  {!isPremium && (
+                    <TouchableOpacity
+                      style={[styles.zoneTeaser, { backgroundColor: isDark ? colors.bgElement : '#f0f7ee', borderColor: isDark ? colors.border : '#a5d6a7' }]}
+                      onPress={() => router.push('/subscription' as any)}
+                    >
+                      <Text style={styles.zoneTeaserEmoji}>🌍</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.zoneTeaserTitle, { color: isDark ? '#a5d6a7' : '#2e7d32' }]}>Zone Viability  🔒 Pro</Text>
+                        <Text style={[styles.zoneTeaserSub, { color: textSec }]}>
+                          See if {entry.name} is a good fit for your local growing zone, with zone-adjusted watering intervals.
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
                   {/* Add to garden button */}
                   <TouchableOpacity
                     style={[styles.addBtn, { marginTop: 20 }]}
@@ -526,4 +542,9 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendSwatch: { width: 14, height: 14, borderRadius: 3 },
   legendText: { fontSize: 11, fontWeight: '600' },
+
+  zoneTeaser:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: R.md, borderWidth: 1, padding: 12, marginTop: 16 },
+  zoneTeaserEmoji: { fontSize: 22, width: 28, textAlign: 'center' },
+  zoneTeaserTitle: { fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  zoneTeaserSub:   { fontSize: 11, lineHeight: 16 },
 });

@@ -340,6 +340,15 @@ export default function AdminScreen() {
     setOverrides(updated);
   }
 
+  async function patchOverride(key: string, field: 'sunRequirement' | 'waterIntervalDays', value: string | number) {
+    const updated: OverrideMap = {
+      ...overrides,
+      [key]: { ...(overrides[key] ?? {}), [field]: value },
+    };
+    await saveOverrides(updated);
+    setOverrides(updated);
+  }
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center' }]}>
@@ -622,15 +631,35 @@ export default function AdminScreen() {
                   <Text style={[styles.plantKey, { color: textSec }]}>{key}{hasOverride ? ' · edited' : ''}{customUrl ? ' · custom icon' : ''}</Text>
                 </View>
 
-                {/* Sun */}
-                <Text style={[styles.tdMeta, { color: textSec }]}>
-                  {sun ? SUN_EMOJIS[sun as SunRequirement] : '—'}
-                </Text>
+                {/* Sun — tap to cycle */}
+                <TouchableOpacity
+                  style={[styles.tdMeta, styles.inlineEditCell]}
+                  onPress={() => {
+                    const cur: SunRequirement = (sun as SunRequirement) ?? 'full_sun';
+                    const next = SUN_OPTIONS[(SUN_OPTIONS.indexOf(cur) + 1) % SUN_OPTIONS.length];
+                    patchOverride(key, 'sunRequirement', next);
+                  }}
+                >
+                  <Text style={{ fontSize: 18 }}>{sun ? SUN_EMOJIS[sun as SunRequirement] : '—'}</Text>
+                  <Text style={[styles.inlineEditHint, { color: textSec }]}>tap</Text>
+                </TouchableOpacity>
 
-                {/* Water */}
-                <Text style={[styles.tdMeta, { color: textSec }]}>
-                  {water != null ? `${water}d` : '—'}
-                </Text>
+                {/* Water — inline +/- */}
+                <View style={[styles.tdMeta, styles.inlineEditCell]}>
+                  <TouchableOpacity
+                    style={styles.inlineBtn}
+                    onPress={() => patchOverride(key, 'waterIntervalDays', Math.max(1, (water ?? 3) - 1))}
+                  >
+                    <Text style={[styles.inlineBtnText, { color: textPrim }]}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.inlineVal, { color: textPrim }]}>{water ?? '—'}</Text>
+                  <TouchableOpacity
+                    style={styles.inlineBtn}
+                    onPress={() => patchOverride(key, 'waterIntervalDays', (water ?? 3) + 1)}
+                  >
+                    <Text style={[styles.inlineBtnText, { color: textPrim }]}>+</Text>
+                  </TouchableOpacity>
+                </View>
 
                 {/* Category */}
                 <Text style={[styles.tdMeta, { color: textSec }]}>
@@ -917,6 +946,11 @@ const styles = StyleSheet.create({
   plantKey:     { fontSize: 11, marginTop: 2 },
 
   tdMeta:       { width: 80, fontSize: 13 },
+  inlineEditCell: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  inlineEditHint: { fontSize: 9, marginTop: 2 },
+  inlineBtn:    { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: 'rgba(128,128,128,0.12)' },
+  inlineBtnText:{ fontSize: 14, fontWeight: '700', lineHeight: 18 },
+  inlineVal:    { fontSize: 12, fontWeight: '700', minWidth: 20, textAlign: 'center' },
 
   tdActions:    { width: 200, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
   actionBtn:    { paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, borderWidth: 1, borderColor: '#e2e8f0' },

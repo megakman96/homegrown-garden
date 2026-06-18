@@ -16,7 +16,7 @@ import type { Plant, Harvest, HealthStatus } from '@/lib/types';
 import { addActivityEntryAsync } from '@/lib/activity-log';
 import { generateSinglePlantPdf } from '@/lib/garden-pdf';
 import { findPlantKey, PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS } from '@/lib/plant-catalog';
-import { fetchZoneForCoords, getFrostInfo, calcPlantingWindow, fmtDate, type FrostInfo, type PlantingWindow } from '@/lib/frost-dates';
+import { fetchZoneForCoords, getFrostInfo, calcPlantingWindow, fmtDate, getZoneWaterAdjustment, getZoneViability, type FrostInfo, type PlantingWindow, type ZoneViability } from '@/lib/frost-dates';
 import { loadGardenLocation } from '@/lib/weather';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -349,6 +349,16 @@ export default function PlantDetailScreen() {
               <Text style={[styles.specChipLabel, { color: textSec }]}>Water</Text>
               <Text style={[styles.specChipValue, { color: textPrim }]}>Every {plant.water_interval_days ?? catalogInfo.waterIntervalDays}d</Text>
             </View>
+            {!isPremium && (
+              <TouchableOpacity
+                style={[styles.specChip, { backgroundColor: isDark ? colors.bgElement : '#f0f7ee', borderColor: isDark ? colors.border : '#a5d6a7' }]}
+                onPress={() => router.push('/subscription' as any)}
+              >
+                <Text style={styles.specChipEmoji}>🌍</Text>
+                <Text style={[styles.specChipLabel, { color: textSec }]}>Zone</Text>
+                <Text style={[styles.specChipValue, { color: G.hunter }]}>Pro 🔒</Text>
+              </TouchableOpacity>
+            )}
             {catalogInfo.spacingCm && (
               <View style={[styles.specChip, { backgroundColor: isDark ? colors.bgElement : '#f3f0ff', borderColor: isDark ? colors.border : '#b197fc' }]}>
                 <Text style={styles.specChipEmoji}>📏</Text>
@@ -470,6 +480,38 @@ export default function PlantDetailScreen() {
                   📍 {frostZoneLabel}
                 </Text>
               </View>
+
+              {/* Zone viability */}
+              {(() => {
+                const viability: ZoneViability = getZoneViability(catalogKey, frostInfo.zone, !isWarmSeason);
+                const waterAdj = getZoneWaterAdjustment(frostInfo.zone);
+                const baseInterval = plant.water_interval_days ?? catalogInfo?.waterIntervalDays ?? 3;
+                const adjInterval = Math.max(1, baseInterval + waterAdj);
+                return (
+                  <View style={{ gap: 8, marginBottom: 12 }}>
+                    <View style={[styles.zoneViabilityRow, { backgroundColor: isDark ? colors.bgElement : '#f8f9fa', borderColor: isDark ? colors.border : '#dee2e6' }]}>
+                      <Text style={[styles.zoneViabilityEmoji]}>{viability.emoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.zoneViabilityLabel, { color: viability.color }]}>{viability.label}</Text>
+                        <Text style={[styles.zoneViabilitySub, { color: textSec }]}>Zone {frostInfo.zone.toUpperCase()} suitability for {plant.name}</Text>
+                      </View>
+                    </View>
+                    {waterAdj !== 0 && (
+                      <View style={[styles.zoneViabilityRow, { backgroundColor: isDark ? colors.bgElement : '#e7f5ff', borderColor: isDark ? colors.border : '#74c0fc' }]}>
+                        <Text style={styles.zoneViabilityEmoji}>💧</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.zoneViabilityLabel, { color: isDark ? '#74c0fc' : '#1971c2' }]}>
+                            Zone-adjusted: water every {adjInterval}d
+                          </Text>
+                          <Text style={[styles.zoneViabilitySub, { color: textSec }]}>
+                            Catalog default is every {baseInterval}d · {waterAdj > 0 ? `zone ${frostInfo.zone.toUpperCase()} retains moisture longer` : `zone ${frostInfo.zone.toUpperCase()} dries out faster`}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
 
               {/* Frost date chips */}
               {!frostInfo.noFrostRisk ? (
@@ -794,6 +836,11 @@ const styles = StyleSheet.create({
   frostTimelineEmoji: { fontSize: 22, width: 30 },
   frostTimelineLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
   frostTimelineDate:  { fontSize: 16, fontWeight: '800' },
+
+  zoneViabilityRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: R.md, borderWidth: 1, padding: 10 },
+  zoneViabilityEmoji: { fontSize: 18, width: 24, textAlign: 'center' },
+  zoneViabilityLabel: { fontSize: 13, fontWeight: '700' },
+  zoneViabilitySub:   { fontSize: 11, marginTop: 1 },
 
   // Harvest log
   harvestActions: { flexDirection: 'row', gap: 4, alignItems: 'center' },

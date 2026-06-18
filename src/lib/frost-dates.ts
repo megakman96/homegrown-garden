@@ -127,3 +127,71 @@ const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 export function fmtDate(d: Date): string {
   return `${MONTH_SHORT[d.getMonth()]} ${d.getDate()}`;
 }
+
+// ── Zone utilities ────────────────────────────────────────────────────────────
+
+export function parseZoneNum(zone: string): number {
+  const n = parseFloat(zone.toLowerCase().replace(/[ab]$/, ''));
+  return isNaN(n) ? 6 : n;
+}
+
+// Returns day delta to add to the catalog water interval (negative = water more often)
+export function getZoneWaterAdjustment(zone: string): number {
+  const n = parseZoneNum(zone);
+  if (n <= 5) return 1;   // cooler — soil stays moist longer
+  if (n <= 7) return 0;   // temperate baseline
+  if (n <= 9) return -1;  // warmer — dries faster
+  return -2;              // hot/tropical
+}
+
+const TROPICAL_KEYS = new Set([
+  'banana','mango','avocado','papaya','pineapple','coconut','lychee','guava',
+  'passion_fruit','dragon_fruit','jackfruit',
+]);
+const SUBTROPICAL_KEYS = new Set([
+  'lemon','lime','orange','grapefruit','tangerine','kumquat','fig','pomegranate',
+  'citrus','olive','pomelo',
+]);
+const COLD_TENDER_KEYS = new Set([
+  'okra','sweet_potato','ginger','turmeric','taro','yam',
+]);
+
+export interface ZoneViability {
+  label: string;
+  emoji: string;
+  color: string;
+}
+
+export function getZoneViability(
+  catalogKey: string | null,
+  zone: string,
+  isCoolSeason: boolean,
+): ZoneViability {
+  const n = parseZoneNum(zone);
+  const key = catalogKey ?? '';
+
+  if (TROPICAL_KEYS.has(key)) {
+    if (n >= 10) return { label: 'Ideal for your zone', emoji: '✅', color: '#2b8a3e' };
+    if (n >= 9)  return { label: 'Marginal — protect from cold snaps', emoji: '⚠️', color: '#e67700' };
+    return { label: 'Not recommended for your zone', emoji: '❌', color: '#c92a2a' };
+  }
+  if (SUBTROPICAL_KEYS.has(key)) {
+    if (n >= 9)  return { label: 'Ideal for your zone', emoji: '✅', color: '#2b8a3e' };
+    if (n >= 8)  return { label: 'Marginal — may need frost protection', emoji: '⚠️', color: '#e67700' };
+    return { label: 'Not recommended as outdoor perennial', emoji: '❌', color: '#c92a2a' };
+  }
+  if (COLD_TENDER_KEYS.has(key)) {
+    if (n >= 6)  return { label: 'Ideal for your zone', emoji: '✅', color: '#2b8a3e' };
+    if (n >= 4)  return { label: 'Marginal — choose a short-season variety', emoji: '⚠️', color: '#e67700' };
+    return { label: 'Not recommended — season too short', emoji: '❌', color: '#c92a2a' };
+  }
+  if (isCoolSeason) {
+    if (n <= 7)  return { label: 'Ideal for your zone', emoji: '✅', color: '#2b8a3e' };
+    if (n <= 9)  return { label: 'Marginal — grow in spring or fall', emoji: '⚠️', color: '#e67700' };
+    return { label: 'Challenging — grows only in cooler months', emoji: '⚠️', color: '#e67700' };
+  }
+  // Standard warm-season annual
+  if (n >= 4)  return { label: 'Ideal for your zone', emoji: '✅', color: '#2b8a3e' };
+  if (n >= 3)  return { label: 'Marginal — use a short-season variety', emoji: '⚠️', color: '#e67700' };
+  return { label: 'Very short season — challenging', emoji: '⚠️', color: '#e67700' };
+}
