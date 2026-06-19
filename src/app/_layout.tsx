@@ -67,7 +67,12 @@ function ThemedApp() {
 
   useEffect(() => {
     if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      // Unregister the old caching SW (was at /sw.js, Cloudflare cached it)
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => { if (r.active?.scriptURL?.includes('/sw.js')) r.unregister(); });
+      }).catch(() => {});
+      // Register no-op SW at a new URL Cloudflare has never cached
+      navigator.serviceWorker.register('/sw-noop.js').catch(() => {});
     }
     setupNotificationChannel();
     if (!__DEV__ && Platform.OS !== 'web') {
