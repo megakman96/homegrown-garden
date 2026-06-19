@@ -322,14 +322,22 @@ export default function AdminScreen() {
   }
 
   async function deletePlant(key: string) {
-    Alert.alert('Remove Plant', `Remove "${getDisplayName(key)}" from the catalogue?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => {
-        const updated = { ...overrides, [key]: { ...overrides[key], deleted: true } };
-        await saveOverrides(updated);
-        setOverrides(updated);
-      }},
-    ]);
+    const name = getDisplayName(key);
+    if (Platform.OS === 'web') {
+      if (!window.confirm(`Remove "${name}" from the catalogue?`)) return;
+      const updated = { ...overrides, [key]: { ...overrides[key], deleted: true } };
+      await saveOverrides(updated);
+      setOverrides(updated);
+    } else {
+      Alert.alert('Remove Plant', `Remove "${name}" from the catalogue?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: async () => {
+          const updated = { ...overrides, [key]: { ...overrides[key], deleted: true } };
+          await saveOverrides(updated);
+          setOverrides(updated);
+        }},
+      ]);
+    }
   }
 
   async function restorePlant(key: string) {
@@ -510,10 +518,16 @@ export default function AdminScreen() {
                               {isPremium && (
                                 <TouchableOpacity
                                   style={[styles.actionBtn, styles.actionBtnDanger]}
-                                  onPress={() => Alert.alert('Revoke Premium', `Remove premium from ${u.email}?`, [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    { text: 'Revoke', style: 'destructive', onPress: () => grantRevoke(u.id, 'revoke') },
-                                  ])}
+                                  onPress={() => {
+                                    if (Platform.OS === 'web') {
+                                      if (window.confirm(`Remove premium from ${u.email}?`)) grantRevoke(u.id, 'revoke');
+                                    } else {
+                                      Alert.alert('Revoke Premium', `Remove premium from ${u.email}?`, [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        { text: 'Revoke', style: 'destructive', onPress: () => grantRevoke(u.id, 'revoke') },
+                                      ]);
+                                    }
+                                  }}
                                 >
                                   <Text style={styles.actionBtnDangerText}>Revoke</Text>
                                 </TouchableOpacity>
