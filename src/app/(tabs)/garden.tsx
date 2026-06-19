@@ -14,7 +14,7 @@ import { usePremium, FREE_LIMITS } from '@/hooks/use-premium';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
-import { useAppTheme } from '@/contexts/theme-context';
+import { useAppTheme, formatLength } from '@/contexts/theme-context';
 import { getPlantIcon } from '@/lib/plant-icons';
 import {
   layoutFromGarden, makeLayout, resizeLayout,
@@ -64,7 +64,7 @@ type SharedEntry = { garden: Garden; ownerEmail: string };
 
 export default function GardenScreen() {
   const { user } = useAuth();
-  const { isDark, colors } = useAppTheme();
+  const { isDark, colors, measureUnit } = useAppTheme();
   const { isDesktop } = useBreakpoint();
   const bg         = isDark ? colors.bg        : G.foam;
   const cardBg     = isDark ? colors.bgCard    : '#fff';
@@ -450,7 +450,7 @@ export default function GardenScreen() {
     if (spacingCm && tileSizeCm < spacingCm) {
       Alert.alert(
         '⚠️ Tile May Be Too Small',
-        `${placeName.trim()} needs ${spacingCm}cm of space, but your tiles are ~${Math.round(tileSizeCm)}cm wide. Plants may be crowded. Continue anyway?`,
+        `${placeName.trim()} needs ${formatLength(spacingCm, measureUnit)} of space, but your tiles are ~${formatLength(Math.round(tileSizeCm), measureUnit)} wide. Plants may be crowded. Continue anyway?`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Plant Anyway', onPress: doPlacePlant },

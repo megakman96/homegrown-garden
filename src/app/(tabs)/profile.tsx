@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit, type WaterTime } from '@/contexts/theme-context';
+import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit, type MeasureUnit, type WaterTime } from '@/contexts/theme-context';
 import { clearActivityLogAsync } from '@/lib/activity-log';
 import { usePremium } from '@/hooks/use-premium';
 import NotificationSettingsUI from '@/components/ui/NotificationSettings';
@@ -29,7 +29,7 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { isDesktop } = useBreakpoint();
   const router = useRouter();
-  const { mode, setMode, isDark, colors, tempUnit, setTempUnit, waterTime, setWaterTime } = useAppTheme();
+  const { mode, setMode, isDark, colors, tempUnit, setTempUnit, measureUnit, setMeasureUnit, waterTime, setWaterTime } = useAppTheme();
   const [gardens, setGardens] = useState<Garden[]>([]);
   const [shares, setShares] = useState<GardenShare[]>([]);
   const [plants, setPlants] = useState<Plant[]>([]);
@@ -469,6 +469,29 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const measureSection = (
+    <View style={[styles.section, { backgroundColor: cardBg, borderColor: borderCol }]}>
+      <Text style={[styles.sectionTitle, { color: textPrimary }]}>📏 Measurement Units</Text>
+      <View style={styles.modeRow}>
+        {([
+          { key: 'metric', label: 'Metric', emoji: '🌍' },
+          { key: 'us',     label: 'US / Imperial', emoji: '🇺🇸' },
+        ] as { key: MeasureUnit; label: string; emoji: string }[]).map(({ key, label, emoji }) => (
+          <TouchableOpacity
+            key={key}
+            style={[styles.modeBtn, { borderColor: borderCol }, measureUnit === key && styles.modeBtnActive]}
+            onPress={() => setMeasureUnit(key)}
+          >
+            <Text style={styles.modeEmoji}>{emoji}</Text>
+            <Text style={[styles.modeBtnText, { color: textSecondary }, measureUnit === key && styles.modeBtnTextActive]}>
+              {label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
   const waterTimeSection = (
     <View style={[styles.section, { backgroundColor: cardBg, borderColor: borderCol }]}>
       <Text style={[styles.sectionTitle, { color: textPrimary }]}>💧 Preferred Watering Time</Text>
@@ -557,6 +580,7 @@ export default function ProfileScreen() {
             {sharesSection}
             {settingsSection}
             {tempSection}
+            {measureSection}
             {waterTimeSection}
           </View>
         </View>

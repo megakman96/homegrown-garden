@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { usePremium } from '@/hooks/use-premium';
 import UpgradePrompt from '@/components/ui/UpgradePrompt';
-import { useAppTheme, formatTemp, type TempUnit } from '@/contexts/theme-context';
+import { useAppTheme, formatTemp, formatPrecip, type TempUnit } from '@/contexts/theme-context';
 import type { Plant, Garden } from '@/lib/types';
 import {
   fetchWeather, calculateWateringAdvice, formatDateShort,
@@ -32,7 +32,7 @@ export default function ScheduleScreen() {
   const { user } = useAuth();
   const { isDesktop } = useBreakpoint();
   const { isPremium } = usePremium();
-  const { tempUnit, isDark, colors } = useAppTheme();
+  const { tempUnit, measureUnit, isDark, colors } = useAppTheme();
   const bg      = isDark ? colors.bg        : '#f0f7ee';
   const cardBg  = isDark ? colors.bgCard    : '#fff';
   const textPrim= isDark ? colors.text      : '#1b4332';
@@ -297,7 +297,7 @@ export default function ScheduleScreen() {
           </Text>
         </View>
         {showWeather
-          ? <WeatherWidget weather={group.weather} loading={group.loading} tempUnit={tempUnit} />
+          ? <WeatherWidget weather={group.weather} loading={group.loading} tempUnit={tempUnit} measureUnit={measureUnit} />
           : <UpgradePrompt compact message="Weather-aware watering is a Pro feature" />
         }
         {group.gardens.map(g => renderGardenItems(g))}
@@ -320,7 +320,7 @@ export default function ScheduleScreen() {
           </View>
         </View>
         {showWeather
-          ? <WeatherWidget weather={null} loading={false} tempUnit={tempUnit} />
+          ? <WeatherWidget weather={null} loading={false} tempUnit={tempUnit} measureUnit={measureUnit} />
           : <UpgradePrompt compact message="Weather-aware watering is a Pro feature" />
         }
         {overdue.length > 0 && (
@@ -406,10 +406,11 @@ export default function ScheduleScreen() {
 
 // ─── WEATHER WIDGET ──────────────────────────────────────────────────────────
 
-function WeatherWidget({ weather, loading, tempUnit }: {
+function WeatherWidget({ weather, loading, tempUnit, measureUnit }: {
   weather: WeatherData | null;
   loading: boolean;
   tempUnit: TempUnit;
+  measureUnit: import('@/contexts/theme-context').MeasureUnit;
 }) {
   const { isDark, colors } = useAppTheme();
   const cardBg  = isDark ? colors.bgCard  : '#fff';
@@ -454,7 +455,7 @@ function WeatherWidget({ weather, loading, tempUnit }: {
         <View style={styles.weatherRight}>
           {today?.isRainy ? (
             <View style={styles.weatherBadgeRain}>
-              <Text style={styles.weatherBadgeText}>🌧️ {today.precipMm.toFixed(0)}mm today</Text>
+              <Text style={styles.weatherBadgeText}>🌧️ {formatPrecip(today.precipMm, measureUnit)} today</Text>
             </View>
           ) : (
             <View style={styles.weatherBadgeSun}>
@@ -474,7 +475,7 @@ function WeatherWidget({ weather, loading, tempUnit }: {
               <Text style={styles.forecastBarEmoji}>{day.isRainy ? '🌧' : '☀'}</Text>
             </View>
             <Text style={[styles.forecastMm, { opacity: day.precipMm > 0 ? 1 : 0 }]}>
-              {day.precipMm.toFixed(0)}mm
+              {formatPrecip(day.precipMm, measureUnit)}
             </Text>
           </View>
         ))}
@@ -483,7 +484,7 @@ function WeatherWidget({ weather, loading, tempUnit }: {
       <View style={styles.weatherSummaryRow}>
         {rainDays.length > 0 ? (
           <Text style={styles.rainNote}>
-            🌧️ {rainDays.length} rainy days ahead ({totalRainMm.toFixed(0)}mm) — schedule adjusted
+            🌧️ {rainDays.length} rainy days ahead ({formatPrecip(totalRainMm, measureUnit)}) — schedule adjusted
           </Text>
         ) : (
           <Text style={styles.rainNote}>☀️ No rain in the next 7 days — water as scheduled</Text>
@@ -500,7 +501,7 @@ function ScheduleCard({ item, onWater, onPress }: {
   onWater: (p: Plant) => void;
   onPress: () => void;
 }) {
-  const { isDark, colors } = useAppTheme();
+  const { isDark, colors, measureUnit } = useAppTheme();
   const cardBg  = isDark ? colors.bgCard  : '#fff';
   const textPrim= isDark ? colors.text    : '#1b4332';
   const textSec = isDark ? colors.textSec : '#52796f';
@@ -527,7 +528,7 @@ function ScheduleCard({ item, onWater, onPress }: {
           </View>
         )}
         {advice && !advice.skipReason && advice.recentRainMm > 3 && (
-          <Text style={styles.rainAdjust}>Adjusted for {advice.recentRainMm.toFixed(0)}mm recent rain</Text>
+          <Text style={styles.rainAdjust}>Adjusted for {formatPrecip(advice.recentRainMm, measureUnit)} recent rain</Text>
         )}
         {advice && advice.adjustedIntervalDays !== (item.plant.water_interval_days ?? 0) && !advice.skipReason && (
           <Text style={styles.rainAdjust}>

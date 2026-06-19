@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { usePremium, FREE_LIMITS } from '@/hooks/use-premium';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { G, Shadow, R } from '@/constants/theme';
-import { useAppTheme } from '@/contexts/theme-context';
+import { useAppTheme, formatLength } from '@/contexts/theme-context';
 import { getPlantIcon } from '@/lib/plant-icons';
 import {
   PLANT_CATALOG, SUN_EMOJIS, SUN_LABELS, searchPlants,
@@ -41,7 +41,7 @@ const CATEGORIES = ['All', ...Array.from(new Set(ALL_ITEMS.map(i => i.entry.cate
 export default function PlantCatalogueScreen() {
   const { user } = useAuth();
   const { isPremium } = usePremium();
-  const { isDark, colors } = useAppTheme();
+  const { isDark, colors, measureUnit } = useAppTheme();
   const { isDesktop } = useBreakpoint();
   const router = useRouter();
 
@@ -399,7 +399,7 @@ export default function PlantCatalogueScreen() {
                       <View style={[styles.specChip, { backgroundColor: isDark ? colors.bgElement : '#f3f0ff', borderColor: isDark ? colors.border : '#b197fc' }]}>
                         <Text style={styles.specEmoji}>📏</Text>
                         <Text style={[styles.specLabel, { color: textSec }]}>Spacing</Text>
-                        <Text style={[styles.specValue, { color: textPrim }]}>{entry.spacingCm}cm</Text>
+                        <Text style={[styles.specValue, { color: textPrim }]}>{formatLength(entry.spacingCm!, measureUnit)}</Text>
                       </View>
                     )}
                     {entry.daysToMaturity && (

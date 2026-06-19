@@ -10,7 +10,7 @@ import { offlineList, offlineOne, offlineUpdate, offlineCreate } from '@/lib/off
 import { useAuth } from '@/hooks/use-auth';
 import PlantAvatar from '@/components/PlantAvatar';
 import { G, R, Shadow } from '@/constants/theme';
-import { useAppTheme } from '@/contexts/theme-context';
+import { useAppTheme, formatLength, formatPrecip, formatWeight } from '@/contexts/theme-context';
 import { usePremium } from '@/hooks/use-premium';
 import type { Plant, Harvest, HealthStatus } from '@/lib/types';
 import { addActivityEntryAsync } from '@/lib/activity-log';
@@ -43,7 +43,7 @@ const HEALTH_LABELS: Record<HealthStatus, string> = {
 export default function PlantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
-  const { isDark, colors } = useAppTheme();
+  const { isDark, colors, tempUnit, measureUnit } = useAppTheme();
   const { isPremium } = usePremium();
   const router = useRouter();
   const bg      = isDark ? colors.bg        : G.foam;
@@ -229,7 +229,7 @@ export default function PlantDetailScreen() {
     );
   }
 
-  const totalYieldKg = (plant.total_yield_grams / 1000).toFixed(2);
+  const totalYieldDisplay = formatWeight(plant.total_yield_grams, measureUnit);
 
   const catalogKey = findPlantKey(plant.name);
   const catalogInfo = catalogKey ? PLANT_CATALOG[catalogKey] : null;
@@ -328,7 +328,7 @@ export default function PlantDetailScreen() {
         {plant.water_interval_days && (
           <InfoRow label="Water every" value={`${plant.water_interval_days} days`} tc={textSec} vc={textPrim} />
         )}
-        <InfoRow label="Total yield" value={`${totalYieldKg} kg`} tc={textSec} vc={textPrim} />
+        <InfoRow label="Total yield" value={totalYieldDisplay} tc={textSec} vc={textPrim} />
         {plant.notes && <InfoRow label="Notes" value={plant.notes} tc={textSec} vc={textPrim} />}
       </View>
 
@@ -363,7 +363,7 @@ export default function PlantDetailScreen() {
               <View style={[styles.specChip, { backgroundColor: isDark ? colors.bgElement : '#f3f0ff', borderColor: isDark ? colors.border : '#b197fc' }]}>
                 <Text style={styles.specChipEmoji}>📏</Text>
                 <Text style={[styles.specChipLabel, { color: textSec }]}>Spacing</Text>
-                <Text style={[styles.specChipValue, { color: textPrim }]}>{catalogInfo.spacingCm}cm / {Math.round(catalogInfo.spacingCm / 2.54)}"</Text>
+                <Text style={[styles.specChipValue, { color: textPrim }]}>{formatLength(catalogInfo.spacingCm!, measureUnit)}</Text>
               </View>
             )}
             {catalogInfo.daysToMaturity && (
@@ -384,11 +384,23 @@ export default function PlantDetailScreen() {
                   const cool = ['lettuce','spinach','kale','broccoli','cabbage','cauliflower','pea','carrot','radish','beet','chard','arugula','bok_choy','collard_greens'].includes(catalogKey ?? '');
                   if (cool) return 'Direct sow or transplant 4–6 weeks before last spring frost. Cold-tolerant — ideal for early spring or fall planting.';
                   if ((catalogInfo.daysToMaturity?.min ?? 0) >= 60) return 'Start seeds indoors 6–8 weeks before last frost. Transplant outdoors after all frost risk has passed.';
-                  return 'Direct sow outdoors after last frost date when soil is warm (60°F / 15°C+).';
+                  return `Direct sow outdoors after last frost date when soil is warm (${tempUnit === 'F' ? '60°F' : '15°C'}+).`;
                 })()}
               </Text>
               <Text style={[styles.sowingText, { color: textSec, marginTop: 4 }]}>
-                Seed depth: {catalogInfo.spacingCm ? `${Math.round(catalogInfo.spacingCm * 0.15)}–${Math.round(catalogInfo.spacingCm * 0.25)} cm (¼–½")` : '1–2 cm (½")'}
+                {(() => {
+                if (!catalogInfo.spacingCm) {
+                  return `Seed depth: ${measureUnit === 'us' ? '½–¾"' : '1–2 cm'}`;
+                }
+                const minCm = Math.round(catalogInfo.spacingCm * 0.15);
+                const maxCm = Math.round(catalogInfo.spacingCm * 0.25);
+                if (measureUnit === 'us') {
+                  const minIn = (minCm / 2.54).toFixed(1);
+                  const maxIn = (maxCm / 2.54).toFixed(1);
+                  return `Seed depth: ${minIn}–${maxIn}"`;
+                }
+                return `Seed depth: ${minCm}–${maxCm} cm`;
+              })()}
               </Text>
             </View>
           )}

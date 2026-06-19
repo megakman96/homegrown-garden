@@ -3,6 +3,7 @@ import { useColorScheme } from 'react-native';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type TempUnit = 'C' | 'F';
+export type MeasureUnit = 'metric' | 'us';
 export type WaterTime = 'morning' | 'afternoon' | 'evening';
 
 const DARK_COLORS = {
@@ -34,6 +35,8 @@ interface AppThemeCtx {
   colors: typeof LIGHT_COLORS;
   tempUnit: TempUnit;
   setTempUnit: (u: TempUnit) => void;
+  measureUnit: MeasureUnit;
+  setMeasureUnit: (u: MeasureUnit) => void;
   waterTime: WaterTime;
   setWaterTime: (t: WaterTime) => void;
 }
@@ -41,6 +44,32 @@ interface AppThemeCtx {
 export function formatTemp(celsius: number, unit: TempUnit): string {
   if (unit === 'F') return `${Math.round(celsius * 9 / 5 + 32)}°F`;
   return `${Math.round(celsius)}°C`;
+}
+
+export function formatLength(cm: number, unit: MeasureUnit): string {
+  if (unit === 'us') {
+    const inches = cm / 2.54;
+    if (inches < 12) return `${Math.round(inches)}"`;
+    const feet = Math.floor(inches / 12);
+    const rem = Math.round(inches % 12);
+    return rem > 0 ? `${feet} ft ${rem}"` : `${feet} ft`;
+  }
+  return `${Math.round(cm)} cm`;
+}
+
+export function formatPrecip(mm: number, unit: MeasureUnit): string {
+  if (unit === 'us') return `${(mm / 25.4).toFixed(2)}"`;
+  return `${Math.round(mm)} mm`;
+}
+
+export function formatWeight(grams: number, unit: MeasureUnit): string {
+  if (unit === 'us') {
+    const oz = grams / 28.35;
+    if (oz >= 16) return `${(oz / 16).toFixed(1)} lbs`;
+    return `${Math.round(oz)} oz`;
+  }
+  if (grams >= 1000) return `${(grams / 1000).toFixed(2)} kg`;
+  return `${Math.round(grams)} g`;
 }
 
 async function loadPref(key: string): Promise<string | null> {
@@ -68,6 +97,8 @@ const AppThemeContext = createContext<AppThemeCtx>({
   colors: LIGHT_COLORS,
   tempUnit: 'C',
   setTempUnit: () => {},
+  measureUnit: 'metric',
+  setMeasureUnit: () => {},
   waterTime: 'morning',
   setWaterTime: () => {},
 });
@@ -76,6 +107,7 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const system = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>('system');
   const [tempUnit, setTempUnitState] = useState<TempUnit>('C');
+  const [measureUnit, setMeasureUnitState] = useState<MeasureUnit>('metric');
   const [waterTime, setWaterTimeState] = useState<WaterTime>('morning');
 
   useEffect(() => {
@@ -86,6 +118,8 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
       }
       const savedUnit = await loadPref('hg_temp_unit');
       if (savedUnit === 'C' || savedUnit === 'F') setTempUnitState(savedUnit);
+      const savedMeasure = await loadPref('hg_measure_unit');
+      if (savedMeasure === 'metric' || savedMeasure === 'us') setMeasureUnitState(savedMeasure);
       const savedWaterTime = await loadPref('hg_water_time');
       if (savedWaterTime === 'morning' || savedWaterTime === 'afternoon' || savedWaterTime === 'evening') {
         setWaterTimeState(savedWaterTime);
@@ -103,6 +137,11 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
     savePref('hg_temp_unit', u);
   }
 
+  function setMeasureUnit(u: MeasureUnit) {
+    setMeasureUnitState(u);
+    savePref('hg_measure_unit', u);
+  }
+
   function setWaterTime(t: WaterTime) {
     setWaterTimeState(t);
     savePref('hg_water_time', t);
@@ -112,7 +151,7 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
 
   return (
-    <AppThemeContext.Provider value={{ mode, setMode, isDark, colors, tempUnit, setTempUnit, waterTime, setWaterTime }}>
+    <AppThemeContext.Provider value={{ mode, setMode, isDark, colors, tempUnit, setTempUnit, measureUnit, setMeasureUnit, waterTime, setWaterTime }}>
       {children}
     </AppThemeContext.Provider>
   );
