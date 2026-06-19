@@ -2,6 +2,14 @@
 const fs = require('fs');
 const path = require('path');
 
+// Stamp the service worker cache version so every deploy forces a new SW install
+const swPath = path.join(__dirname, '../dist/sw.js');
+if (fs.existsSync(swPath)) {
+  const build = Date.now().toString();
+  fs.writeFileSync(swPath, fs.readFileSync(swPath, 'utf8').replace('__BUILD__', build));
+  console.log(`✅ Stamped SW cache version: homegrown-${build}`);
+}
+
 const htmlPath = path.join(__dirname, '../dist/index.html');
 let html = fs.readFileSync(htmlPath, 'utf8');
 
