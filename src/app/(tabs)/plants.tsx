@@ -18,8 +18,17 @@ import {
   type CatalogEntry,
 } from '@/lib/plant-catalog';
 import { layoutFromGarden, TILE_COLORS, type GardenLayout } from '@/lib/garden-layout';
+import { loadGardenLocation } from '@/lib/weather';
+import { fetchZoneForCoords, getZoneViability } from '@/lib/frost-dates';
+import { findPlantKey } from '@/lib/plant-catalog';
 import type { Garden } from '@/lib/types';
 import type { Plant } from '@/lib/types';
+
+const COOL_SEASON_KEYS = new Set([
+  'lettuce','spinach','kale','broccoli','cabbage','cauliflower','pea',
+  'carrot','radish','beet','chard','arugula','bok_choy','collard_greens',
+  'kohlrabi','turnip','parsnip','rutabaga','brussels_sprouts','celery',
+]);
 
 type CatalogItem = { key: string; entry: CatalogEntry };
 
@@ -55,6 +64,7 @@ export default function PlantCatalogueScreen() {
   const [wizardGarden, setWizardGarden] = useState<Garden | null>(null);
   const [wizardGardenPlants, setWizardGardenPlants] = useState<Plant[]>([]);
   const [wizardTile, setWizardTile] = useState<{ row: number; col: number } | null>(null);
+  const [wizardZone, setWizardZone] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useFocusEffect(useCallback(() => {
@@ -77,17 +87,24 @@ export default function PlantCatalogueScreen() {
     setWizardGarden(null);
     setWizardGardenPlants([]);
     setWizardTile(null);
+    setWizardZone(null);
   }
 
   async function selectWizardGarden(garden: Garden) {
     setWizardGarden(garden);
     setWizardTile(null);
+    setWizardZone(null);
     setWizardStep('tile');
     if (user) {
       offlineList('plants', user.id, `garden_id = "${garden.id}"`)
         .then(data => setWizardGardenPlants(data as any))
         .catch(() => {});
     }
+    // Fetch zone for this garden in the background
+    loadGardenLocation(garden as any)
+      .then(loc => loc ? fetchZoneForCoords(loc.latitude, loc.longitude) : null)
+      .then(zone => { if (zone) setWizardZone(zone); })
+      .catch(() => {});
   }
 
   async function confirmPlace() {
@@ -101,6 +118,39 @@ export default function PlantCatalogueScreen() {
         return;
       }
     }
+
+    // Zone viability warning
+    if (wizardZone) {
+      const catalogKey = findPlantKey(selected.entry.name);
+      const isCool = COOL_SEASON_KEYS.has(catalogKey ?? '');
+      const viability = getZoneViability(catalogKey, wizardZone, isCool);
+      if (viability.emoji === '❌') {
+        const proceed = await new Promise<boolean>(resolve => {
+          Alert.alert(
+            `⚠️ Zone Mismatch`,
+            `${selected.entry.name} is not recommended for Zone ${wizardZone.toUpperCase()}.\n\n${viability.label}.\n\nPlanting it here is unlikely to succeed. Do you want to add it anyway?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Add Anyway', style: 'destructive', onPress: () => resolve(true) },
+            ],
+          );
+        });
+        if (!proceed) return;
+      } else if (viability.emoji === '⚠️') {
+        const proceed = await new Promise<boolean>(resolve => {
+          Alert.alert(
+            `⚠️ Marginal Zone`,
+            `${selected.entry.name} may struggle in Zone ${wizardZone.toUpperCase()}.\n\n${viability.label}.\n\nWith extra care it may still succeed. Add it?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Add Anyway', style: 'default', onPress: () => resolve(true) },
+            ],
+          );
+        });
+        if (!proceed) return;
+      }
+    }
+
     setSaving(true);
     try {
       const entry = selected.entry;

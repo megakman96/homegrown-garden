@@ -145,15 +145,22 @@ export function getZoneWaterAdjustment(zone: string): number {
 }
 
 const TROPICAL_KEYS = new Set([
-  'banana','mango','avocado','papaya','pineapple','coconut','lychee','guava',
-  'passion_fruit','dragon_fruit','jackfruit',
+  'banana','plantain','mango','avocado','papaya','pineapple','coconut','lychee','guava',
+  'passion_fruit','dragon_fruit','jackfruit','rambutan','starfruit','mangosteen',
+  'soursop','breadfruit','cherimoya','water_spinach','moringa','luffa','snake_gourd',
+  'winter_melon','bitter_melon','pandan','vanilla','allspice','black_pepper_vine',
+  'heliconia','torch_ginger','bird_of_paradise','plumeria','bougainvillea',
+  'cassava','taro','yardlong_bean','pigeon_pea','sorghum','calabash',
 ]);
 const SUBTROPICAL_KEYS = new Set([
   'lemon','lime','orange','grapefruit','tangerine','kumquat','fig','pomegranate',
-  'citrus','olive','pomelo',
+  'olive','pomelo','feijoa','loquat','carambola','tamarind','jujube',
+  'hibiscus','cardamom','galangal','turmeric','ginger','ashwagandha',
 ]);
 const COLD_TENDER_KEYS = new Set([
-  'okra','sweet_potato','ginger','turmeric','taro','yam',
+  'okra','sweet_potato','taro','yam','water_yam','chayote',
+  'asian_eggplant','cowpea','mung_bean','adzuki_bean','peanut','lima_bean',
+  'rice','water_chestnut','lotus_root',
 ]);
 
 export interface ZoneViability {
