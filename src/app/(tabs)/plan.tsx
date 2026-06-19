@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Modal, Platform, Alert,
@@ -51,6 +51,24 @@ async function savePlans(plans: SavedPlan[]): Promise<void> {
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     await AsyncStorage.setItem(STORAGE_KEY, json);
   } catch {}
+}
+
+// ─── Web-safe alerts ──────────────────────────────────────────────────────────
+
+function alertOk(title: string, message: string) {
+  if (Platform.OS === 'web') { window.alert(`${title}\n\n${message}`); }
+  else Alert.alert(title, message);
+}
+
+function alertConfirm(title: string, message: string, onConfirm: () => void) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+  } else {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onConfirm },
+    ]);
+  }
 }
 
 // ─── Plan computation ─────────────────────────────────────────────────────────
@@ -151,10 +169,16 @@ export default function PlanScreen() {
   const [showPicker, setShowPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
-  // Convert modal
-  const [showConvert, setShowConvert] = useState(false);
-  const [convertName, setConvertName] = useState('');
-  const [converting, setConverting]   = useState(false);
+  // Garden wizard
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState<'details' | 'placement'>('details');
+  const [wizardName, setWizardName] = useState('');
+  const [wizardRows, setWizardRows] = useState(6);
+  const [wizardCols, setWizardCols] = useState(8);
+  // cellKey `${row}_${col}` → plantKey
+  const [wizardPlacements, setWizardPlacements] = useState<Record<string, string>>({});
+  const [wizardActivePlant, setWizardActivePlant] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
 
   useEffect(() => { loadPlans().then(setSavedPlans); }, []);
 
@@ -194,7 +218,18 @@ export default function PlanScreen() {
   }
 
   async function savePlan() {
-    if (!planName.trim()) { Alert.alert('Name required', 'Give your plan a name before saving.'); return; }
+    if (!planName.trim()) {
+      alertOk('Name required', 'Give your plan a name before saving.');
+      return;
+    }
+    // Duplicate name+year check (excluding the plan currently being edited)
+    const duplicate = savedPlans.find(
+      p => p.id !== activeId && p.name.trim().toLowerCase() === planName.trim().toLowerCase() && p.year === planYear
+    );
+    if (duplicate) {
+      alertOk('Duplicate plan', `A plan named "${planName.trim()}" for ${planYear} already exists. Use a different name or year.`);
+      return;
+    }
     const updated: SavedPlan = {
       id: activeId ?? `plan_${Date.now()}`,
       name: planName.trim(),
@@ -211,61 +246,96 @@ export default function PlanScreen() {
     setSavedPlans(next);
     setActiveId(updated.id);
     await savePlans(next);
-    Alert.alert('Saved!', `"${updated.name}" saved to your plans.`);
+    alertOk('Saved!', `"${updated.name}" saved to your plans.`);
   }
 
   async function deletePlan(id: string) {
-    Alert.alert('Delete Plan', 'Remove this plan?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        const next = savedPlans.filter(p => p.id !== id);
-        setSavedPlans(next);
-        await savePlans(next);
-        if (activeId === id) newPlan();
-      }},
-    ]);
+    alertConfirm('Delete Plan', 'Remove this plan?', async () => {
+      const next = savedPlans.filter(p => p.id !== id);
+      setSavedPlans(next);
+      await savePlans(next);
+      if (activeId === id) newPlan();
+    });
   }
 
+  // ── Garden wizard ─────────────────────────────────────────────────────────
+
+  function openWizard() {
+    if (!user) { alertOk('Sign in required', 'You must be signed in to create a garden.'); return; }
+    if (selectedKeys.length === 0) { alertOk('No plants', 'Add plants to your plan first.'); return; }
+    setWizardName(planName);
+    setWizardStep('details');
+    setWizardRows(6);
+    setWizardCols(8);
+    setWizardPlacements({});
+    setWizardActivePlant(selectedKeys[0] ?? null);
+    setShowWizard(true);
+  }
+
+  function handleCellPress(row: number, col: number) {
+    const key = `${row}_${col}`;
+    if (!wizardActivePlant) {
+      setWizardPlacements(prev => { const n = { ...prev }; delete n[key]; return n; });
+      return;
+    }
+    setWizardPlacements(prev =>
+      prev[key] === wizardActivePlant
+        ? (() => { const n = { ...prev }; delete n[key]; return n; })()
+        : { ...prev, [key]: wizardActivePlant }
+    );
+  }
+
+  const placedCount = Object.keys(wizardPlacements).length;
+
   async function convertToGarden() {
-    if (!user || !convertName.trim()) return;
+    if (!user || !wizardName.trim()) return;
+    if (placedCount === 0) {
+      alertOk('No plants placed', 'Tap a plant, then tap grid cells to place it before creating the garden.');
+      return;
+    }
     setConverting(true);
     try {
       const garden = await pb.collection('gardens').create({
         user_id: user.id,
-        name: convertName.trim(),
-        rows: 6,
-        cols: 8,
+        name: wizardName.trim(),
+        rows: wizardRows,
+        cols: wizardCols,
         sun_exposure: 'full_sun',
         year: planYear,
       });
 
-      // Add each plant to the garden
-      let row = 0;
-      let col = 0;
-      for (const key of selectedKeys) {
-        const entry = PLANT_CATALOG[key];
+      for (const [cellKey, plantKey] of Object.entries(wizardPlacements)) {
+        const [rowStr, colStr] = cellKey.split('_');
+        const entry = PLANT_CATALOG[plantKey];
         if (!entry) continue;
         await pb.collection('plants').create({
           garden_id: garden.id,
           user_id:   user.id,
           name:      entry.name,
-          row, col,
+          row:       parseInt(rowStr, 10),
+          col:       parseInt(colStr, 10),
           water_interval_days: entry.waterIntervalDays,
           health_status: 'healthy',
           total_yield_grams: 0,
         }).catch(() => {});
-        col++;
-        if (col >= 8) { col = 0; row++; }
       }
 
-      setShowConvert(false);
-      setConvertName('');
-      Alert.alert('Garden created!', `"${convertName.trim()}" has been added to your gardens.`, [
-        { text: 'Go to Garden', onPress: () => router.push('/(tabs)/garden') },
-        { text: 'Stay here' },
-      ]);
+      setShowWizard(false);
+      setWizardPlacements({});
+      if (Platform.OS === 'web') {
+        if (window.confirm(`"${wizardName.trim()}" created with ${placedCount} plant${placedCount !== 1 ? 's' : ''}!\n\nGo to Garden view?`)) {
+          router.push('/(tabs)/garden');
+        }
+      } else {
+        Alert.alert('Garden created!', `"${wizardName.trim()}" has been added to your gardens.`, [
+          { text: 'Go to Garden', onPress: () => router.push('/(tabs)/garden') },
+          { text: 'Stay here' },
+        ]);
+      }
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not create garden');
+      const msg = e?.message ?? 'Could not create garden.';
+      if (Platform.OS === 'web') { window.alert(`Error: ${msg}`); }
+      else Alert.alert('Error', msg);
     } finally {
       setConverting(false);
     }
@@ -318,36 +388,172 @@ export default function PlanScreen() {
     </Modal>
   );
 
-  // ── Convert modal ─────────────────────────────────────────────────────────
+  // ── Garden wizard modal ───────────────────────────────────────────────────
 
-  const convertModal = (
-    <Modal visible={showConvert} transparent animationType="fade">
-      <View style={[styles.modalBackdrop, styles.modalBackdropCenter]}>
-        <View style={[styles.modal, { backgroundColor: cardBg }, styles.modalCenter]}>
-          <Text style={[styles.modalTitle, { color: textPrim }]}>🌱 Create Garden from Plan</Text>
-          <Text style={[styles.convertHint, { color: textSec }]}>
-            {selectedKeys.length} plants will be added to a new {planYear} garden.
-          </Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
-            placeholder="Garden name (e.g. Backyard 2026)"
-            placeholderTextColor={textSec}
-            value={convertName}
-            onChangeText={setConvertName}
-            autoFocus
-          />
-          <View style={styles.convertButtons}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowConvert(false)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, (converting || !convertName.trim()) && { opacity: 0.5 }]}
-              onPress={convertToGarden}
-              disabled={converting || !convertName.trim()}
-            >
-              <Text style={styles.buttonText}>{converting ? 'Creating…' : 'Create Garden'}</Text>
-            </TouchableOpacity>
-          </View>
+  const CELL = 36;
+
+  const wizardModal = (
+    <Modal visible={showWizard} transparent animationType="fade">
+      <View style={styles.wizardBackdrop}>
+        <View style={[styles.wizardSheet, { backgroundColor: cardBg }]}>
+
+          {wizardStep === 'details' ? (
+            <>
+              <Text style={[styles.wizardTitle, { color: textPrim }]}>🌻 Create Garden from Plan</Text>
+              <Text style={[styles.wizardSub, { color: textSec }]}>
+                {selectedKeys.length} plants from "{planName}" will be placed in a new garden.
+              </Text>
+
+              <Text style={[styles.configLabel, { color: textSec, marginTop: 16, marginBottom: 6 }]}>Garden name</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
+                value={wizardName}
+                onChangeText={setWizardName}
+                placeholder={`My ${planYear} Garden`}
+                placeholderTextColor={textSec}
+                autoFocus
+              />
+
+              <Text style={[styles.configLabel, { color: textSec, marginTop: 14, marginBottom: 10 }]}>Grid size</Text>
+              <View style={styles.gridSizeRow}>
+                <View style={styles.gridSizeGroup}>
+                  <Text style={[styles.gridSizeLabel, { color: textSec }]}>Rows</Text>
+                  <View style={styles.stepperRow}>
+                    <TouchableOpacity style={[styles.stepperBtn, { backgroundColor: inputBg }]} onPress={() => setWizardRows(r => Math.max(2, r - 1))}>
+                      <Text style={[styles.stepperBtnText, { color: textPrim }]}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.stepperVal, { color: textPrim }]}>{wizardRows}</Text>
+                    <TouchableOpacity style={[styles.stepperBtn, { backgroundColor: inputBg }]} onPress={() => setWizardRows(r => Math.min(16, r + 1))}>
+                      <Text style={[styles.stepperBtnText, { color: textPrim }]}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <Text style={[{ color: textSec, fontSize: 20, alignSelf: 'flex-end', paddingBottom: 6, paddingHorizontal: 8 }]}>×</Text>
+                <View style={styles.gridSizeGroup}>
+                  <Text style={[styles.gridSizeLabel, { color: textSec }]}>Columns</Text>
+                  <View style={styles.stepperRow}>
+                    <TouchableOpacity style={[styles.stepperBtn, { backgroundColor: inputBg }]} onPress={() => setWizardCols(c => Math.max(2, c - 1))}>
+                      <Text style={[styles.stepperBtnText, { color: textPrim }]}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.stepperVal, { color: textPrim }]}>{wizardCols}</Text>
+                    <TouchableOpacity style={[styles.stepperBtn, { backgroundColor: inputBg }]} onPress={() => setWizardCols(c => Math.min(20, c + 1))}>
+                      <Text style={[styles.stepperBtnText, { color: textPrim }]}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.wizardFooter, { marginTop: 24 }]}>
+                <TouchableOpacity style={[styles.cancelBtn, { borderColor: border }]} onPress={() => setShowWizard(false)}>
+                  <Text style={[styles.cancelBtnText, { color: textSec }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.nextBtn, !wizardName.trim() && { opacity: 0.4 }]}
+                  onPress={() => setWizardStep('placement')}
+                  disabled={!wizardName.trim()}
+                >
+                  <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtnGrad}>
+                    <Text style={styles.nextBtnText}>Next: Place Plants →</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.wizardPlacementHeader}>
+                <Text style={[styles.wizardTitle, { color: textPrim }]}>📍 Place Plants</Text>
+                <Text style={[styles.wizardSub, { color: textSec }]}>
+                  Tap a plant below, then tap grid cells to place it. Tap a placed cell again to remove.
+                </Text>
+              </View>
+
+              {/* Plant palette */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.palette} contentContainerStyle={styles.paletteContent}>
+                <TouchableOpacity
+                  style={[styles.paletteChip, { backgroundColor: inputBg, borderColor: wizardActivePlant === null ? '#e03131' : border }]}
+                  onPress={() => setWizardActivePlant(null)}
+                >
+                  <Text style={{ fontSize: 18 }}>🗑️</Text>
+                  <Text style={[styles.paletteChipLabel, { color: textSec }]}>Erase</Text>
+                </TouchableOpacity>
+                {selectedKeys.map(k => {
+                  const entry = PLANT_CATALOG[k];
+                  if (!entry) return null;
+                  const count = Object.values(wizardPlacements).filter(v => v === k).length;
+                  const isActive = wizardActivePlant === k;
+                  return (
+                    <TouchableOpacity
+                      key={k}
+                      style={[styles.paletteChip, { backgroundColor: isActive ? (isDark ? '#1a3a1a' : '#d8f3dc') : inputBg, borderColor: isActive ? G.sage : border }]}
+                      onPress={() => setWizardActivePlant(isActive ? null : k)}
+                    >
+                      <Text style={{ fontSize: 20 }}>{getPlantIcon(entry.name).emoji}</Text>
+                      <Text style={[styles.paletteChipLabel, { color: textPrim }]} numberOfLines={1}>{entry.name}</Text>
+                      {count > 0 && (
+                        <View style={styles.paletteCount}>
+                          <Text style={styles.paletteCountText}>×{count}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Grid */}
+              <ScrollView horizontal showsHorizontalScrollIndicator style={styles.gridScroll}>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
+                  {Array.from({ length: wizardRows }, (_, row) => (
+                    <View key={row} style={styles.gridRow}>
+                      {Array.from({ length: wizardCols }, (_, col) => {
+                        const cellKey = `${row}_${col}`;
+                        const plantKey = wizardPlacements[cellKey];
+                        const plantEntry = plantKey ? PLANT_CATALOG[plantKey] : null;
+                        return (
+                          <TouchableOpacity
+                            key={col}
+                            style={[
+                              styles.gridCell,
+                              { width: CELL, height: CELL, borderColor: isDark ? colors.border : G.mist },
+                              plantEntry && { backgroundColor: isDark ? '#1a3a1a' : '#d8f3dc' },
+                            ]}
+                            onPress={() => handleCellPress(row, col)}
+                            activeOpacity={0.7}
+                          >
+                            {plantEntry ? (
+                              <Text style={{ fontSize: CELL * 0.52, lineHeight: CELL }}>
+                                {getPlantIcon(plantEntry.name).emoji}
+                              </Text>
+                            ) : wizardActivePlant ? (
+                              <Text style={{ fontSize: 14, color: isDark ? colors.border : G.mist }}>+</Text>
+                            ) : null}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </ScrollView>
+              </ScrollView>
+
+              <Text style={[styles.wizardPlacedCount, { color: textSec }]}>
+                {placedCount === 0 ? 'No plants placed yet' : `${placedCount} plant${placedCount !== 1 ? 's' : ''} placed in ${wizardName}`}
+              </Text>
+
+              <View style={styles.wizardFooter}>
+                <TouchableOpacity style={[styles.cancelBtn, { borderColor: border }]} onPress={() => setWizardStep('details')}>
+                  <Text style={[styles.cancelBtnText, { color: textSec }]}>← Back</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.nextBtn, (converting || placedCount === 0) && { opacity: 0.4 }]}
+                  onPress={convertToGarden}
+                  disabled={converting || placedCount === 0}
+                >
+                  <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtnGrad}>
+                    <Text style={styles.nextBtnText}>{converting ? 'Creating…' : `🌱 Create Garden (${placedCount})`}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -492,21 +698,16 @@ export default function PlanScreen() {
       )}
 
       {/* Save + Convert buttons */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity style={[styles.saveBtn, { borderColor: G.sage }]} onPress={savePlan}>
-          <Text style={[styles.saveBtnText, { color: G.hunter }]}>💾 Save Plan</Text>
+      <TouchableOpacity style={[styles.saveBtn, { borderColor: G.sage, marginTop: 16 }]} onPress={savePlan}>
+        <Text style={[styles.saveBtnText, { color: G.hunter }]}>💾 Save Plan</Text>
+      </TouchableOpacity>
+      {selectedKeys.length > 0 && (
+        <TouchableOpacity style={[styles.convertBtn, { marginTop: 8 }]} onPress={openWizard}>
+          <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.convertBtnGrad}>
+            <Text style={styles.convertBtnText}>🌻 Convert to Garden…</Text>
+          </LinearGradient>
         </TouchableOpacity>
-        {selectedKeys.length > 0 && (
-          <TouchableOpacity
-            style={styles.convertBtn}
-            onPress={() => { setConvertName(planName); setShowConvert(true); }}
-          >
-            <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.convertBtnGrad}>
-              <Text style={styles.convertBtnText}>🌻 Convert to Garden</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
-      </View>
+      )}
     </>
   );
 
@@ -553,7 +754,7 @@ export default function PlanScreen() {
           </ScrollView>
         </View>
         {pickerModal}
-        {convertModal}
+        {wizardModal}
       </View>
     );
   }
@@ -578,7 +779,7 @@ export default function PlanScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
       {pickerModal}
-      {convertModal}
+      {wizardModal}
     </View>
   );
 }
@@ -647,12 +848,11 @@ const styles = StyleSheet.create({
   selectedChip:      { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: R.md, borderWidth: 1, padding: 10 },
   selectedChipText:  { flex: 1, fontSize: 14, fontWeight: '600' },
 
-  actionRow:         { flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' },
-  saveBtn:           { flex: 1, borderRadius: R.md, borderWidth: 1.5, paddingVertical: 11, alignItems: 'center' },
-  saveBtnText:       { fontSize: 14, fontWeight: '700' },
-  convertBtn:        { flex: 2, borderRadius: R.lg, overflow: 'hidden', ...Shadow.soft },
-  convertBtnGrad:    { paddingVertical: 11, alignItems: 'center' },
-  convertBtnText:    { color: G.cloud, fontWeight: '700', fontSize: 14 },
+  saveBtn:           { borderRadius: R.md, borderWidth: 2, paddingVertical: 12, alignItems: 'center' },
+  saveBtnText:       { fontSize: 15, fontWeight: '700' },
+  convertBtn:        { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  convertBtnGrad:    { paddingVertical: 13, alignItems: 'center' },
+  convertBtnText:    { color: G.cloud, fontWeight: '700', fontSize: 15 },
 
   // Plan cards
   planGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
@@ -675,19 +875,13 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
   emptyText:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 
-  // Modals
+  // Modals (picker)
   modalBackdrop:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalBackdropCenter: { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   modal:               { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 32 : 20, paddingTop: 16, maxHeight: '88%' },
   modalCenter:         { width: '100%', maxWidth: 480, borderRadius: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   modalHandle:         { width: 40, height: 4, borderRadius: 2, backgroundColor: '#d0d8d4', alignSelf: 'center', marginBottom: 16 },
-  modalTitle:          { fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  convertHint:         { fontSize: 13, lineHeight: 18, marginBottom: 14 },
-  convertButtons:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  cancelBtn:           { borderRadius: R.md, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: '#fff5f5', borderWidth: 1.5, borderColor: '#ffc9c9' },
-  cancelText:          { color: '#e03131', fontSize: 15, fontWeight: '700' },
-  button:              { backgroundColor: G.hunter, borderRadius: R.md, paddingHorizontal: 24, paddingVertical: 12 },
-  buttonText:          { color: '#fff', fontWeight: '600', fontSize: 15 },
+  modalTitle:          { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   input:               { borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, borderWidth: 1.5, marginBottom: 8 },
   pickerRow:           { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderBottomWidth: 1, gap: 10, borderRadius: 6 },
   pickerEmoji:         { fontSize: 22, width: 32, textAlign: 'center' },
@@ -696,4 +890,40 @@ const styles = StyleSheet.create({
   doneBtn:             { marginTop: 12, borderRadius: R.lg, overflow: 'hidden', ...Shadow.soft },
   doneBtnGrad:         { paddingVertical: 13, alignItems: 'center' },
   doneBtnText:         { color: G.cloud, fontWeight: '700', fontSize: 15 },
+
+  // Garden wizard
+  wizardBackdrop:         { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  wizardSheet:            { width: '100%', maxWidth: 600, borderRadius: 20, padding: 24, maxHeight: '92%' },
+  wizardTitle:            { fontSize: 19, fontWeight: '800', marginBottom: 4 },
+  wizardSub:              { fontSize: 13, lineHeight: 18, marginBottom: 4 },
+  wizardPlacementHeader:  { marginBottom: 10 },
+  wizardPlacedCount:      { fontSize: 12, textAlign: 'center', marginTop: 8 },
+  wizardFooter:           { flexDirection: 'row', gap: 10, marginTop: 16 },
+  cancelBtn:              { borderRadius: R.md, borderWidth: 1.5, paddingVertical: 11, paddingHorizontal: 18, justifyContent: 'center' },
+  cancelBtnText:          { fontSize: 14, fontWeight: '600' },
+  nextBtn:                { flex: 1, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
+  nextBtnGrad:            { paddingVertical: 12, alignItems: 'center' },
+  nextBtnText:            { color: G.cloud, fontWeight: '700', fontSize: 15 },
+
+  // Grid size steppers
+  gridSizeRow:   { flexDirection: 'row', alignItems: 'center' },
+  gridSizeGroup: { flex: 1 },
+  gridSizeLabel: { fontSize: 13, fontWeight: '500', marginBottom: 6 },
+  stepperRow:    { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepperBtn:    { width: 34, height: 34, borderRadius: R.full, justifyContent: 'center', alignItems: 'center' },
+  stepperBtnText:{ fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  stepperVal:    { fontSize: 20, fontWeight: '800', minWidth: 32, textAlign: 'center' },
+
+  // Plant palette (horizontal chip row)
+  palette:        { marginVertical: 10 },
+  paletteContent: { gap: 8, paddingVertical: 2 },
+  paletteChip:    { alignItems: 'center', borderRadius: R.md, borderWidth: 1.5, paddingHorizontal: 10, paddingVertical: 6, minWidth: 64 },
+  paletteChipLabel:{ fontSize: 10, fontWeight: '600', marginTop: 2, maxWidth: 60, textAlign: 'center' },
+  paletteCount:   { position: 'absolute', top: -4, right: -4, backgroundColor: G.sage, borderRadius: 8, paddingHorizontal: 4 },
+  paletteCountText:{ fontSize: 10, color: '#fff', fontWeight: '700' },
+
+  // Garden grid
+  gridScroll:     { marginVertical: 4 },
+  gridRow:        { flexDirection: 'row' },
+  gridCell:       { borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
 });
