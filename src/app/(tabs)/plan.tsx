@@ -175,6 +175,7 @@ export default function PlanScreen() {
   const [wizardName, setWizardName] = useState('');
   const [wizardRows, setWizardRows] = useState(6);
   const [wizardCols, setWizardCols] = useState(8);
+  const [wizardSun, setWizardSun] = useState<'full_sun' | 'partial_sun' | 'shade'>('full_sun');
   // cellKey `${row}_${col}` → plantKey
   const [wizardPlacements, setWizardPlacements] = useState<Record<string, string>>({});
   const [wizardActivePlant, setWizardActivePlant] = useState<string | null>(null);
@@ -267,6 +268,7 @@ export default function PlanScreen() {
     setWizardStep('details');
     setWizardRows(6);
     setWizardCols(8);
+    setWizardSun('full_sun');
     setWizardPlacements({});
     setWizardActivePlant(selectedKeys[0] ?? null);
     setShowWizard(true);
@@ -300,7 +302,7 @@ export default function PlanScreen() {
         name: wizardName.trim(),
         rows: wizardRows,
         cols: wizardCols,
-        sun_exposure: 'full_sun',
+        sun_exposure: wizardSun,
         year: planYear,
       });
 
@@ -441,6 +443,24 @@ export default function PlanScreen() {
                     </TouchableOpacity>
                   </View>
                 </View>
+              </View>
+
+              <Text style={[styles.configLabel, { color: textSec, marginTop: 18, marginBottom: 10 }]}>Sun exposure</Text>
+              <View style={styles.sunRow}>
+                {([
+                  { key: 'full_sun',    emoji: '☀️',  label: 'Full Sun' },
+                  { key: 'partial_sun', emoji: '⛅',  label: 'Partial' },
+                  { key: 'shade',       emoji: '🌑',  label: 'Shade' },
+                ] as { key: 'full_sun' | 'partial_sun' | 'shade'; emoji: string; label: string }[]).map(({ key, emoji, label }) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.sunBtn, { borderColor: wizardSun === key ? G.sage : border, backgroundColor: wizardSun === key ? (isDark ? '#1a3a1a' : '#d8f3dc') : inputBg }]}
+                    onPress={() => setWizardSun(key)}
+                  >
+                    <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                    <Text style={[styles.sunBtnLabel, { color: wizardSun === key ? G.hunter : textSec }]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
               <View style={[styles.wizardFooter, { marginTop: 24 }]}>
@@ -904,6 +924,11 @@ const styles = StyleSheet.create({
   nextBtn:                { flex: 1, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   nextBtnGrad:            { paddingVertical: 12, alignItems: 'center' },
   nextBtnText:            { color: G.cloud, fontWeight: '700', fontSize: 15 },
+
+  // Sun exposure picker
+  sunRow:      { flexDirection: 'row', gap: 8 },
+  sunBtn:      { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: R.md, borderWidth: 2, gap: 4 },
+  sunBtnLabel: { fontSize: 11, fontWeight: '600' },
 
   // Grid size steppers
   gridSizeRow:   { flexDirection: 'row', alignItems: 'center' },
