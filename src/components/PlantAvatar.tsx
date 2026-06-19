@@ -35,7 +35,7 @@ export default function PlantAvatar({ name, category, size = 48 }: Props) {
   const fontSize = size * 0.5;
 
   return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: imageUrl ? 'transparent' : bg }]}>
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: 'transparent' }]}>
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
