@@ -230,7 +230,12 @@ export default function AdminScreen() {
         setIconUrls(prev => ({ ...prev, [key]: url }));
         URL.revokeObjectURL(objectUrl);
       } catch (e: any) {
-        Alert.alert('Upload failed', e?.message ?? 'Could not upload icon. Make sure the plant_icons collection exists in PocketBase.');
+        const msg = e?.message ?? 'Could not upload icon.';
+        if (Platform.OS === 'web') {
+          window.alert(`Upload failed: ${msg}\n\nIf you were just logged out, refresh the page and log in again.`);
+        } else {
+          Alert.alert('Upload failed', msg);
+        }
       } finally {
         setUploadingKey(null);
         pendingUploadKey.current = null;
@@ -254,7 +259,9 @@ export default function AdminScreen() {
       invalidateIconCache();
       setIconUrls(prev => { const n = { ...prev }; delete n[key]; return n; });
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not remove icon');
+      const msg = e?.message ?? 'Could not remove icon';
+      if (Platform.OS === 'web') window.alert(`Error: ${msg}`);
+      else Alert.alert('Error', msg);
     } finally {
       setUploadingKey(null);
     }
