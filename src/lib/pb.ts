@@ -45,6 +45,14 @@ function createStore() {
 export const pb = new PocketBase(PB_URL, createStore());
 pb.autoCancellation(false);
 
+// Auto-clear stale token on 401 so AuthGuard redirects to login
+pb.afterSend = (response, data) => {
+  if (response.status === 401) {
+    pb.authStore.clear();
+  }
+  return data;
+};
+
 export function fileUrl(
   record: { collectionId: string; collectionName: string; id: string },
   filename: string,
