@@ -392,6 +392,9 @@ export default function NewGardenScreen() {
                   )}
                 </>
               )}
+              <Text style={[styles.locationPrivacyNote, { color: textSec }]}>
+                🔒 Your location is only used to look up your USDA growing zone and local weather. We never store, share, or sell your location data.
+              </Text>
             </View>
           )}
         </Animated.View>
@@ -588,9 +591,10 @@ const styles = StyleSheet.create({
   },
   locationPin:    { fontSize: 24 },
   locationName:   { fontSize: 15, fontWeight: '700', color: G.forest },
-  locationCoords: { fontSize: 11, color: G.stone, marginTop: 2 },
-  changeLoc:      { paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, backgroundColor: G.dew },
-  changeLocText:  { fontSize: 12, color: G.hunter, fontWeight: '600' },
+  locationCoords:      { fontSize: 11, color: G.stone, marginTop: 2 },
+  changeLoc:           { paddingHorizontal: 10, paddingVertical: 6, borderRadius: R.sm, backgroundColor: G.dew },
+  changeLocText:       { fontSize: 12, color: G.hunter, fontWeight: '600' },
+  locationPrivacyNote: { fontSize: 11, lineHeight: 16, marginTop: 16, textAlign: 'center', paddingHorizontal: 8 },
   gpsBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: G.dew, borderRadius: R.lg, paddingVertical: 14, paddingHorizontal: 20,

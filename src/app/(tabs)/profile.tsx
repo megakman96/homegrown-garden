@@ -148,8 +148,8 @@ export default function ProfileScreen() {
 
   function confirmDeleteAccount() {
     Alert.alert(
-      'Delete Account',
-      'This will permanently delete your account, all gardens, and all plants. This cannot be undone.',
+      '⚠️ Delete Account',
+      'This will completely and permanently delete every bit of your data — your account, all gardens, all plants, all harvest logs, all activity history, and all settings. Nothing is kept or archived.\n\nThis cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete Everything', style: 'destructive', onPress: deleteAccount },

@@ -1496,6 +1496,9 @@ export default function GardenScreen() {
               {editStep === 'location' && (
                 <View style={styles.editSection}>
                   <Text style={styles.editHint}>Used for weather-aware watering advice on the Schedule tab.</Text>
+                  <Text style={[styles.editHint, { color: textSec, marginBottom: 10, fontSize: 12 }]}>
+                    🔒 Your location is only used to look up your USDA growing zone and local weather. We never store, share, or sell your location data.
+                  </Text>
                   {editSelectedLocation ? (
                     <View style={[styles.locationConfirmed, { borderColor: G.sage }]}>
                       <Text style={styles.locationPin}>📍</Text>
