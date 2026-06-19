@@ -24,6 +24,7 @@ import { AppThemeProvider, useAppTheme } from '@/contexts/theme-context';
 import { SyncProvider } from '@/contexts/sync-context';
 import { setupNotificationChannel } from '@/lib/notifications';
 import { initPurchases } from '@/lib/subscription';
+import { checkRainAutoWater } from '@/lib/rain-auto-water';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, user, loading } = useAuth();
@@ -88,6 +89,7 @@ function ThemedApp() {
 
   // Preload plants + gardens into the offline cache as soon as the user is known,
   // so the Plants tab renders instantly instead of loading on first focus.
+  // Also run the rain auto-water check (no-op if weather setting is off or already ran today).
   const preloadedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!user?.id || preloadedRef.current === user.id) return;
@@ -98,6 +100,7 @@ function ThemedApp() {
       }
     }).catch(() => {});
     offlineList('plants', user.id, `user_id = "${user.id}"`).catch(() => {});
+    checkRainAutoWater(user.id).catch(() => {});
   }, [user?.id]);
 
   return (
