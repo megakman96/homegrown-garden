@@ -591,6 +591,234 @@ export async function generateSinglePlantPdf(plant: Plant): Promise<void> {
   }
 }
 
+// ─── Planner report (no PocketBase records required) ─────────────────────────
+
+interface PlannerReportOpts {
+  gardenName: string;
+  year: number;
+  sun: 'full_sun' | 'partial_sun' | 'shade';
+  rows: number;
+  cols: number;
+  placements: Record<string, string>; // `${row}_${col}` → plantKey
+  lastFrost: string;
+  firstFrost: string;
+  planEntries: {
+    key: string;
+    seedStartDate: Date | null;
+    transplantDate: Date | null;
+    directSowDate: Date;
+    harvestStart: Date;
+    harvestEnd: Date;
+  }[];
+}
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function buildPlannerHtml(opts: PlannerReportOpts): string {
+  const { gardenName, year, sun, rows, cols, placements, lastFrost, firstFrost, planEntries } = opts;
+
+  const SUN_LABEL: Record<string, string> = { full_sun: '☀️ Full Sun', partial_sun: '⛅ Partial Sun', shade: '🌑 Shade' };
+  const SUN_BG:    Record<string, string> = { full_sun: '#fff9db', partial_sun: '#ffec99', shade: '#e9ecef' };
+
+  // ── Grid ────────────────────────────────────────────────────────────────────
+  const cellPx = Math.min(56, Math.floor(520 / cols));
+  const gridRows = Array.from({ length: rows }, (_, r) =>
+    `<tr>${Array.from({ length: cols }, (_, c) => {
+      const pk = placements[`${r}_${c}`];
+      const pe = pk ? PLANT_CATALOG[pk] : null;
+      const bg = pe ? '#d8f3dc' : SUN_BG[sun] ?? SUN_BG.full_sun;
+      const icon = pe ? getPlantIcon(pe.name).emoji : '';
+      const name = pe ? (pe.name.length > 9 ? pe.name.slice(0, 8) + '…' : pe.name) : '';
+      return `<td style="
+        width:${cellPx}px;height:${cellPx}px;background:${bg};
+        border:1px solid ${pe ? '#b7e4c7' : '#dee2e6'};
+        text-align:center;vertical-align:middle;padding:2px;line-height:1.1;
+      ">${icon ? `<div style="font-size:${cellPx * 0.38}px;line-height:1.1">${icon}</div><div style="font-size:${Math.max(6, cellPx * 0.14)}px;color:#1b4332;font-weight:600">${name}</div>` : ''}</td>`;
+    }).join('')}</tr>`
+  ).join('');
+
+  // ── Unique placed plants legend ──────────────────────────────────────────────
+  const placedKeys = [...new Set(Object.values(placements))];
+  const legendItems = placedKeys.map(k => {
+    const e = PLANT_CATALOG[k];
+    if (!e) return '';
+    const count = Object.values(placements).filter(v => v === k).length;
+    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #e9ecef">
+      <span style="font-size:16px;width:20px;text-align:center">${getPlantIcon(e.name).emoji}</span>
+      <span style="font-size:11px;font-weight:600;color:#1b4332;flex:1">${e.name}</span>
+      <span style="font-size:10px;color:#52796f">×${count}</span>
+    </div>`;
+  }).join('');
+
+  // ── Planting schedule table ────────────────────────────────────────────────
+  const scheduleRows = planEntries.map((p, i) => {
+    const entry = PLANT_CATALOG[p.key];
+    if (!entry) return '';
+    const cells = Object.entries(placements)
+      .filter(([, v]) => v === p.key)
+      .map(([ck]) => { const [r, c] = ck.split('_'); return `R${+r+1}C${+c+1}`; })
+      .join(', ');
+    const rowBg = i % 2 === 0 ? '#f0f7ee' : '#ffffff';
+    return `<tr style="background:${rowBg}">
+      <td style="padding:7px 8px;font-size:16px;text-align:center">${getPlantIcon(entry.name).emoji}</td>
+      <td style="padding:7px 8px">
+        <div style="font-size:12px;font-weight:700;color:#1b4332">${entry.name}</div>
+        <div style="font-size:9px;color:#52796f">${cells}</div>
+      </td>
+      <td style="padding:7px 8px;font-size:11px;color:#1971c2;text-align:center">${p.seedStartDate ? fmtDate(p.seedStartDate) : '—'}</td>
+      <td style="padding:7px 8px;font-size:11px;color:#2b8a3e;text-align:center">${p.transplantDate ? fmtDate(p.transplantDate) : fmtDate(p.directSowDate)}</td>
+      <td style="padding:7px 8px;font-size:11px;color:#e67700;text-align:center">${p.seedStartDate ? 'Transplant' : 'Direct Sow'}</td>
+      <td style="padding:7px 8px;font-size:11px;color:#2b8a3e;font-weight:600;text-align:center">${fmtDate(p.harvestStart)} – ${fmtDate(p.harvestEnd)}</td>
+    </tr>`;
+  }).join('');
+
+  // ── Plant detail cards ─────────────────────────────────────────────────────
+  const detailCards = planEntries.map(p => {
+    const e = PLANT_CATALOG[p.key];
+    if (!e) return '';
+    const good = (e.goodCompanions ?? []).map(k => PLANT_CATALOG[k]?.name ?? k);
+    const bad  = (e.badCompanions  ?? []).map(k => PLANT_CATALOG[k]?.name ?? k);
+    const maturity = e.daysToMaturity ? `${e.daysToMaturity.min}–${e.daysToMaturity.max} days` : '—';
+    const spacing  = e.spacingCm ? `${e.spacingCm} cm / ${Math.round(e.spacingCm / 2.54)}"` : '—';
+    const waterStr = e.waterIntervalDays ? `Every ${e.waterIntervalDays} days` : '—';
+    return `<div style="break-inside:avoid;background:#f0f7ee;border-radius:10px;padding:14px 16px;border-left:4px solid #52b788;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:28px">${getPlantIcon(e.name).emoji}</span>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:#1b4332">${e.name}</div>
+          ${e.scientificName ? `<div style="font-size:10px;color:#74c69d;font-style:italic">${e.scientificName}</div>` : ''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
+        <div style="background:white;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#52796f;margin-bottom:3px">Maturity</div>
+          <div style="font-size:12px;font-weight:700;color:#e67700">${maturity}</div>
+        </div>
+        <div style="background:white;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#52796f;margin-bottom:3px">Water</div>
+          <div style="font-size:12px;font-weight:700;color:#339af0">${waterStr}</div>
+        </div>
+        <div style="background:white;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#52796f;margin-bottom:3px">Spacing</div>
+          <div style="font-size:12px;font-weight:700;color:#1b4332">${spacing}</div>
+        </div>
+      </div>
+      ${good.length || bad.length ? `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        ${good.length ? `<div style="background:#d8f3dc;border-radius:6px;padding:8px">
+          <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#2b8a3e;margin-bottom:4px">✅ Plant Near</div>
+          <div style="font-size:10px;color:#1b4332">${good.slice(0, 5).join(', ')}${good.length > 5 ? ` +${good.length - 5}` : ''}</div>
+        </div>` : ''}
+        ${bad.length ? `<div style="background:#ffe3e3;border-radius:6px;padding:8px">
+          <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#c92a2a;margin-bottom:4px">❌ Keep Away</div>
+          <div style="font-size:10px;color:#c92a2a">${bad.slice(0, 5).join(', ')}${bad.length > 5 ? ` +${bad.length - 5}` : ''}</div>
+        </div>` : ''}
+      </div>` : ''}
+      ${e.notes ? `<div style="font-size:11px;color:#52796f;font-style:italic;line-height:1.5">💡 ${e.notes}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${gardenName} — Garden Plan ${year}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px 32px; font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; background: white; color: #1b4332; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    @page { margin: 12mm; size: A4 portrait; }
+    h2 { margin: 0 0 4px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #52796f; }
+    table { border-collapse: collapse; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <div>
+      <h1 style="margin:0;font-size:26px;font-weight:800;color:#1b4332;letter-spacing:-0.5px">${gardenName}</h1>
+      <p style="margin:3px 0 0;font-size:12px;color:#52796f">
+        ${year} Garden Plan &nbsp;·&nbsp; ${SUN_LABEL[sun]} &nbsp;·&nbsp; ${rows}×${cols} grid &nbsp;·&nbsp;
+        Last frost: ${lastFrost} &nbsp;·&nbsp; First frost: ${firstFrost} &nbsp;·&nbsp;
+        Printed ${new Date().toLocaleDateString()}
+      </p>
+    </div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#52796f">GardenGrid</div>
+  </div>
+  <div style="height:2px;background:linear-gradient(to right,#52b788,#b7e4c7,transparent);margin-bottom:20px;border-radius:1px"></div>
+
+  <!-- Grid + legend side by side -->
+  <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:24px">
+    <div>
+      <h2 style="margin-bottom:8px">Garden Layout</h2>
+      <table style="border-collapse:separate;border-spacing:2px">${gridRows}</table>
+    </div>
+    <div style="flex:1;min-width:0">
+      <h2 style="margin-bottom:8px">Plants (${placedKeys.length} varieties, ${Object.keys(placements).length} total)</h2>
+      <div>${legendItems}</div>
+    </div>
+  </div>
+
+  <!-- Planting schedule table -->
+  <h2 style="margin-bottom:8px">📅 Planting Schedule</h2>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+    <thead>
+      <tr style="background:#1b4332">
+        <th style="padding:7px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:white"></th>
+        <th style="padding:7px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:white">Plant · Position</th>
+        <th style="padding:7px 8px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:white">Start Indoors</th>
+        <th style="padding:7px 8px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:white">Sow / Transplant</th>
+        <th style="padding:7px 8px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:white">Method</th>
+        <th style="padding:7px 8px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:white">Harvest Window</th>
+      </tr>
+    </thead>
+    <tbody>${scheduleRows}</tbody>
+  </table>
+
+  <!-- Plant detail cards -->
+  <h2 style="margin-bottom:12px">🌿 Plant Details</h2>
+  <div style="columns:2;column-gap:16px">${detailCards}</div>
+
+  <!-- Footer -->
+  <div style="margin-top:24px;padding-top:10px;border-top:1px solid #b7e4c7;display:flex;justify-content:space-between;font-size:9px;color:#52796f">
+    <span>GardenGrid · ${gardenName} · ${year}</span>
+    <span>Generated ${new Date().toLocaleDateString()}</span>
+  </div>
+
+</body>
+</html>`;
+}
+
+export async function printPlannerReport(opts: PlannerReportOpts): Promise<void> {
+  const html = buildPlannerHtml(opts);
+
+  if (Platform.OS === 'web') {
+    const win = window.open('', '_blank');
+    if (!win) { Alert.alert('Blocked', 'Allow popups to open the plan.'); return; }
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 400);
+    return;
+  }
+
+  try {
+    const Print = await import('expo-print');
+    const Sharing = await import('expo-sharing');
+    const { uri } = await Print.printToFileAsync({ html, base64: false });
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(uri, { UTI: 'com.adobe.pdf', mimeType: 'application/pdf' });
+    } else {
+      await Print.printAsync({ uri });
+    }
+  } catch (e: any) {
+    Alert.alert('Print Error', e?.message ?? 'Could not print plan.');
+  }
+}
+
 export async function generateGardenPdf(
   garden: Garden,
   plants: Plant[],

@@ -171,7 +171,7 @@ export default function PlanScreen() {
 
   // Garden wizard
   const [showWizard, setShowWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState<'details' | 'placement'>('details');
+  const [wizardStep, setWizardStep] = useState<'details' | 'placement' | 'review'>('details');
   const [wizardName, setWizardName] = useState('');
   const [wizardRows, setWizardRows] = useState(6);
   const [wizardCols, setWizardCols] = useState(8);
@@ -194,6 +194,19 @@ export default function PlanScreen() {
     () => computePlan(selectedKeys, planYear, lastFrost, firstFrost),
     [selectedKeys, planYear, lastFrost, firstFrost],
   );
+
+  // Derived data for the review step
+  const REVIEW_CELL = 28;
+  const REVIEW_SUN_EMOJI: Record<string, string> = { full_sun: '☀️', partial_sun: '⛅', shade: '🌑' };
+  const REVIEW_SUN_LBL:   Record<string, string> = { full_sun: 'Full Sun', partial_sun: 'Partial Sun', shade: 'Shade' };
+  const placedKeys = useMemo(() => [...new Set(Object.values(wizardPlacements))], [wizardPlacements]);
+  const reviewEntries = useMemo(() => plan.filter(p => placedKeys.includes(p.key)), [plan, placedKeys]);
+  function cellsForKey(k: string) {
+    return Object.entries(wizardPlacements)
+      .filter(([, v]) => v === k)
+      .map(([ck]) => { const [r, c] = ck.split('_'); return `R${+r+1}C${+c+1}`; })
+      .join(', ');
+  }
 
   function togglePlant(key: string) {
     setSelectedKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
@@ -478,7 +491,7 @@ export default function PlanScreen() {
                 </TouchableOpacity>
               </View>
             </>
-          ) : (
+          ) : wizardStep === 'placement' ? (
             <>
               <View style={styles.wizardPlacementHeader}>
                 <Text style={[styles.wizardTitle, { color: textPrim }]}>📍 Place Plants</Text>
@@ -563,17 +576,130 @@ export default function PlanScreen() {
                   <Text style={[styles.cancelBtnText, { color: textSec }]}>← Back</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.nextBtn, (converting || placedCount === 0) && { opacity: 0.4 }]}
-                  onPress={convertToGarden}
-                  disabled={converting || placedCount === 0}
+                  style={[styles.nextBtn, placedCount === 0 && { opacity: 0.4 }]}
+                  onPress={() => setWizardStep('review')}
+                  disabled={placedCount === 0}
                 >
                   <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtnGrad}>
-                    <Text style={styles.nextBtnText}>{converting ? 'Creating…' : `🌱 Create Garden (${placedCount})`}</Text>
+                    <Text style={styles.nextBtnText}>Review Plan ({placedCount}) →</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
             </>
-          )}
+          ) : wizardStep === 'review' ? (
+              <>
+                <Text style={[styles.wizardTitle, { color: textPrim }]}>📋 Plan Review</Text>
+                <Text style={[styles.wizardSub, { color: textSec }]}>
+                  {wizardName} · {planYear} · {REVIEW_SUN_EMOJI[wizardSun]} {REVIEW_SUN_LBL[wizardSun]} · {wizardRows}×{wizardCols}
+                </Text>
+
+                <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1, marginTop: 12 }}>
+                  {/* Grid */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 16 }}>
+                    <View>
+                      {Array.from({ length: wizardRows }, (_, row) => (
+                        <View key={row} style={{ flexDirection: 'row' }}>
+                          {Array.from({ length: wizardCols }, (_, col) => {
+                            const pk = wizardPlacements[`${row}_${col}`];
+                            const pe = pk ? PLANT_CATALOG[pk] : null;
+                            return (
+                              <View
+                                key={col}
+                                style={[
+                                  styles.gridCell,
+                                  { width: REVIEW_CELL, height: REVIEW_CELL, borderColor: isDark ? colors.border : G.mist },
+                                  pe && { backgroundColor: isDark ? '#1a3a1a' : '#d8f3dc' },
+                                ]}
+                              >
+                                {pe && <Text style={{ fontSize: REVIEW_CELL * 0.54, lineHeight: REVIEW_CELL }}>{getPlantIcon(pe.name).emoji}</Text>}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+
+                  {/* Plant schedule */}
+                  <Text style={[styles.sectionTitle, { color: textPrim, marginBottom: 10 }]}>🌱 Planting Schedule</Text>
+                  {reviewEntries.map(({ key, entry, seedStartDate, transplantDate, directSowDate, harvestStart, harvestEnd }) => (
+                    <View key={key} style={[styles.reviewCard, { backgroundColor: isDark ? colors.bgElement : '#f0f7ee', borderColor: border }]}>
+                      <View style={styles.reviewCardHeader}>
+                        <Text style={{ fontSize: 24 }}>{getPlantIcon(entry.name).emoji}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.reviewCardName, { color: textPrim }]}>{entry.name}</Text>
+                          <Text style={[styles.reviewCardPos, { color: textSec }]}>{cellsForKey(key)}</Text>
+                        </View>
+                        <Text style={[styles.reviewCardCount, { color: G.sage }]}>
+                          ×{Object.values(wizardPlacements).filter(v => v === key).length}
+                        </Text>
+                      </View>
+                      <View style={styles.reviewTimeline}>
+                        {seedStartDate && (
+                          <View style={styles.reviewRow}>
+                            <View style={[styles.reviewDot, { backgroundColor: '#74c0fc' }]} />
+                            <Text style={[styles.reviewRowLabel, { color: textSec }]}>Start seeds indoors</Text>
+                            <Text style={[styles.reviewRowDate, { color: textPrim }]}>{fmt(seedStartDate)}</Text>
+                          </View>
+                        )}
+                        {transplantDate && (
+                          <View style={styles.reviewRow}>
+                            <View style={[styles.reviewDot, { backgroundColor: '#52b788' }]} />
+                            <Text style={[styles.reviewRowLabel, { color: textSec }]}>Transplant outside</Text>
+                            <Text style={[styles.reviewRowDate, { color: textPrim }]}>{fmt(transplantDate)}</Text>
+                          </View>
+                        )}
+                        {!seedStartDate && (
+                          <View style={styles.reviewRow}>
+                            <View style={[styles.reviewDot, { backgroundColor: '#52b788' }]} />
+                            <Text style={[styles.reviewRowLabel, { color: textSec }]}>Direct sow</Text>
+                            <Text style={[styles.reviewRowDate, { color: textPrim }]}>{fmt(directSowDate)}</Text>
+                          </View>
+                        )}
+                        <View style={styles.reviewRow}>
+                          <View style={[styles.reviewDot, { backgroundColor: '#a9e34b' }]} />
+                          <Text style={[styles.reviewRowLabel, { color: textSec }]}>Expected harvest</Text>
+                          <Text style={[styles.reviewRowDate, { color: textPrim }]}>{fmt(harvestStart)} – {fmt(harvestEnd)}</Text>
+                        </View>
+                      </View>
+                      {entry.notes && (
+                        <Text style={[styles.reviewNote, { color: textSec }]}>💡 {entry.notes}</Text>
+                      )}
+                    </View>
+                  ))}
+                  <View style={{ height: 8 }} />
+                </ScrollView>
+
+                <View style={[styles.wizardFooter, { marginTop: 8 }]}>
+                  <TouchableOpacity style={[styles.cancelBtn, { borderColor: border }]} onPress={() => setWizardStep('placement')}>
+                    <Text style={[styles.cancelBtnText, { color: textSec }]}>← Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.printBtn, { borderColor: G.sage }]}
+                    onPress={() => {
+                      import('@/lib/garden-pdf').then(m => m.printPlannerReport({
+                        gardenName: wizardName, year: planYear, sun: wizardSun,
+                        rows: wizardRows, cols: wizardCols,
+                        placements: wizardPlacements,
+                        lastFrost, firstFrost,
+                        planEntries: reviewEntries,
+                      }));
+                    }}
+                  >
+                    <Text style={[styles.printBtnText, { color: G.hunter }]}>🖨️ Print</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.nextBtn, converting && { opacity: 0.4 }]}
+                    onPress={convertToGarden}
+                    disabled={converting}
+                  >
+                    <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.nextBtnGrad}>
+                      <Text style={styles.nextBtnText}>{converting ? 'Creating…' : '🌱 Create Garden'}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -946,6 +1072,21 @@ const styles = StyleSheet.create({
   paletteChipLabel:{ fontSize: 10, fontWeight: '600', marginTop: 2, maxWidth: 60, textAlign: 'center' },
   paletteCount:   { position: 'absolute', top: -4, right: -4, backgroundColor: G.sage, borderRadius: 8, paddingHorizontal: 4 },
   paletteCountText:{ fontSize: 10, color: '#fff', fontWeight: '700' },
+
+  // Review step
+  reviewCard:       { borderRadius: R.md, borderWidth: 1, padding: 12, marginBottom: 10 },
+  reviewCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  reviewCardName:   { fontSize: 15, fontWeight: '700' },
+  reviewCardPos:    { fontSize: 11, marginTop: 1 },
+  reviewCardCount:  { fontSize: 13, fontWeight: '700' },
+  reviewTimeline:   { gap: 6 },
+  reviewRow:        { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reviewDot:        { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  reviewRowLabel:   { flex: 1, fontSize: 12 },
+  reviewRowDate:    { fontSize: 12, fontWeight: '600' },
+  reviewNote:       { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
+  printBtn:         { borderRadius: R.md, borderWidth: 2, paddingVertical: 11, paddingHorizontal: 14, justifyContent: 'center' },
+  printBtnText:     { fontSize: 14, fontWeight: '700' },
 
   // Garden grid
   gridScroll:     { marginVertical: 4 },
