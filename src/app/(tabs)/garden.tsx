@@ -16,6 +16,7 @@ import { FadeInView } from '@/components/ui/FadeInView';
 import { G, Shadow, R } from '@/constants/theme';
 import { useAppTheme, formatLength } from '@/contexts/theme-context';
 import { getPlantIcon } from '@/lib/plant-icons';
+import PlantAvatar from '@/components/PlantAvatar';
 import {
   layoutFromGarden, makeLayout, resizeLayout,
   TILE_COLORS, TILE_LABELS, TILE_EMOJIS, SUN_CYCLE, activeCount,
@@ -842,7 +843,7 @@ export default function GardenScreen() {
                   >
                     {plant ? (
                       <>
-                        <Text style={[styles.cellEmoji, { fontSize: tileSize * 0.42 }]}>{getPlantIcon(plant.name).emoji}</Text>
+                        <PlantAvatar name={plant.name} size={tileSize * 0.72} />
                         {plant.quantity != null && plant.quantity > 1 && (
                           <View style={styles.quantityBadge}>
                             <Text style={styles.quantityBadgeText}>×{plant.quantity}</Text>
@@ -995,7 +996,7 @@ export default function GardenScreen() {
                             >
                               {plant ? (
                                 <>
-                                  <Text style={[styles.cellEmoji, { fontSize: tileSize * 0.42 }]}>{getPlantIcon(plant.name).emoji}</Text>
+                                  <PlantAvatar name={plant.name} size={tileSize * 0.72} />
                                   {tileState !== 'inactive' && <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>}
                                 </>
                               ) : !isInactive ? (

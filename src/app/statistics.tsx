@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useAppTheme } from '@/contexts/theme-context';
@@ -26,6 +26,7 @@ export default function StatisticsScreen() {
   const { user } = useAuth();
   const { isDark, colors } = useAppTheme();
   const navigation = useNavigation();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [yearStats, setYearStats] = useState<YearStats[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -44,6 +45,11 @@ export default function StatisticsScreen() {
       headerStyle: { backgroundColor: isDark ? colors.bgCard : G.foam },
       headerTintColor: isDark ? colors.tint : G.forest,
       headerTitleStyle: { fontWeight: '700' as const, fontSize: 18 },
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => router.back()} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+          <Text style={{ color: isDark ? colors.tint : G.forest, fontSize: 16 }}>‹ Back</Text>
+        </TouchableOpacity>
+      ),
     });
     if (!user) return;
     loadStats();

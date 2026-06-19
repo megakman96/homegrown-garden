@@ -59,6 +59,11 @@ export function invalidateIconCache() {
   cacheLoadedAt = 0;
 }
 
+/** True if the in-memory cache is stale or empty (used by PlantAvatar). */
+export function isIconCacheStale(): boolean {
+  return !memCache || Date.now() - cacheLoadedAt >= CACHE_TTL_MS;
+}
+
 /** Upsert a custom icon for a plant. Returns the image URL. */
 export async function uploadPlantIcon(
   plantKey: string,

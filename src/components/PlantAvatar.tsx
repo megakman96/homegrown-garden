@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { getPlantIcon } from '@/lib/plant-icons';
-import { loadPlantIconOverrides, getCustomIconUrl } from '@/lib/plant-icon-overrides';
+import { loadPlantIconOverrides, getCustomIconUrl, isIconCacheStale } from '@/lib/plant-icon-overrides';
 
 interface Props {
   name: string;
@@ -9,10 +9,11 @@ interface Props {
   size?: number;
 }
 
-// Kick off a single background load of all overrides so subsequent renders are instant
+// Singleton load promise — reset whenever the cache is declared stale
 let overrideLoadPromise: Promise<void> | null = null;
+
 function ensureOverridesLoaded() {
-  if (!overrideLoadPromise) {
+  if (!overrideLoadPromise || isIconCacheStale()) {
     overrideLoadPromise = loadPlantIconOverrides().then(() => {});
   }
   return overrideLoadPromise;
@@ -22,17 +23,13 @@ export default function PlantAvatar({ name, category, size = 48 }: Props) {
   const { emoji, bg } = getPlantIcon(name, category);
   const plantKey = name.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
 
-  // Check if a custom image URL is already in cache
   const [imageUrl, setImageUrl] = useState<string | null>(() => getCustomIconUrl(plantKey));
 
   useEffect(() => {
-    // If no cached value, ensure overrides are loaded then check again
-    if (!imageUrl) {
-      ensureOverridesLoaded().then(() => {
-        const url = getCustomIconUrl(plantKey);
-        if (url) setImageUrl(url);
-      });
-    }
+    ensureOverridesLoaded().then(() => {
+      const url = getCustomIconUrl(plantKey);
+      setImageUrl(url);
+    });
   }, [plantKey]);
 
   const fontSize = size * 0.5;

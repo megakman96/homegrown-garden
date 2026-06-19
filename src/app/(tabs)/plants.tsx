@@ -13,6 +13,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { G, Shadow, R } from '@/constants/theme';
 import { useAppTheme, formatLength } from '@/contexts/theme-context';
 import { getPlantIcon } from '@/lib/plant-icons';
+import PlantAvatar from '@/components/PlantAvatar';
 import {
   PLANT_CATALOG, SUN_EMOJIS, SUN_LABELS, searchPlants,
   type CatalogEntry,
@@ -180,14 +181,13 @@ export default function PlantCatalogueScreen() {
 
   function renderItem({ item }: { item: CatalogItem }) {
     const { key, entry } = item;
-    const icon = getPlantIcon(entry.name).emoji;
     return (
       <TouchableOpacity
         style={[styles.card, { backgroundColor: cardBg, borderColor: border }]}
         onPress={() => setSelected({ key, entry })}
         activeOpacity={0.75}
       >
-        <Text style={styles.cardEmoji}>{icon}</Text>
+        <PlantAvatar name={entry.name} size={44} />
         <View style={styles.cardBody}>
           <Text style={[styles.cardName, { color: textPrim }]} numberOfLines={1}>{entry.name}</Text>
           {entry.scientificName && (
@@ -364,12 +364,11 @@ export default function PlantCatalogueScreen() {
             {/* ── Plant detail ── */}
             {!wizardStep && selected && (() => {
               const { key, entry } = selected;
-              const icon = getPlantIcon(entry.name).emoji;
               return (
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
                   {/* Header */}
                   <View style={styles.detailHeader}>
-                    <Text style={styles.detailEmoji}>{icon}</Text>
+                    <PlantAvatar name={entry.name} size={64} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.detailName, { color: textPrim }]}>{entry.name}</Text>
                       {entry.scientificName && (
