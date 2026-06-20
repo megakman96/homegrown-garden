@@ -17,11 +17,11 @@ export default function Root({ children }: PropsWithChildren) {
         {/* iOS PWA */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="GardenGrid" />
+        <meta name="apple-mobile-web-app-title" content="GreenPlot" />
         <link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png" />
 
         <link rel="icon" href="/favicon.ico" />
-        <title>GardenGrid</title>
+        <title>GreenPlot</title>
         <ScrollViewStyleReset />
       </head>
       <body>{children}</body>

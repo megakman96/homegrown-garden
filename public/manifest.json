@@ -1,6 +1,6 @@
 {
-  "name": "GardenGrid",
-  "short_name": "GardenGrid",
+  "name": "GreenPlot",
+  "short_name": "GreenPlot",
   "description": "Plan your garden, track your plants, harvest more.",
   "start_url": "/",
   "scope": "/",

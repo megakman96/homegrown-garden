@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet, Platform } from 'react-native';
 import { getPlantIcon } from '@/lib/plant-icons';
 import { loadPlantIconOverrides, getCustomIconUrl, isIconCacheStale } from '@/lib/plant-icon-overrides';
 
@@ -19,11 +19,19 @@ function ensureOverridesLoaded() {
   return overrideLoadPromise;
 }
 
+function localIconUrl(key: string): string {
+  // On web: absolute path served from public/plant-icons/
+  // On native: bundled as a static asset under the same path
+  return `/plant-icons/${key}.png`;
+}
+
 export default function PlantAvatar({ name, category, size = 48 }: Props) {
-  const { emoji, bg } = getPlantIcon(name, category);
+  const { emoji } = getPlantIcon(name, category);
   const plantKey = name.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
 
   const [imageUrl, setImageUrl] = useState<string | null>(() => getCustomIconUrl(plantKey));
+  // Try the bundled local PNG if no PocketBase override exists
+  const [localFailed, setLocalFailed] = useState(false);
 
   useEffect(() => {
     ensureOverridesLoaded().then(() => {
@@ -33,14 +41,19 @@ export default function PlantAvatar({ name, category, size = 48 }: Props) {
   }, [plantKey]);
 
   const fontSize = size * 0.5;
+  const showLocal = !imageUrl && !localFailed && Platform.OS === 'web';
+  const displayUrl = imageUrl ?? (showLocal ? localIconUrl(plantKey) : null);
 
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: 'transparent' }]}>
-      {imageUrl ? (
+      {displayUrl ? (
         <Image
-          source={{ uri: imageUrl }}
+          source={{ uri: displayUrl }}
           style={styles.image}
-          onError={() => setImageUrl(null)}
+          onError={() => {
+            if (displayUrl === imageUrl) setImageUrl(null);
+            else setLocalFailed(true);
+          }}
         />
       ) : (
         <Text style={{ fontSize, lineHeight: size }}>{emoji}</Text>

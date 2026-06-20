@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +15,7 @@ import { useAppTheme, isBirthdayToday, loadBirthday, formatTemp } from '@/contex
 import { subscribe } from '@/lib/events';
 import { fetchWeather, loadSavedLocation, type WeatherData } from '@/lib/weather';
 import type { Plant } from '@/lib/types';
+import { HEALTH_ISSUES, parseSickReason } from '@/lib/plant-health';
 
 function greeting() {
   const h = new Date().getHours();
@@ -38,6 +39,7 @@ export default function DashboardScreen() {
   const [plants, setPlants] = useState<Plant[]>([]);
   const [loading, setLoading] = useState(true);
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [showHealthModal, setShowHealthModal] = useState(false);
 
   useEffect(() => {
     loadSavedLocation()
@@ -143,11 +145,14 @@ export default function DashboardScreen() {
         </PressableScale>
       </FadeInView>
       <FadeInView style={styles.statWrap}>
-        <View style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}>
+        <PressableScale
+          style={[styles.statCard, { backgroundColor: cardBg, borderColor }]}
+          onPress={() => setShowHealthModal(true)}
+        >
           <Text style={styles.statEmoji}>🌿</Text>
           <Text style={[styles.statValue, { color: G.sage }]}>{plants.filter(p => p.health_status === 'healthy').length}</Text>
           <Text style={[styles.statLabel, { color: textSecondary }]}>Healthy</Text>
-        </View>
+        </PressableScale>
       </FadeInView>
     </View>
   );
@@ -264,42 +269,100 @@ export default function DashboardScreen() {
     </FadeInView>
   );
 
+  const HEALTH_STATUS_ORDER: Array<Plant['health_status']> = ['sick', 'needs_water', 'dead', 'healthy', 'harvested'];
+  const HEALTH_COLORS_MAP: Record<string, string> = { healthy: '#52b788', needs_water: '#339af0', sick: '#f03e3e', harvested: '#a9e34b', dead: '#adb5bd' };
+  const HEALTH_LABELS_MAP: Record<string, string> = { healthy: 'Healthy', needs_water: 'Needs Water', sick: 'Sick', harvested: 'Harvested', dead: 'Dead' };
+
+  const healthModal = (
+    <Modal visible={showHealthModal} transparent animationType="slide" onRequestClose={() => setShowHealthModal(false)}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalSheet, { backgroundColor: cardBg }]}>
+          <View style={styles.modalHandle} />
+          <Text style={[styles.modalTitle, { color: textPrimary }]}>🌿 Plant Health Today</Text>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }}>
+            {HEALTH_STATUS_ORDER.map(status => {
+              const group = plants.filter(p => p.health_status === status);
+              if (group.length === 0) return null;
+              return (
+                <View key={status} style={styles.healthGroup}>
+                  <View style={styles.healthGroupHeader}>
+                    <View style={[styles.healthGroupDot, { backgroundColor: HEALTH_COLORS_MAP[status] }]} />
+                    <Text style={[styles.healthGroupLabel, { color: textPrimary }]}>{HEALTH_LABELS_MAP[status]} ({group.length})</Text>
+                  </View>
+                  {group.map(p => {
+                    const issue = status === 'sick' ? parseSickReason(p.notes ?? null) : null;
+                    const issueInfo = issue ? HEALTH_ISSUES[issue] : null;
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.healthPlantRow, { borderColor }]}
+                        onPress={() => { setShowHealthModal(false); router.push(`/plant/${p.id}`); }}
+                      >
+                        <Text style={styles.healthPlantEmoji}>{getPlantIcon(p.name).emoji}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.healthPlantName, { color: textPrimary }]}>{p.name}</Text>
+                          {issueInfo && (
+                            <Text style={styles.healthPlantIssue}>{issueInfo.emoji} {issueInfo.label}</Text>
+                          )}
+                        </View>
+                        <Text style={{ color: textSecondary, fontSize: 16 }}>›</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity style={[styles.modalCloseBtn, { borderColor }]} onPress={() => setShowHealthModal(false)}>
+            <Text style={[styles.modalCloseBtnText, { color: textPrimary }]}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (isDesktop) {
     return (
-      <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.desktopContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.desktopPadding}>
-          {heroSection}
-          {statsRow}
-          <View style={styles.desktopColumns}>
-            <View style={styles.desktopCol}>
-              {weatherSection}
-              {waterSection}
-              {emptyState}
+      <View style={[styles.container, { backgroundColor: bg }]}>
+        <ScrollView contentContainerStyle={styles.desktopContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.desktopPadding}>
+            {heroSection}
+            {statsRow}
+            <View style={styles.desktopColumns}>
+              <View style={styles.desktopCol}>
+                {weatherSection}
+                {waterSection}
+                {emptyState}
+              </View>
+              <View style={styles.desktopCol}>
+                {harvestSection}
+                {harvestSummary}
+              </View>
             </View>
-            <View style={styles.desktopCol}>
-              {harvestSection}
-              {harvestSummary}
-            </View>
+            <ProBanner />
           </View>
-          <ProBanner />
-        </View>
-      </ScrollView>
+        </ScrollView>
+        {healthModal}
+      </View>
     );
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.mobileContent} showsVerticalScrollIndicator={false}>
-      {heroSection}
-      <View style={{ height: 16 }} />
-      {statsRow}
-      {weatherSection}
-      {waterSection}
-      {harvestSection}
-      {harvestSummary}
-      {emptyState}
-      <ProBanner />
-      <View style={{ height: 32 }} />
-    </ScrollView>
+    <View style={[styles.container, { backgroundColor: bg }]}>
+      <ScrollView contentContainerStyle={styles.mobileContent} showsVerticalScrollIndicator={false}>
+        {heroSection}
+        <View style={{ height: 16 }} />
+        {statsRow}
+        {weatherSection}
+        {waterSection}
+        {harvestSection}
+        {harvestSummary}
+        {emptyState}
+        <ProBanner />
+        <View style={{ height: 32 }} />
+      </ScrollView>
+      {healthModal}
+    </View>
   );
 }
 
@@ -379,4 +442,20 @@ const styles = StyleSheet.create({
   emptyBtn:       { borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   emptyBtnGradient: { paddingVertical: 14, paddingHorizontal: 28 },
   emptyBtnText:   { color: G.cloud, fontWeight: '700', fontSize: 15 },
+
+  // Health modal
+  modalBackdrop:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet:        { borderTopLeftRadius: R.xl, borderTopRightRadius: R.xl, padding: 20, paddingBottom: 32 },
+  modalHandle:       { width: 36, height: 4, borderRadius: 2, backgroundColor: '#dee2e6', alignSelf: 'center', marginBottom: 16 },
+  modalTitle:        { fontSize: 18, fontWeight: '800', marginBottom: 16 },
+  healthGroup:       { marginBottom: 16 },
+  healthGroupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  healthGroupDot:    { width: 10, height: 10, borderRadius: 5 },
+  healthGroupLabel:  { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  healthPlantRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 2, borderBottomWidth: 1 },
+  healthPlantEmoji:  { fontSize: 22, width: 32, textAlign: 'center' },
+  healthPlantName:   { fontSize: 14, fontWeight: '600' },
+  healthPlantIssue:  { fontSize: 12, color: '#f03e3e', marginTop: 2 },
+  modalCloseBtn:     { borderRadius: R.lg, borderWidth: 1.5, padding: 14, alignItems: 'center', marginTop: 12 },
+  modalCloseBtnText: { fontSize: 15, fontWeight: '700' },
 });

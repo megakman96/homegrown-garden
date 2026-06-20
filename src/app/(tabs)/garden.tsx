@@ -852,6 +852,11 @@ export default function GardenScreen() {
                         {tileState !== 'inactive' && (
                           <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>
                         )}
+                        {plant.health_status === 'sick' && (
+                          <View style={styles.sickBadge}>
+                            <Text style={styles.sickBadgeText}>!</Text>
+                          </View>
+                        )}
                       </>
                     ) : !isInactive ? (
                       <Text style={[styles.cellPlus, { fontSize: tileSize * 0.35 }]}>+</Text>
@@ -998,6 +1003,11 @@ export default function GardenScreen() {
                                 <>
                                   <PlantAvatar name={plant.name} size={tileSize * 0.72} />
                                   {tileState !== 'inactive' && <Text style={styles.cellSunEmoji}>{TILE_EMOJIS[tileState]}</Text>}
+                                  {plant.health_status === 'sick' && (
+                                    <View style={styles.sickBadge}>
+                                      <Text style={styles.sickBadgeText}>!</Text>
+                                    </View>
+                                  )}
                                 </>
                               ) : !isInactive ? (
                                 <Text style={[styles.cellPlus, { fontSize: tileSize * 0.35 }]}>+</Text>
@@ -2127,6 +2137,8 @@ const styles = StyleSheet.create({
   cellSunEmoji: { position: 'absolute', bottom: 1, right: 2, fontSize: 11, lineHeight: 14 },
   quantityBadge: { position: 'absolute', top: 1, right: 2, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 6, paddingHorizontal: 3, paddingVertical: 1 },
   quantityBadgeText: { color: '#fff', fontSize: 9, fontWeight: '700', lineHeight: 12 },
+  sickBadge: { position: 'absolute', top: 2, left: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#f03e3e', justifyContent: 'center', alignItems: 'center' },
+  sickBadgeText: { color: '#f03e3e', fontSize: 9, fontWeight: '900', lineHeight: 11 },
 
   // Plant action sheet
   actionRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: G.foam },

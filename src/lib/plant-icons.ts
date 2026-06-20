@@ -30,7 +30,7 @@ const ICONS: Record<string, PlantIconDef> = {
   cabbage:             { emoji: '🥬', bg: '#d3f9d8' },
   broccoli:            { emoji: '🥦', bg: '#d3f9d8' },
   cauliflower:         { emoji: '🤍', bg: '#f8f9fa' },
-  brussels_sprouts:    { emoji: '🥦', bg: '#d3f9d8' },
+  brussels_sprouts:    { emoji: '🌱', bg: '#d3f9d8' },
   carrot:              { emoji: '🥕', bg: '#ffe8cc' },
   radish:              { emoji: '🔴', bg: '#ffe3e3' },       // was 🌰 (chestnut?)
   beet:                { emoji: '🟣', bg: '#f3d9fa' },
@@ -177,7 +177,7 @@ const ICONS: Record<string, PlantIconDef> = {
 };
 
 const CATEGORY_DEFAULTS: Record<string, PlantIconDef> = {
-  vegetable: { emoji: '🥦', bg: '#d3f9d8' },
+  vegetable: { emoji: '🥗', bg: '#d3f9d8' },
   herb:      { emoji: '🌿', bg: '#d3f9d8' },
   fruit:     { emoji: '🍇', bg: '#f3d9fa' },
   flower:    { emoji: '🌸', bg: '#fce4ec' },

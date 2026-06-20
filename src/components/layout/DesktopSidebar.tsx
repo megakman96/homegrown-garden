@@ -50,7 +50,7 @@ export function DesktopSidebar() {
       <View style={styles.brand}>
         <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
         <View>
-          <Text style={styles.brandName}>GardenGrid</Text>
+          <Text style={styles.brandName}>GreenPlot</Text>
           <Text style={styles.brandTag}>Garden Tracker</Text>
         </View>
       </View>

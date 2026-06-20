@@ -16,6 +16,7 @@ import type { Plant, Harvest, HealthStatus } from '@/lib/types';
 import { addActivityEntryAsync } from '@/lib/activity-log';
 import { generateSinglePlantPdf } from '@/lib/garden-pdf';
 import { findPlantKey, PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS } from '@/lib/plant-catalog';
+import { HEALTH_ISSUES, encodeSickReason, stripSickReason, parseSickReason, type HealthIssue } from '@/lib/plant-health';
 import { fetchZoneForCoords, getFrostInfo, calcPlantingWindow, fmtDate, getZoneWaterAdjustment, getZoneViability, type FrostInfo, type PlantingWindow, type ZoneViability } from '@/lib/frost-dates';
 import { loadGardenLocation } from '@/lib/weather';
 
@@ -68,6 +69,7 @@ export default function PlantDetailScreen() {
   const [editHarvestCount, setEditHarvestCount] = useState(1);
   const [editHarvestNotes, setEditHarvestNotes] = useState('');
   const [savingEditHarvest, setSavingEditHarvest] = useState(false);
+  const [showSickPicker, setShowSickPicker] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -125,8 +127,20 @@ export default function PlantDetailScreen() {
 
   async function updateHealth(status: HealthStatus) {
     if (!plant || !user) return;
+    if (status === 'sick') {
+      setShowSickPicker(true);
+      return;
+    }
     await offlineUpdate('plants', user.id, plant.id, { health_status: status });
     setPlant((p) => p ? { ...p, health_status: status } : p);
+  }
+
+  async function confirmSickWithIssue(issue: HealthIssue) {
+    if (!plant || !user) return;
+    setShowSickPicker(false);
+    const newNotes = encodeSickReason(issue, plant.notes ?? null);
+    await offlineUpdate('plants', user.id, plant.id, { health_status: 'sick', notes: newNotes });
+    setPlant((p) => p ? { ...p, health_status: 'sick', notes: newNotes } : p);
   }
 
   async function markWatered() {
@@ -315,6 +329,41 @@ export default function PlantDetailScreen() {
         </ScrollView>
       </View>
 
+      {/* ── Sick issue advice ───────────────────────────────────────────── */}
+      {plant.health_status === 'sick' && (() => {
+        const issue = parseSickReason(plant.notes ?? null);
+        const info = issue ? HEALTH_ISSUES[issue] : null;
+        return (
+          <View style={[styles.sickCard, { backgroundColor: '#fff5f5', borderColor: '#ffc9c9' }]}>
+            <View style={styles.sickCardHeader}>
+              <Text style={styles.sickCardEmoji}>{info ? info.emoji : '🟠'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sickCardTitle}>{info ? info.label : 'Plant is sick'}</Text>
+                <Text style={styles.sickCardSub}>How to help this plant recover</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowSickPicker(true)} style={styles.sickChangeBtn}>
+                <Text style={styles.sickChangeBtnText}>Change</Text>
+              </TouchableOpacity>
+            </View>
+            {info && (
+              <View style={styles.sickAdviceList}>
+                {info.advice.map((tip, i) => (
+                  <View key={i} style={styles.sickAdviceRow}>
+                    <Text style={styles.sickAdviceNum}>{i + 1}</Text>
+                    <Text style={styles.sickAdviceTip}>{tip}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {!info && (
+              <TouchableOpacity style={styles.sickPickBtn} onPress={() => setShowSickPicker(true)}>
+                <Text style={styles.sickPickBtnText}>Tell us what's wrong →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      })()}
+
       {/* ── Info card ───────────────────────────────────────────────────── */}
       <View style={[styles.infoCard, { backgroundColor: cardBg }]}>
         {plant.variety && <InfoRow label="Variety" value={plant.variety} tc={textSec} vc={textPrim} />}
@@ -329,7 +378,7 @@ export default function PlantDetailScreen() {
           <InfoRow label="Water every" value={`${plant.water_interval_days} days`} tc={textSec} vc={textPrim} />
         )}
         <InfoRow label="Total yield" value={totalYieldDisplay} tc={textSec} vc={textPrim} />
-        {plant.notes && <InfoRow label="Notes" value={plant.notes} tc={textSec} vc={textPrim} />}
+        {(() => { const n = stripSickReason(plant.notes ?? ''); return n ? <InfoRow label="Notes" value={n} tc={textSec} vc={textPrim} /> : null; })()}
       </View>
 
       {/* ── Catalog growing info ────────────────────────────────────────── */}
@@ -704,6 +753,33 @@ export default function PlantDetailScreen() {
           </View>
         </View>
       </Modal>
+      {/* ── Sick issue picker modal ─────────────────────────────────────── */}
+      <Modal visible={showSickPicker} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modal, { backgroundColor: cardBg, maxHeight: '85%' }]}>
+            <Text style={[styles.modalTitle, { color: textPrim }]}>🟠 What's wrong with {plant.name}?</Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              {(Object.entries(HEALTH_ISSUES) as [HealthIssue, typeof HEALTH_ISSUES[HealthIssue]][]).map(([key, info]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.issueRow, { borderColor: border, backgroundColor: inputBg }]}
+                  onPress={() => confirmSickWithIssue(key)}
+                >
+                  <Text style={styles.issueEmoji}>{info.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.issueLabel, { color: textPrim }]}>{info.label}</Text>
+                    <Text style={[styles.issueSub, { color: textSec }]}>{info.advice[0]}</Text>
+                  </View>
+                  <Text style={{ color: textSec, fontSize: 18 }}>›</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowSickPicker(false)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -871,6 +947,27 @@ const styles = StyleSheet.create({
   harvestDate: { fontSize: 13, color: G.stone, minWidth: 72 },
   harvestYield: { fontSize: 15, fontWeight: '700', color: G.hunter, flex: 1 },
   harvestNotes: { fontSize: 12, color: G.fern },
+
+  // Sick card
+  sickCard:        { borderRadius: R.lg, borderWidth: 1.5, marginHorizontal: 16, marginTop: 12, padding: 16 },
+  sickCardHeader:  { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  sickCardEmoji:   { fontSize: 32 },
+  sickCardTitle:   { fontSize: 15, fontWeight: '700', color: '#c92a2a' },
+  sickCardSub:     { fontSize: 12, color: '#868e96', marginTop: 2 },
+  sickChangeBtn:   { borderRadius: R.full, backgroundColor: '#ffe3e3', borderWidth: 1, borderColor: '#ffc9c9', paddingHorizontal: 10, paddingVertical: 5 },
+  sickChangeBtnText: { fontSize: 12, fontWeight: '700', color: '#c92a2a' },
+  sickAdviceList:  { gap: 10 },
+  sickAdviceRow:   { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  sickAdviceNum:   { width: 22, height: 22, borderRadius: 11, backgroundColor: '#f03e3e', color: '#fff', fontSize: 11, fontWeight: '800', textAlign: 'center', lineHeight: 22 },
+  sickAdviceTip:   { flex: 1, fontSize: 13, lineHeight: 19, color: '#495057' },
+  sickPickBtn:     { backgroundColor: '#ffe3e3', borderRadius: R.md, padding: 12, alignItems: 'center', marginTop: 8 },
+  sickPickBtnText: { color: '#c92a2a', fontWeight: '700', fontSize: 14 },
+
+  // Sick issue picker
+  issueRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: R.md, borderWidth: 1, padding: 12, marginBottom: 8 },
+  issueEmoji: { fontSize: 28, width: 36, textAlign: 'center' },
+  issueLabel: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  issueSub:   { fontSize: 11, lineHeight: 15 },
 
   // Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
