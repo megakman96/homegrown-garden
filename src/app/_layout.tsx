@@ -19,10 +19,13 @@ if (Platform.OS !== 'web') {
 }
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/use-auth';
+import { usePremium } from '@/hooks/use-premium';
 import { pb } from '@/lib/pb';
 import { AppThemeProvider, useAppTheme } from '@/contexts/theme-context';
 import { SyncProvider } from '@/contexts/sync-context';
-import { setupNotificationChannel } from '@/lib/notifications';
+import { setupNotificationChannel, requestNotificationPermission, rescheduleAllNotifications } from '@/lib/notifications';
+import { loadNotificationSettings } from '@/lib/notification-settings';
+import { subscribe } from '@/lib/events';
 import { initPurchases } from '@/lib/subscription';
 import { checkRainAutoWater } from '@/lib/rain-auto-water';
 
@@ -64,6 +67,26 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 function ThemedApp() {
   const { isDark } = useAppTheme();
   const { user } = useAuth();
+  const { isPremium } = usePremium();
+
+  // Auto-schedule local notifications on launch and on every plant change, not just from the settings toggle.
+  useEffect(() => {
+    if (Platform.OS === 'web' || !user?.id || !isPremium) return;
+    let cancelled = false;
+
+    async function syncNotifications() {
+      const settings = await loadNotificationSettings();
+      if (!settings.masterEnabled || cancelled) return;
+      const granted = await requestNotificationPermission();
+      if (!granted || cancelled) return;
+      const plants = await offlineList('plants', user!.id, `user_id = "${user!.id}"`).catch(() => []);
+      if (!cancelled) await rescheduleAllNotifications(plants as any);
+    }
+
+    syncNotifications();
+    const unsub = subscribe('plants:changed', syncNotifications);
+    return () => { cancelled = true; unsub(); };
+  }, [user?.id, isPremium]);
 
   useEffect(() => {
     if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
