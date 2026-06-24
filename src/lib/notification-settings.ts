@@ -41,7 +41,7 @@ export interface NotificationSettings {
 export const DEFAULT_SETTINGS: NotificationSettings = {
   masterEnabled: true,
   watering: { enabled: true,  hoursBefore: 2,  hour: 8,  minute: 0 },
-  harvest:  { enabled: true,  daysBefore: 3,  hour: 8,  minute: 0 },
+  harvest:  { enabled: false, daysBefore: 3,  hour: 8,  minute: 0 },
   dailyCheckIn: { enabled: false, hour: 8, minute: 0 },
   sowing:   { enabled: true,  weeksBefore: 2 },
   weather:  { enabled: false },
