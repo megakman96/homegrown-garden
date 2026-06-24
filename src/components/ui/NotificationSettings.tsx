@@ -180,7 +180,7 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
         <Stepper label="Remind" value={settings.watering.hoursBefore} min={0} max={24} unit="hrs before due"
           onChange={v => update({ watering: { ...settings.watering, hoursBefore: v } })}
           textSec={textSec} textPrim={textPrim} inputBg={inputBg} border={border} />
-        <TimePicker label="Fallback time" hour={settings.watering.hour} minute={settings.watering.minute}
+        <TimePicker label="Fallback time (if reminder would land overnight)" hour={settings.watering.hour} minute={settings.watering.minute}
           onChange={(h, m) => update({ watering: { ...settings.watering, hour: h, minute: m } })}
           textSec={textSec} textPrim={textPrim} border={border} inputBg={inputBg} />
       </Row>
@@ -194,6 +194,9 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
         <Stepper label="Alert" value={settings.harvest.daysBefore} min={1} max={14} unit="days before harvest"
           onChange={v => update({ harvest: { ...settings.harvest, daysBefore: v } })}
           textSec={textSec} textPrim={textPrim} inputBg={inputBg} border={border} />
+        <TimePicker label="Alert time" hour={settings.harvest.hour} minute={settings.harvest.minute}
+          onChange={(h, m) => update({ harvest: { ...settings.harvest, hour: h, minute: m } })}
+          textSec={textSec} textPrim={textPrim} border={border} inputBg={inputBg} />
       </Row>
 
       <Row

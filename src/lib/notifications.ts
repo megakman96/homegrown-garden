@@ -108,6 +108,11 @@ async function scheduleWateringReminders(plants: Plant[]) {
     due.setDate(due.getDate() + plant.water_interval_days);
 
     const remindAt = new Date(due.getTime() - settings.watering.hoursBefore * 3_600_000);
+    // hoursBefore can push the reminder into the middle of the night — fall back
+    // to the user's chosen time of day (same calendar day) when that happens.
+    if (remindAt.getHours() < 6 || remindAt.getHours() >= 22) {
+      remindAt.setHours(settings.watering.hour, settings.watering.minute, 0, 0);
+    }
     if (remindAt <= now) continue;
 
     const dayKey = remindAt.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -144,7 +149,7 @@ async function scheduleHarvestAlerts(plants: Plant[]) {
 
     const harvestDate = new Date(plant.expected_harvest_date);
     const remindAt = new Date(harvestDate.getTime() - settings.harvest.daysBefore * 86_400_000);
-    remindAt.setHours(8, 0, 0, 0);
+    remindAt.setHours(settings.harvest.hour, settings.harvest.minute, 0, 0);
 
     if (remindAt <= now) continue;
 

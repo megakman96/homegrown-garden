@@ -3,13 +3,15 @@ import { Platform } from 'react-native';
 export interface WateringReminderSettings {
   enabled: boolean;
   hoursBefore: number;   // remind X hours before plant is due
-  hour: number;          // time of day (fallback if hoursBefore puts it overnight)
+  hour: number;          // fallback time of day, used when hoursBefore would land overnight
   minute: number;
 }
 
 export interface HarvestAlertSettings {
   enabled: boolean;
   daysBefore: number;    // remind X days before expected harvest
+  hour: number;          // time of day the alert fires
+  minute: number;
 }
 
 export interface DailyCheckInSettings {
@@ -39,7 +41,7 @@ export interface NotificationSettings {
 export const DEFAULT_SETTINGS: NotificationSettings = {
   masterEnabled: true,
   watering: { enabled: true,  hoursBefore: 2,  hour: 8,  minute: 0 },
-  harvest:  { enabled: true,  daysBefore: 3 },
+  harvest:  { enabled: true,  daysBefore: 3,  hour: 8,  minute: 0 },
   dailyCheckIn: { enabled: false, hour: 8, minute: 0 },
   sowing:   { enabled: true,  weeksBefore: 2 },
   weather:  { enabled: false },
@@ -53,15 +55,28 @@ async function getStorage() {
   return AsyncStorage;
 }
 
+function mergeWithDefaults(saved: Partial<NotificationSettings>): NotificationSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    watering: { ...DEFAULT_SETTINGS.watering, ...saved.watering },
+    harvest: { ...DEFAULT_SETTINGS.harvest, ...saved.harvest },
+    dailyCheckIn: { ...DEFAULT_SETTINGS.dailyCheckIn, ...saved.dailyCheckIn },
+    sowing: { ...DEFAULT_SETTINGS.sowing, ...saved.sowing },
+    weather: { ...DEFAULT_SETTINGS.weather, ...saved.weather },
+  };
+}
+
 export async function loadNotificationSettings(): Promise<NotificationSettings> {
   try {
+    let raw: string | null;
     if (Platform.OS === 'web') {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
+      raw = localStorage.getItem(STORAGE_KEY);
+    } else {
+      const store = await getStorage();
+      raw = (await store?.getItem(STORAGE_KEY)) ?? null;
     }
-    const store = await getStorage();
-    const raw = await store?.getItem(STORAGE_KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
+    return raw ? mergeWithDefaults(JSON.parse(raw)) : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }
