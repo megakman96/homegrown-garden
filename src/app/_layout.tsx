@@ -86,8 +86,9 @@ function ThemedApp() {
     }
 
     syncNotifications();
-    const unsub = subscribe('plants:changed', syncNotifications);
-    return () => { cancelled = true; unsub(); };
+    const unsubPlants = subscribe('plants:changed', syncNotifications);
+    const unsubPlans = subscribe('plans:changed', syncNotifications);
+    return () => { cancelled = true; unsubPlants(); unsubPlans(); };
   }, [user?.id, isPremium]);
 
   useEffect(() => {

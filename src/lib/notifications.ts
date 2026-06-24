@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import type { Plant } from './types';
 import { loadNotificationSettings } from './notification-settings';
+import { loadPlans, computePlan } from './garden-plan';
 import { logError } from './error-log';
 
 // ── Permission ────────────────────────────────────────────────────────────────
@@ -174,6 +175,45 @@ async function scheduleHarvestAlerts(plants: Plant[]) {
   }
 }
 
+// ── Sowing reminders — for saved "Plan a Future Garden" entries ───────────────
+
+async function scheduleSowingReminders() {
+  await cancelByPrefix('sow_day_');
+
+  const settings = await loadNotificationSettings();
+  if (!settings.masterEnabled || !settings.sowing.enabled) return;
+
+  const byDay: Record<string, { remindAt: Date; names: string[] }> = {};
+  const now = new Date();
+
+  const plans = await loadPlans();
+  for (const plan of plans) {
+    const entries = computePlan(plan.plantKeys, plan.year, plan.lastFrost, plan.firstFrost);
+    for (const entry of entries) {
+      const sowDate = entry.seedStartDate ?? entry.directSowDate;
+      const remindAt = new Date(sowDate.getTime() - settings.sowing.weeksBefore * 7 * 86_400_000);
+      remindAt.setHours(8, 0, 0, 0);
+      if (remindAt <= now) continue;
+
+      const dayKey = remindAt.toISOString().slice(0, 10);
+      if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [] };
+      byDay[dayKey].names.push(entry.entry.name);
+    }
+  }
+
+  for (const [dayKey, { remindAt, names }] of Object.entries(byDay)) {
+    const count = names.length;
+    const title = count === 1
+      ? `📅 Time to sow ${names[0]}`
+      : `📅 ${count} plants ready to sow`;
+    const body = count === 1
+      ? `Your plan has ${names[0]} starting around now.`
+      : names.join(', ');
+
+    await scheduleLocal(`sow_day_${dayKey}`, title, body, { date: remindAt });
+  }
+}
+
 // ── Daily check-in ────────────────────────────────────────────────────────────
 
 export async function scheduleDailyCheckIn() {
@@ -203,6 +243,7 @@ export async function rescheduleAllNotifications(plants: Plant[]) {
   if (Platform.OS === 'web') return;
   await scheduleWateringReminders(plants);
   await scheduleHarvestAlerts(plants);
+  await scheduleSowingReminders();
   await scheduleDailyCheckIn();
 }
 
