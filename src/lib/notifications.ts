@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import type { Plant } from './types';
 import { loadNotificationSettings } from './notification-settings';
+import { logError } from './error-log';
 
 // ── Permission ────────────────────────────────────────────────────────────────
 
@@ -12,7 +13,10 @@ export async function requestNotificationPermission(): Promise<boolean> {
     if (existing === 'granted') return true;
     const { status } = await Notifications.requestPermissionsAsync();
     return status === 'granted';
-  } catch { return false; }
+  } catch (e) {
+    logError(e, 'notifications:requestPermission');
+    return false;
+  }
 }
 
 export async function getExpoPushToken(): Promise<string | null> {
@@ -80,7 +84,9 @@ async function scheduleLocal(
       content: { title, body, sound: true, data: {} },
       trigger: { ...trigger, channelId: 'garden' } as any,
     });
-  } catch {}
+  } catch (e) {
+    logError(e, `notifications:scheduleLocal:${id}`);
+  }
 }
 
 // ── Watering reminders — one grouped notification per due date ────────────────

@@ -4,6 +4,7 @@ import { pb } from '@/lib/pb';
 import { getQueue, dequeueOp, SyncOp } from '@/lib/offline-cache';
 import { isNetworkError } from '@/lib/offline-db';
 import { emit } from '@/lib/events';
+import { logError } from '@/lib/error-log';
 
 interface SyncContextValue {
   isOnline: boolean;
@@ -59,6 +60,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           setIsOnline(false);
         } else {
           // Server rejected it (conflict, validation error) — discard to unblock queue
+          logError(e, `sync:${op.collection}:${op.action}`);
           await dequeueOp(op.id);
         }
       }

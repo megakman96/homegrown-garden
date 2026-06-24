@@ -12,6 +12,7 @@ if (Platform.OS !== 'web') {
   if (EU?.setGlobalHandler) {
     const prev = EU.getGlobalHandler();
     EU.setGlobalHandler((error: any, isFatal: boolean) => {
+      logError(error, 'global_handler' + (isFatal ? ':fatal' : ''));
       if (error?.name === 'ClientResponseError') return;
       prev?.(error, isFatal);
     });
@@ -28,6 +29,7 @@ import { loadNotificationSettings } from '@/lib/notification-settings';
 import { subscribe } from '@/lib/events';
 import { initPurchases } from '@/lib/subscription';
 import { checkRainAutoWater } from '@/lib/rain-auto-water';
+import { logError } from '@/lib/error-log';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, user, loading } = useAuth();

@@ -18,6 +18,7 @@
 
 import { Platform } from 'react-native';
 import { pb } from './pb';
+import { logError } from './error-log';
 
 export const REVENUECAT_API_KEY_IOS     = 'appl_rhKjEZvNGBqMXlRakWxPIkFMfut';
 export const REVENUECAT_API_KEY_ANDROID = 'test_nAYeLrnFeNqsVeXKFKcuOFMGbqO';
@@ -33,8 +34,8 @@ export async function initPurchases(userId: string) {
     const Purchases = (await import('react-native-purchases')).default;
     Purchases.configure({ apiKey, appUserID: userId });
     initialized = true;
-  } catch {
-    // Native module not available (Expo Go) — silent fail
+  } catch (e) {
+    logError(e, 'subscription:initPurchases');
   }
 }
 
@@ -45,7 +46,10 @@ export async function checkPremium(): Promise<boolean> {
     const Purchases = (await import('react-native-purchases')).default;
     const info = await Purchases.getCustomerInfo();
     return info.entitlements.active[ENTITLEMENT_ID] !== undefined;
-  } catch { return false; }
+  } catch (e) {
+    logError(e, 'subscription:checkPremium');
+    return false;
+  }
 }
 
 export async function getOfferings() {
@@ -53,7 +57,10 @@ export async function getOfferings() {
   try {
     const Purchases = (await import('react-native-purchases')).default;
     return await Purchases.getOfferings();
-  } catch { return null; }
+  } catch (e) {
+    logError(e, 'subscription:getOfferings');
+    return null;
+  }
 }
 
 export async function purchasePackage(pkg: any): Promise<boolean> {
@@ -64,6 +71,7 @@ export async function purchasePackage(pkg: any): Promise<boolean> {
     return customerInfo.entitlements.active[ENTITLEMENT_ID] !== undefined;
   } catch (e: any) {
     if (e?.userCancelled) return false;
+    logError(e, 'subscription:purchasePackage');
     throw e;
   }
 }
@@ -74,7 +82,10 @@ export async function restorePurchases(): Promise<boolean> {
     const Purchases = (await import('react-native-purchases')).default;
     const info = await Purchases.restorePurchases();
     return info.entitlements.active[ENTITLEMENT_ID] !== undefined;
-  } catch { return false; }
+  } catch (e) {
+    logError(e, 'subscription:restorePurchases');
+    return false;
+  }
 }
 
 // iOS Offer Code redemption sheet (opens App Store's promo code UI)
