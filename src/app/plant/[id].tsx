@@ -15,7 +15,7 @@ import { usePremium } from '@/hooks/use-premium';
 import type { Plant, Harvest, HealthStatus } from '@/lib/types';
 import { addActivityEntryAsync } from '@/lib/activity-log';
 import { generateSinglePlantPdf } from '@/lib/garden-pdf';
-import { findPlantKey, PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS } from '@/lib/plant-catalog';
+import { findPlantKey, PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS, FILLER_PLANTS, getFillerSuggestions } from '@/lib/plant-catalog';
 import { HEALTH_ISSUES, encodeSickReason, stripSickReason, parseSickReason, type HealthIssue } from '@/lib/plant-health';
 import { fetchZoneForCoords, getFrostInfo, calcPlantingWindow, fmtDate, getZoneWaterAdjustment, getZoneViability, type FrostInfo, type PlantingWindow, type ZoneViability } from '@/lib/frost-dates';
 import { loadGardenLocation } from '@/lib/weather';
@@ -518,6 +518,33 @@ export default function PlantDetailScreen() {
         </View>
       )}
 
+      {/* ── Filler plants ───────────────────────────────────────────────── */}
+      {catalogInfo && (() => {
+        const fillers = getFillerSuggestions(catalogInfo);
+        if (fillers.length === 0) return null;
+        return (
+          <View style={[styles.catalogCard, { backgroundColor: cardBg }]}>
+            <Text style={[styles.sectionTitle, { color: textPrim, paddingHorizontal: 0, marginBottom: 4 }]}>🌱 Filler Plants</Text>
+            <Text style={[styles.fillerSubtitle, { color: textSec }]}>
+              Low-growing plants to fill the space around {plant.name}
+            </Text>
+            {fillers.map(key => {
+              const filler = FILLER_PLANTS[key];
+              const name = PLANT_CATALOG[key]?.name ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              return (
+                <View key={key} style={[styles.fillerRow, { borderColor: isDark ? colors.border : G.mist }]}>
+                  <Text style={styles.fillerEmoji}>{filler.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fillerName, { color: textPrim }]}>{name}</Text>
+                    <Text style={[styles.fillerWhy, { color: textSec }]}>{filler.why}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        );
+      })()}
+
       {/* ── Frost & planting dates ──────────────────────────────────────── */}
       <View style={[styles.catalogCard, { backgroundColor: cardBg }]}>
         <Text style={[styles.sectionTitle, { color: textPrim, paddingHorizontal: 0, marginBottom: 14 }]}>🌡️ Frost & Planting</Text>
@@ -894,6 +921,11 @@ const styles = StyleSheet.create({
   tagChipText: { fontSize: 12 },
   notesBox: { borderRadius: R.md, borderWidth: 1, padding: 12, marginTop: 10 },
   notesText: { fontSize: 13, lineHeight: 19 },
+  fillerSubtitle: { fontSize: 13, marginBottom: 12 },
+  fillerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 10, borderTopWidth: 1 },
+  fillerEmoji: { fontSize: 22, width: 28, textAlign: 'center', marginTop: 1 },
+  fillerName: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  fillerWhy: { fontSize: 12, lineHeight: 17 },
   companionLabel: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
   companionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   goodChip: { backgroundColor: '#d8f3dc', borderRadius: R.full, paddingHorizontal: 12, paddingVertical: 5 },

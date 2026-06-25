@@ -3045,3 +3045,39 @@ export const WATER_EMOJIS: Record<WaterNeeds, string> = {
 
 // Backward-compat re-export so existing imports of companion-plants still work
 export const PLANTS = PLANT_CATALOG;
+
+// ─── FILLER PLANTS ───────────────────────────────────────────────────────────
+// Low-growing plants suited to filling space at the base of taller plants.
+
+export interface FillerEntry {
+  emoji: string;
+  why: string;
+}
+
+export const FILLER_PLANTS: Record<string, FillerEntry> = {
+  basil:         { emoji: '🌿', why: 'Repels aphids & improves flavor of neighbors' },
+  marigold:      { emoji: '🌼', why: 'Deters root nematodes & aphids, attracts pollinators' },
+  nasturtium:    { emoji: '🌸', why: 'Trap crop for aphids; low spreading habit, edible blooms' },
+  lettuce:       { emoji: '🥬', why: 'Thrives in partial shade at the base; harvest before heat' },
+  spinach:       { emoji: '🌱', why: 'Loves the shade underneath; quick cool-season harvest' },
+  radish:        { emoji: '🔴', why: 'Loosens soil, deters beetles, ready in just 25 days' },
+  chive:         { emoji: '🪴', why: 'Compact clumps that repel aphids and carrot fly' },
+  parsley:       { emoji: '🌿', why: 'Attracts beneficial insects at ground level' },
+  thyme:         { emoji: '🌿', why: 'Creeping mat; repels cabbage worm and whitefly' },
+  sweet_alyssum: { emoji: '🌸', why: 'Tiny blooms attract aphid-eating hover flies all season' },
+  chamomile:     { emoji: '🌼', why: 'Improves nearby plant health; low and easy to pull' },
+  borage:        { emoji: '💙', why: 'Deters hornworms, attracts pollinators, edible flowers' },
+  calendula:     { emoji: '🌻', why: 'Long-blooming trap crop for aphids; sticky stems catch pests' },
+  sage:          { emoji: '🌿', why: 'Compact aromatic shrub; repels moths and beetles' },
+  oregano:       { emoji: '🌿', why: 'Low mat-forming; repels aphids and spider mites' },
+  dill:          { emoji: '🌿', why: 'Attracts beneficial parasitic wasps when in flower' },
+};
+
+export function getFillerSuggestions(catalogInfo: CatalogEntry | null, max = 5): string[] {
+  if (!catalogInfo) return [];
+  const badSet = new Set(catalogInfo.badCompanions);
+  const goodSet = new Set(catalogInfo.goodCompanions);
+  const candidates = Object.keys(FILLER_PLANTS).filter(k => !badSet.has(k));
+  candidates.sort((a, b) => (goodSet.has(a) ? 0 : 1) - (goodSet.has(b) ? 0 : 1));
+  return candidates.slice(0, max);
+}

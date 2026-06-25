@@ -663,6 +663,7 @@ export default function ProfileScreen() {
         <>
           {settingsSection}
           {tempSection}
+          {measureSection}
           {waterTimeSection}
         </>
       )}
