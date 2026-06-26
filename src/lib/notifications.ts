@@ -240,9 +240,12 @@ export async function scheduleDailyCheckIn() {
       }
     }
 
+    const h = settings.dailyCheckIn.hour;
+    const greeting = h >= 5 && h < 12 ? 'Good morning' : h >= 12 && h < 17 ? 'Good afternoon' : 'Good evening';
+
     await scheduleLocal(
       id,
-      '🌱 Good morning, gardener!',
+      `🌱 ${greeting}, gardener!`,
       'Time to check on your garden. Anything thirsty today?',
       { hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute, repeats: true },
     );
