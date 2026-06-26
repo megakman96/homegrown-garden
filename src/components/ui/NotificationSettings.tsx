@@ -18,22 +18,29 @@ function TimePicker({ label, hour, minute, onChange, textSec, textPrim, border, 
   textSec: string; textPrim: string; border: string; inputBg: string;
 }) {
   const pad = (n: number) => String(n).padStart(2, '0');
+  const isAm = hour < 12;
+  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+
+  function h12ToH24(h12: number, am: boolean): number {
+    if (am) return h12 === 12 ? 0 : h12;
+    return h12 === 12 ? 12 : h12 + 12;
+  }
 
   return (
     <View style={[tp.block, { marginTop: 8 }]}>
       <Text style={[tp.blockLabel, { color: textSec }]}>{label}</Text>
       <View style={tp.timeRow}>
-        {/* Hour */}
+        {/* Hour (1–12) */}
         <View style={tp.spinnerCol}>
-          <Text style={[tp.spinnerLabel, { color: textSec }]}>HH</Text>
+          <Text style={[tp.spinnerLabel, { color: textSec }]}>HR</Text>
           <View style={tp.spinnerControls}>
             <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
-              onPress={() => onChange((hour + 23) % 24, minute)}>
+              onPress={() => onChange(h12ToH24(((hour12 - 2 + 12) % 12) + 1, isAm), minute)}>
               <Text style={[tp.arrow, { color: textPrim }]}>−</Text>
             </TouchableOpacity>
-            <Text style={[tp.value, { color: textPrim }]}>{pad(hour)}</Text>
+            <Text style={[tp.value, { color: textPrim }]}>{pad(hour12)}</Text>
             <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
-              onPress={() => onChange((hour + 1) % 24, minute)}>
+              onPress={() => onChange(h12ToH24((hour12 % 12) + 1, isAm), minute)}>
               <Text style={[tp.arrow, { color: textPrim }]}>+</Text>
             </TouchableOpacity>
           </View>
@@ -41,7 +48,7 @@ function TimePicker({ label, hour, minute, onChange, textSec, textPrim, border, 
         <Text style={[tp.timeSep, { color: textPrim }]}>:</Text>
         {/* Minute */}
         <View style={tp.spinnerCol}>
-          <Text style={[tp.spinnerLabel, { color: textSec }]}>MM</Text>
+          <Text style={[tp.spinnerLabel, { color: textSec }]}>MIN</Text>
           <View style={tp.spinnerControls}>
             <TouchableOpacity style={[tp.btn, { borderColor: border, backgroundColor: inputBg }]}
               onPress={() => onChange(hour, (minute + 45) % 60)}>
@@ -53,6 +60,15 @@ function TimePicker({ label, hour, minute, onChange, textSec, textPrim, border, 
               <Text style={[tp.arrow, { color: textPrim }]}>+</Text>
             </TouchableOpacity>
           </View>
+        </View>
+        {/* AM / PM */}
+        <View style={[tp.spinnerCol, { marginTop: 14 }]}>
+          <TouchableOpacity
+            style={[tp.ampmBtn, { borderColor: border, backgroundColor: inputBg }]}
+            onPress={() => onChange(h12ToH24(hour12, !isAm), minute)}
+          >
+            <Text style={[tp.ampmText, { color: textPrim }]}>{isAm ? 'AM' : 'PM'}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -99,16 +115,20 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
     loadNotificationSettings().then(setSettings);
   }, []);
 
-  async function update(patch: Partial<NotificationSettings>) {
+  async function update(patch: Partial<NotificationSettings>, andReschedule = false) {
     const next = { ...settings, ...patch };
     setSettings(next);
     setSaving(true);
     await saveNotificationSettings(next);
-    if (next.masterEnabled) {
-      const granted = await requestNotificationPermission();
-      if (granted) await rescheduleAllNotifications(plants);
-    } else {
-      await cancelAllNotifications();
+    // Only touch the OS schedule when the master switch flips, or when the caller
+    // explicitly asks (e.g. after a time value changes).
+    if ('masterEnabled' in patch || andReschedule) {
+      if (next.masterEnabled) {
+        const granted = await requestNotificationPermission();
+        if (granted) await rescheduleAllNotifications(plants);
+      } else {
+        await cancelAllNotifications();
+      }
     }
     setSaving(false);
   }
@@ -178,10 +198,10 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
         onToggle={v => update({ watering: { ...settings.watering, enabled: v } })}
       >
         <Stepper label="Remind" value={settings.watering.hoursBefore} min={0} max={24} unit="hrs before due"
-          onChange={v => update({ watering: { ...settings.watering, hoursBefore: v } })}
+          onChange={v => update({ watering: { ...settings.watering, hoursBefore: v } }, true)}
           textSec={textSec} textPrim={textPrim} inputBg={inputBg} border={border} />
         <TimePicker label="Fallback time (if reminder would land overnight)" hour={settings.watering.hour} minute={settings.watering.minute}
-          onChange={(h, m) => update({ watering: { ...settings.watering, hour: h, minute: m } })}
+          onChange={(h, m) => update({ watering: { ...settings.watering, hour: h, minute: m } }, true)}
           textSec={textSec} textPrim={textPrim} border={border} inputBg={inputBg} />
       </Row>
 
@@ -192,10 +212,10 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
         onToggle={v => update({ harvest: { ...settings.harvest, enabled: v } })}
       >
         <Stepper label="Alert" value={settings.harvest.daysBefore} min={1} max={14} unit="days before harvest"
-          onChange={v => update({ harvest: { ...settings.harvest, daysBefore: v } })}
+          onChange={v => update({ harvest: { ...settings.harvest, daysBefore: v } }, true)}
           textSec={textSec} textPrim={textPrim} inputBg={inputBg} border={border} />
         <TimePicker label="Alert time" hour={settings.harvest.hour} minute={settings.harvest.minute}
-          onChange={(h, m) => update({ harvest: { ...settings.harvest, hour: h, minute: m } })}
+          onChange={(h, m) => update({ harvest: { ...settings.harvest, hour: h, minute: m } }, true)}
           textSec={textSec} textPrim={textPrim} border={border} inputBg={inputBg} />
       </Row>
 
@@ -206,7 +226,7 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
         onToggle={v => update({ dailyCheckIn: { ...settings.dailyCheckIn, enabled: v } })}
       >
         <TimePicker label="Each day at" hour={settings.dailyCheckIn.hour} minute={settings.dailyCheckIn.minute}
-          onChange={(h, m) => update({ dailyCheckIn: { ...settings.dailyCheckIn, hour: h, minute: m } })}
+          onChange={(h, m) => update({ dailyCheckIn: { ...settings.dailyCheckIn, hour: h, minute: m } }, true)}
           textSec={textSec} textPrim={textPrim} border={border} inputBg={inputBg} />
       </Row>
 
@@ -256,4 +276,6 @@ const tp = StyleSheet.create({
   arrow:           { fontSize: 14, fontWeight: '700' },
   value:           { fontSize: 16, fontWeight: '700', minWidth: 36, textAlign: 'center' },
   unitText:        { fontSize: 12, marginLeft: 4 },
+  ampmBtn:         { borderRadius: R.sm, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, minWidth: 44, alignItems: 'center' },
+  ampmText:        { fontSize: 13, fontWeight: '700' },
 });

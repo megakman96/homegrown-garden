@@ -221,20 +221,32 @@ export async function scheduleDailyCheckIn() {
   const settings = await loadNotificationSettings();
   const id = 'daily_checkin';
 
-  if (!settings.masterEnabled || !settings.dailyCheckIn.enabled) {
-    try {
-      const Notifications = await import('expo-notifications');
-      await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
-    } catch {}
-    return;
-  }
+  try {
+    const Notifications = await import('expo-notifications');
 
-  await scheduleLocal(
-    id,
-    '🌱 Good morning, gardener!',
-    'Time to check on your garden. Anything thirsty today?',
-    { hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute, repeats: true },
-  );
+    if (!settings.masterEnabled || !settings.dailyCheckIn.enabled) {
+      await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      return;
+    }
+
+    // Skip cancel+reschedule if already set to the same time — avoids spurious
+    // immediate delivery on Android when the trigger is rebuilt unnecessarily.
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const existing = scheduled.find(n => n.identifier === id);
+    if (existing) {
+      const t = existing.trigger as any;
+      if (t?.hour === settings.dailyCheckIn.hour && t?.minute === settings.dailyCheckIn.minute) {
+        return;
+      }
+    }
+
+    await scheduleLocal(
+      id,
+      '🌱 Good morning, gardener!',
+      'Time to check on your garden. Anything thirsty today?',
+      { hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute, repeats: true },
+    );
+  } catch {}
 }
 
 // ── Reschedule all notifications ──────────────────────────────────────────────

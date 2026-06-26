@@ -10,6 +10,7 @@ import { useAppTheme } from '@/contexts/theme-context';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAuth } from '@/hooks/use-auth';
 import { PressableScale } from '@/components/ui/PressableScale';
+import PlantAvatar from '@/components/PlantAvatar';
 import { PLANT_CATALOG, SUN_EMOJIS, searchPlants } from '@/lib/plant-catalog';
 import { getPlantIcon } from '@/lib/plant-icons';
 import { pb } from '@/lib/pb';
@@ -84,7 +85,9 @@ export default function PlanScreen() {
   const [wizardActivePlant, setWizardActivePlant] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
 
-  useEffect(() => { loadPlans().then(setSavedPlans); }, []);
+  useEffect(() => {
+    loadPlans().then(plans => setSavedPlans([...plans].sort((a, b) => b.year - a.year)));
+  }, []);
 
   const pickerItems = useMemo(() => {
     if (pickerSearch.trim()) return searchPlants(pickerSearch, 60);
@@ -157,9 +160,10 @@ export default function PlanScreen() {
         ? (savedPlans.find(p => p.id === activeId)?.createdAt ?? new Date().toISOString())
         : new Date().toISOString(),
     };
-    const next = activeId
+    const unsorted = activeId
       ? savedPlans.map(p => p.id === activeId ? updated : p)
       : [...savedPlans, updated];
+    const next = [...unsorted].sort((a, b) => b.year - a.year);
     setSavedPlans(next);
     setActiveId(updated.id);
     await savePlans(next);
@@ -234,7 +238,6 @@ export default function PlanScreen() {
           name:      entry.name,
           row:       parseInt(rowStr, 10),
           col:       parseInt(colStr, 10),
-          water_interval_days: entry.waterIntervalDays,
           health_status: 'healthy',
           total_yield_grams: 0,
         }).catch(() => {});
@@ -329,7 +332,7 @@ export default function PlanScreen() {
                   style={[styles.pickerRow, { borderBottomColor: border }, selected && { backgroundColor: isDark ? colors.bgElement : '#d8f3dc' }]}
                   onPress={() => togglePlant(key)}
                 >
-                  <Text style={styles.pickerEmoji}>{getPlantIcon(entry.name).emoji}</Text>
+                  <PlantAvatar name={entry.name} size={32} />
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.pickerName, { color: textPrim }]}>{entry.name}</Text>
                     <Text style={[styles.pickerMeta, { color: textSec }]}>
