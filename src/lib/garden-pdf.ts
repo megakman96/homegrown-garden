@@ -470,7 +470,7 @@ export function buildSinglePageHtml(garden: Garden, plants: Plant[], layout: Gar
     * { box-sizing: border-box; }
     body { margin: 0; padding: 20px 28px; font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; background: white; }
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-    @page { margin: 0; size: A4 landscape; }
+    @page { margin: 0; size: A4 portrait; }
   </style>
 </head>
 <body>

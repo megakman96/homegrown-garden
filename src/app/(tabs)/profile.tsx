@@ -14,6 +14,7 @@ import NotificationSettingsUI from '@/components/ui/NotificationSettings';
 import UpgradePrompt from '@/components/ui/UpgradePrompt';
 import type { Garden, GardenShare, Plant } from '@/lib/types';
 import { yearFromGarden, serializeLayout, layoutFromGarden, makeLayout } from '@/lib/garden-layout';
+import { getArchivedGardenIds, unarchiveGarden } from '@/lib/garden-archive';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const VENMO_USER  = 'kaleb-ward-8';
@@ -119,13 +120,14 @@ export default function ProfileScreen() {
       pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` }),
       pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` }),
       pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` }),
-    ]).then(([gardenList, shareList, plantList]) => {
+    ]).then(async ([gardenList, shareList, plantList]) => {
+      const archivedIds = await getArchivedGardenIds();
       const all = gardenList as any as Garden[];
-      setGardens(all.filter(g => !(g as any).archived));
-      setArchivedGardens(all.filter(g => !!(g as any).archived));
+      const active = all.filter(g => !archivedIds.has(g.id));
+      setGardens(active);
+      setArchivedGardens(all.filter(g => archivedIds.has(g.id)));
       setShares(shareList as any);
       setPlants(plantList as any);
-      const active = all.filter(g => !(g as any).archived);
       if (active.length) setShareGardenId(active[0].id);
     });
   }, [user]);
@@ -149,13 +151,9 @@ export default function ProfileScreen() {
   }
 
   async function restoreGarden(garden: Garden) {
-    try {
-      await pb.collection('gardens').update(garden.id, { archived: false });
-      setArchivedGardens(prev => prev.filter(g => g.id !== garden.id));
-      setGardens(prev => [...prev, { ...garden, archived: false } as any]);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not restore garden');
-    }
+    await unarchiveGarden(garden.id);
+    setArchivedGardens(prev => prev.filter(g => g.id !== garden.id));
+    setGardens(prev => [...prev, garden]);
   }
 
   async function migrateGarden(garden: Garden) {
@@ -688,23 +686,24 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       {/* Archived Gardens */}
-      {archivedGardens.length > 0 && (
-        <>
-          <TouchableOpacity
-            style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
-            onPress={() => setShowArchive(v => !v)}
-          >
-            <Text style={styles.collapsibleEmoji}>📦</Text>
-            <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>
-              Archived Gardens ({archivedGardens.length})
-            </Text>
-            <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
-              {showArchive ? '▲' : '▼'}
-            </Text>
-          </TouchableOpacity>
-          {showArchive && (
-            <View style={[styles.archiveSection, { backgroundColor: cardBg, borderColor: borderCol }]}>
-              {archivedGardens.map(g => {
+      <>
+        <TouchableOpacity
+          style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
+          onPress={() => setShowArchive(v => !v)}
+        >
+          <Text style={styles.collapsibleEmoji}>📦</Text>
+          <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>
+            Archived Gardens{archivedGardens.length > 0 ? ` (${archivedGardens.length})` : ''}
+          </Text>
+          <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
+            {showArchive ? '▲' : '▼'}
+          </Text>
+        </TouchableOpacity>
+        {showArchive && (
+          <View style={[styles.archiveSection, { backgroundColor: cardBg, borderColor: borderCol }]}>
+            {archivedGardens.length === 0 ? (
+              <Text style={[styles.archiveMeta, { color: textSecondary, padding: 16 }]}>No archived gardens yet.</Text>
+            ) : archivedGardens.map(g => {
                 const yr = yearFromGarden(g);
                 const currentYear = new Date().getFullYear();
                 const isMigrating = migratingId === g.id;
@@ -740,8 +739,7 @@ export default function ProfileScreen() {
               })}
             </View>
           )}
-        </>
-      )}
+      </>
 
       {/* Notifications — collapsed behind a button */}
       <TouchableOpacity

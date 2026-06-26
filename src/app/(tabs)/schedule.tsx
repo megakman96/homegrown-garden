@@ -19,6 +19,7 @@ import {
 } from '@/lib/weather';
 import { addActivityEntryAsync } from '@/lib/activity-log';
 import { yearFromGarden, sortGardens } from '@/lib/garden-layout';
+import { getArchivedGardenIds } from '@/lib/garden-archive';
 
 interface PlantWithAdvice {
   plant: Plant;
@@ -69,13 +70,14 @@ export default function ScheduleScreen() {
     if (!user) return;
 
     const currentYear = new Date().getFullYear();
+    const archivedIds = await getArchivedGardenIds();
 
     // Own gardens — exclude archived and any year that isn't the current one
     const gardensData = await offlineList('gardens', user.id, `user_id = "${user.id}"`);
     const gl = gardensData as Garden[];
     const validGardenIds = new Set(
       gl.filter(g => {
-        if ((g as any).archived === true) return false;
+        if (archivedIds.has(g.id)) return false;
         const y = yearFromGarden(g);
         return y == null || y === currentYear;
       }).map(g => g.id)
@@ -94,7 +96,7 @@ export default function ScheduleScreen() {
         const garden = await pb.collection('gardens').getOne(share.garden_id).catch(() => null);
         if (!garden) return;
         const g = garden as any as Garden;
-        if ((g as any).archived === true) return;
+        if (archivedIds.has(g.id)) return;
         const y = yearFromGarden(g);
         if (y != null && y !== currentYear) return;
         sharedIds.add(g.id);
@@ -108,7 +110,7 @@ export default function ScheduleScreen() {
     setSharedGardenIds(sharedIds);
     setPlants(pl);
     const currentYearGardens = sortGardens(gl.filter(g => {
-      if ((g as any).archived === true) return false;
+      if (archivedIds.has(g.id)) return false;
       const y = yearFromGarden(g);
       return y == null || y === currentYear;
     }));

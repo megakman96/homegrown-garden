@@ -267,6 +267,12 @@ export default function PlantCatalogueScreen() {
           <TouchableOpacity style={styles.detailDismiss} activeOpacity={1} onPress={() => { if (wizardStep) { closeWizard(); } else { setSelected(null); } }} />
           <View style={[styles.detailSheet, { backgroundColor: cardBg }]}>
             <View style={styles.detailHandle} />
+            <TouchableOpacity
+              style={styles.detailCloseBtn}
+              onPress={() => { if (wizardStep) { closeWizard(); } else { setSelected(null); } }}
+            >
+              <Text style={styles.detailCloseTxt}>✕</Text>
+            </TouchableOpacity>
 
             {/* ── Wizard: garden picker ── */}
             {wizardStep === 'garden' && selected && (
@@ -538,6 +544,8 @@ const styles = StyleSheet.create({
   detailDismiss: { flex: 1 },
   detailSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '88%', paddingHorizontal: 24, paddingBottom: 32 },
   detailHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#d0d8d4', alignSelf: 'center', marginVertical: 12 },
+  detailCloseBtn: { position: 'absolute', top: 10, right: 16, padding: 8 },
+  detailCloseTxt: { fontSize: 16, color: '#888', fontWeight: '600' },
   detailContent: { paddingBottom: 8 },
   detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, marginBottom: 16 },
   detailEmoji: { fontSize: 52 },

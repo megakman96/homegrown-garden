@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { pb } from '@/lib/pb';
 import { offlineList, offlineCreate, offlineUpdate, offlineDelete } from '@/lib/offline-db';
+import { archiveGarden as markArchived, getArchivedGardenIds } from '@/lib/garden-archive';
 import { useAuth } from '@/hooks/use-auth';
 import { usePremium, FREE_LIMITS } from '@/hooks/use-premium';
 import { PressableScale } from '@/components/ui/PressableScale';
@@ -265,9 +266,10 @@ export default function GardenScreen() {
     if (!user) return;
     setGardensLoaded(false);
 
-    const ownPromise = offlineList('gardens', user.id, `user_id = "${user.id}"`)
-      .then((list) => {
-        setGardens(sortGardens((list as any[]).filter(g => !(g as any).archived)));
+    const ownPromise = getArchivedGardenIds()
+      .then(archivedIds => offlineList('gardens', user.id, `user_id = "${user.id}"`).then(list => ({ list, archivedIds })))
+      .then(({ list, archivedIds }) => {
+        setGardens(sortGardens((list as any[]).filter(g => !archivedIds.has((g as any).id))));
         // Preload plants for every garden so icons are ready immediately when switching
         for (const garden of list) {
           offlineList('plants', user.id, `garden_id = "${(garden as any).id}"`)
@@ -697,7 +699,7 @@ export default function GardenScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Archive', onPress: async () => {
           const gardenId = garden.id;
-          await offlineUpdate('gardens', user?.id ?? '', gardenId, { archived: true }).catch(() => {});
+          await markArchived(gardenId);
           activeGardenRef.current = null;
           setPlantsMap(prev => { const n = { ...prev }; delete n[gardenId]; return n; });
           setGardens(prev => prev.filter(g => g.id !== gardenId));

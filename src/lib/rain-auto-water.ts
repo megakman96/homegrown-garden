@@ -3,6 +3,7 @@ import { offlineList, offlineUpdate } from './offline-db';
 import { loadNotificationSettings } from './notification-settings';
 import { fetchWeather, loadGardenLocation } from './weather';
 import { addActivityEntryAsync } from './activity-log';
+import { getArchivedGardenIds } from './garden-archive';
 
 const LAST_RUN_KEY = 'gg_rain_check_date';
 
@@ -39,6 +40,7 @@ export async function checkRainAutoWater(userId: string): Promise<void> {
   await setLastRunDate(today);
 
   try {
+    const archivedIds = await getArchivedGardenIds();
     const gardens = await offlineList('gardens', userId, `user_id = "${userId}"`);
     const plants  = await offlineList('plants',  userId, `user_id = "${userId}"`);
 
@@ -48,7 +50,7 @@ export async function checkRainAutoWater(userId: string): Promise<void> {
     const windowEndStr = windowEnd.toISOString().slice(0, 10);
 
     for (const garden of gardens) {
-      if ((garden as any).archived) continue;
+      if (archivedIds.has((garden as any).id)) continue;
 
       const loc = await loadGardenLocation(garden as any).catch(() => null);
       if (!loc) continue;

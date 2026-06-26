@@ -288,6 +288,10 @@ export default function PlantDetailScreen() {
             <Text style={styles.wikiCreditText}>📷 Wikipedia</Text>
           </View>
         )}
+
+        <TouchableOpacity style={styles.heroBackBtn} onPress={() => router.back()}>
+          <Text style={styles.heroBackText}>‹</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Quick actions — right at top so no scrolling needed ─────────── */}
@@ -878,6 +882,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 14,
   },
+  heroBackBtn: {
+    position: 'absolute',
+    top: 12,
+    left: 14,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBackText: { color: '#fff', fontSize: 26, fontWeight: '700', lineHeight: 30, marginLeft: -2 },
   heroBottom: { gap: 2 },
   heroName: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
   heroVariety: { fontSize: 14, color: 'rgba(255,255,255,0.75)' },
