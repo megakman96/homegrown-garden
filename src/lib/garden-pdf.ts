@@ -236,7 +236,7 @@ function buildPlantPage(plant: Plant, index: number, total: number): string {
 
     <!-- Footer -->
     <div style="position:absolute;bottom:24px;left:40px;right:40px;display:flex;justify-content:space-between;border-top:1px solid ${MIST};padding-top:10px">
-      <span style="font-size:10px;color:${STONE}">GardenGrid</span>
+      <span style="font-size:10px;color:${STONE}">GreenPlot</span>
       <span style="font-size:10px;color:${STONE}">${new Date().toLocaleDateString()}</span>
     </div>
   </div>`;
@@ -312,7 +312,7 @@ export function buildGardenReportHtml(garden: Garden, plants: Plant[], layout: G
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${garden.name} — GardenGrid Garden Plan</title>
+  <title>${garden.name} — GreenPlot Garden Plan</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: white; }
@@ -465,7 +465,7 @@ export function buildSinglePageHtml(garden: Garden, plants: Plant[], layout: Gar
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${garden.name} — GardenGrid Overview</title>
+  <title>${garden.name} — GreenPlot Overview</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; padding: 20px 28px; font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; background: white; }
@@ -485,7 +485,7 @@ export function buildSinglePageHtml(garden: Garden, plants: Plant[], layout: Gar
       </div>
       <p style="margin:0;font-size:10px;color:${STONE}">${garden.rows}×${garden.cols} grid &nbsp;·&nbsp; ${placed.length} plants placed &nbsp;·&nbsp; 🟢 ${healthy} healthy &nbsp;·&nbsp; 💧 ${thirsty} thirsty &nbsp;·&nbsp; 🧺 ${harvested} harvested &nbsp;·&nbsp; Printed ${new Date().toLocaleDateString()}</p>
     </div>
-    <div style="margin-left:auto;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${STONE}">GardenGrid</div>
+    <div style="margin-left:auto;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${STONE}">GreenPlot</div>
   </div>
 
   <!-- Gradient divider -->
@@ -550,7 +550,7 @@ function buildSinglePlantHtml(plant: Plant): string {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${plant.name} — GardenGrid Plant Card</title>
+  <title>${plant.name} — GreenPlot Plant Card</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Georgia, 'Times New Roman', serif; background: white; }
@@ -746,7 +746,7 @@ function buildPlannerHtml(opts: PlannerReportOpts): string {
         Printed ${new Date().toLocaleDateString()}
       </p>
     </div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#52796f">GardenGrid</div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#52796f">GreenPlot</div>
   </div>
   <div style="height:2px;background:linear-gradient(to right,#52b788,#b7e4c7,transparent);margin-bottom:20px;border-radius:1px"></div>
 
@@ -784,7 +784,7 @@ function buildPlannerHtml(opts: PlannerReportOpts): string {
 
   <!-- Footer -->
   <div style="margin-top:24px;padding-top:10px;border-top:1px solid #b7e4c7;display:flex;justify-content:space-between;font-size:9px;color:#52796f">
-    <span>GardenGrid · ${gardenName} · ${year}</span>
+    <span>GreenPlot · ${gardenName} · ${year}</span>
     <span>Generated ${new Date().toLocaleDateString()}</span>
   </div>
 

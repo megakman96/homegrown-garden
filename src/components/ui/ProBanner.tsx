@@ -67,7 +67,7 @@ export default function ProBanner() {
         >
           <Text style={styles.emoji}>🌱</Text>
           <View style={styles.body}>
-            <Text style={styles.title}>GardenGrid Pro</Text>
+            <Text style={styles.title}>GreenPlot Pro</Text>
             <Text style={styles.sub}>Unlimited gardens · Weather · Print garden plans</Text>
           </View>
           <View style={styles.cta}>

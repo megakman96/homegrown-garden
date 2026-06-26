@@ -49,7 +49,7 @@ export async function setupNotificationChannel() {
     });
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('garden', {
-        name: 'GardenGrid',
+        name: 'GreenPlot',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#52b788',
@@ -115,7 +115,9 @@ async function scheduleWateringReminders(plants: Plant[]) {
     if (remindAt.getHours() < 6 || remindAt.getHours() >= 22) {
       remindAt.setHours(settings.watering.hour, settings.watering.minute, 0, 0);
     }
-    if (remindAt <= now) continue;
+    // Skip anything due now or within the next hour — prevents blasting the user
+    // immediately when notifications are toggled back on.
+    if (remindAt.getTime() - now.getTime() < 3_600_000) continue;
 
     const dayKey = remindAt.toISOString().slice(0, 10); // YYYY-MM-DD
     if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [] };
@@ -153,7 +155,7 @@ async function scheduleHarvestAlerts(plants: Plant[]) {
     const remindAt = new Date(harvestDate.getTime() - settings.harvest.daysBefore * 86_400_000);
     remindAt.setHours(settings.harvest.hour, settings.harvest.minute, 0, 0);
 
-    if (remindAt <= now) continue;
+    if (remindAt.getTime() - now.getTime() < 3_600_000) continue;
 
     const dayKey = remindAt.toISOString().slice(0, 10);
     if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [], harvestDate };
@@ -194,7 +196,7 @@ async function scheduleSowingReminders() {
       const sowDate = entry.seedStartDate ?? entry.directSowDate;
       const remindAt = new Date(sowDate.getTime() - settings.sowing.weeksBefore * 7 * 86_400_000);
       remindAt.setHours(8, 0, 0, 0);
-      if (remindAt <= now) continue;
+      if (remindAt.getTime() - now.getTime() < 3_600_000) continue;
 
       const dayKey = remindAt.toISOString().slice(0, 10);
       if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [] };
@@ -279,9 +281,18 @@ async function scheduleBirthdayNotification() {
     const [m, d] = mmdd.split('/').map(Number);
     if (!m || !d) { await Notifications.cancelScheduledNotificationAsync(id).catch(() => {}); return; }
 
+    // If already scheduled, leave it — repeated cancel+reschedule is what causes
+    // immediate delivery on Android when notifications are toggled.
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    if (scheduled.find(n => n.identifier === id)) return;
+
     const now = new Date();
     let bday = new Date(now.getFullYear(), m - 1, d, 9, 0, 0, 0);
-    if (bday <= now) bday = new Date(now.getFullYear() + 1, m - 1, d, 9, 0, 0, 0);
+    // Require at least 1 hour in the future so toggling notifications on never
+    // fires the birthday notification immediately.
+    if (bday.getTime() - now.getTime() < 3_600_000) {
+      bday = new Date(now.getFullYear() + 1, m - 1, d, 9, 0, 0, 0);
+    }
 
     const firstName = ((pb.authStore.model as any)?.name as string | undefined)?.split(' ')[0]?.trim() || null;
     const title = firstName ? `🎂 Happy Birthday, ${firstName}!` : '🎂 Happy Birthday!';

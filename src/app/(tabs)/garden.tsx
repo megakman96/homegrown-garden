@@ -1213,7 +1213,7 @@ export default function GardenScreen() {
             {reportMode === 'full' && (
               <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1 }}>
                 {[
-                  { page: 1, title: 'Garden Grid', desc: `${reportPreview?.garden.rows}×${reportPreview?.garden.cols} grid with health colors, sun indicators, and a legend.`, icon: '🗺️', accent: '#52b788' },
+                  { page: 1, title: 'Garden Map', desc: `${reportPreview?.garden.rows}×${reportPreview?.garden.cols} grid with health colors, sun indicators, and a legend.`, icon: '🗺️', accent: '#52b788' },
                   { page: 2, title: 'Plant Summary Table', desc: `${(reportPreview?.plants ?? []).filter(p => p.row != null).length} placed plants — position, health, water, sun, harvest date.`, icon: '📋', accent: '#339af0' },
                   ...(reportPreview?.plants ?? []).filter(p => p.row != null).map((p, i) => ({
                     page: i + 3,

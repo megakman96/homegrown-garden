@@ -64,7 +64,7 @@ export default function SubscriptionScreen() {
       if (success) {
         setIsPremium(true);
         notifyPremiumChanged();
-        Alert.alert('🎉 Welcome to GardenGrid Pro!', 'Enjoy all premium features. Happy growing!');
+        Alert.alert('🎉 Welcome to GreenPlot Pro!', 'Enjoy all premium features. Happy growing!');
         router.back();
       }
     } catch (e: any) {
@@ -104,7 +104,7 @@ export default function SubscriptionScreen() {
         <View style={styles.activeWrap}>
           <Text style={styles.activeEmoji}>🌟</Text>
           <Text style={[styles.activeTitle, { color: textPrim }]}>You're a Pro grower!</Text>
-          <Text style={[styles.activeSub, { color: textSec }]}>All GardenGrid features are unlocked.</Text>
+          <Text style={[styles.activeSub, { color: textSec }]}>All GreenPlot features are unlocked.</Text>
           <PressableScale style={styles.doneBtn} onPress={() => router.back()}>
             <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.doneBtnGrad}>
               <Text style={styles.doneBtnText}>Back to app</Text>
@@ -138,7 +138,7 @@ export default function SubscriptionScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerEmoji}>🌱</Text>
-          <Text style={styles.headerTitle}>GardenGrid Pro</Text>
+          <Text style={styles.headerTitle}>GreenPlot Pro</Text>
           <Text style={styles.headerSub}>Try free for 14 days, then choose a plan</Text>
         </View>
       </LinearGradient>

@@ -736,7 +736,7 @@ export default function ProfileScreen() {
         <Text style={styles.subCardEmoji}>{isPremium ? '🌟' : '🌱'}</Text>
         <View style={{ flex: 1 }}>
           <Text style={[styles.subCardTitle, { color: isPremium ? '#2d6a4f' : '#7d5a00' }]}>
-            {isPremium ? 'GardenGrid Pro — Active' : 'Upgrade to Pro'}
+            {isPremium ? 'GreenPlot Pro — Active' : 'Upgrade to Pro'}
           </Text>
           <Text style={[styles.subCardSub, { color: isPremium ? '#52796f' : '#9c6f00' }]}>
             {isPremium ? 'Tap to manage or cancel subscription' : '14-day free trial · Unlimited gardens & more'}
@@ -805,7 +805,7 @@ export default function ProfileScreen() {
       )}
       <TouchableOpacity style={styles.venmoButton} onPress={openVenmo}>
         <Text style={styles.venmoText}>☕ Buy Me a Coffee</Text>
-        <Text style={styles.venmoSub}>Support GardenGrid via Venmo @wardsolutions</Text>
+        <Text style={styles.venmoSub}>Support GreenPlot via Venmo @wardsolutions</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.venmoButton, { backgroundColor: '#f0f7ff', borderColor: '#a5c6e8', marginTop: 0 }]}
