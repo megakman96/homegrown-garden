@@ -3,6 +3,7 @@ import type { Plant } from './types';
 import { loadNotificationSettings } from './notification-settings';
 import { loadPlans, computePlan } from './garden-plan';
 import { logError } from './error-log';
+import { pb } from './pb';
 
 // ── Permission ────────────────────────────────────────────────────────────────
 
@@ -242,13 +243,50 @@ export async function scheduleDailyCheckIn() {
 
     const h = settings.dailyCheckIn.hour;
     const greeting = h >= 5 && h < 12 ? 'Good morning' : h >= 12 && h < 17 ? 'Good afternoon' : 'Good evening';
+    const firstName = ((pb.authStore.model as any)?.name as string | undefined)?.split(' ')[0]?.trim() || 'gardener';
 
     await scheduleLocal(
       id,
-      `🌱 ${greeting}, gardener!`,
+      `🌱 ${greeting}, ${firstName}!`,
       'Time to check on your garden. Anything thirsty today?',
       { hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute, repeats: true },
     );
+  } catch {}
+}
+
+// ── Birthday notification ─────────────────────────────────────────────────────
+
+async function scheduleBirthdayNotification() {
+  if (Platform.OS === 'web') return;
+  const id = 'birthday_annual';
+
+  try {
+    const Notifications = await import('expo-notifications');
+    const settings = await loadNotificationSettings();
+
+    if (!settings.masterEnabled) {
+      await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      return;
+    }
+
+    const userId = (pb.authStore.model as any)?.id as string | undefined;
+    if (!userId) { await Notifications.cancelScheduledNotificationAsync(id).catch(() => {}); return; }
+
+    const { getItemAsync } = await import('expo-secure-store');
+    const mmdd = await getItemAsync(`hg_bday_${userId}`).catch(() => null);
+    if (!mmdd) { await Notifications.cancelScheduledNotificationAsync(id).catch(() => {}); return; }
+
+    const [m, d] = mmdd.split('/').map(Number);
+    if (!m || !d) { await Notifications.cancelScheduledNotificationAsync(id).catch(() => {}); return; }
+
+    const now = new Date();
+    let bday = new Date(now.getFullYear(), m - 1, d, 9, 0, 0, 0);
+    if (bday <= now) bday = new Date(now.getFullYear() + 1, m - 1, d, 9, 0, 0, 0);
+
+    const firstName = ((pb.authStore.model as any)?.name as string | undefined)?.split(' ')[0]?.trim() || null;
+    const title = firstName ? `🎂 Happy Birthday, ${firstName}!` : '🎂 Happy Birthday!';
+
+    await scheduleLocal(id, title, "Hope your garden grows as beautifully as you do. Have a wonderful day! 🌸", { date: bday });
   } catch {}
 }
 
@@ -260,6 +298,7 @@ export async function rescheduleAllNotifications(plants: Plant[]) {
   await scheduleHarvestAlerts(plants);
   await scheduleSowingReminders();
   await scheduleDailyCheckIn();
+  await scheduleBirthdayNotification();
 }
 
 // ── Cancel all ────────────────────────────────────────────────────────────────
