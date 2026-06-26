@@ -14,17 +14,15 @@ import NotificationSettingsUI from '@/components/ui/NotificationSettings';
 import UpgradePrompt from '@/components/ui/UpgradePrompt';
 import type { Garden, GardenShare, Plant } from '@/lib/types';
 import { yearFromGarden, serializeLayout, layoutFromGarden, makeLayout } from '@/lib/garden-layout';
-import { getArchivedGardenIds, unarchiveGarden } from '@/lib/garden-archive';
+import { getArchivedGardenIds, archiveGarden, unarchiveGarden } from '@/lib/garden-archive';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const VENMO_USER  = 'wardsolutions';
 
 function openVenmo() {
-  const deepLink = `venmo://paycharge?txn=pay&recipients=${VENMO_USER}&note=GardenGrid%20Support`;
-  const webUrl   = `https://venmo.com/u/${VENMO_USER}`;
-  Linking.canOpenURL(deepLink)
-    .then(can => Linking.openURL(can ? deepLink : webUrl))
-    .catch(() => Linking.openURL(webUrl));
+  // Business profiles live at venmo.com/handle (no /u/). Opening the web URL
+  // triggers Venmo's universal link and opens the app directly on mobile.
+  Linking.openURL(`https://venmo.com/${VENMO_USER}`).catch(() => {});
 }
 
 export default function ProfileScreen() {
@@ -125,9 +123,15 @@ export default function ProfileScreen() {
     ]).then(async ([gardenList, shareList, plantList]) => {
       const archivedIds = await getArchivedGardenIds();
       const all = gardenList as any as Garden[];
-      const active = all.filter(g => !archivedIds.has(g.id));
+      // Check both AsyncStorage IDs (new system) and PocketBase archived field (old system)
+      const isArchived = (g: Garden) => archivedIds.has(g.id) || !!(g as any).archived;
+      // Migrate any PocketBase-archived gardens into AsyncStorage so future loads are consistent
+      for (const g of all) {
+        if (!archivedIds.has(g.id) && (g as any).archived) await archiveGarden(g.id);
+      }
+      const active = all.filter(g => !isArchived(g));
       setGardens(active);
-      setArchivedGardens(all.filter(g => archivedIds.has(g.id)));
+      setArchivedGardens(all.filter(g => isArchived(g)));
       setShares(shareList as any);
       setPlants(plantList as any);
       if (active.length) setShareGardenId(active[0].id);

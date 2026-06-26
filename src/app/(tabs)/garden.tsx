@@ -269,7 +269,7 @@ export default function GardenScreen() {
     const ownPromise = getArchivedGardenIds()
       .then(archivedIds => offlineList('gardens', user.id, `user_id = "${user.id}"`).then(list => ({ list, archivedIds })))
       .then(({ list, archivedIds }) => {
-        setGardens(sortGardens((list as any[]).filter(g => !archivedIds.has((g as any).id))));
+        setGardens(sortGardens((list as any[]).filter(g => !archivedIds.has((g as any).id) && !(g as any).archived)));
         // Preload plants for every garden so icons are ready immediately when switching
         for (const garden of list) {
           offlineList('plants', user.id, `garden_id = "${(garden as any).id}"`)
