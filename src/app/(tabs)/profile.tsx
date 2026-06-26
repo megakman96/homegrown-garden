@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   TextInput, Modal, Alert, Platform, Linking, KeyboardAvoidingView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -42,6 +42,7 @@ export default function ProfileScreen() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [archivedGardens, setArchivedGardens] = useState<Garden[]>([]);
+  const allGardensRef = useRef<Garden[]>([]);
   const [showArchive, setShowArchive] = useState(false);
   const [migratingId, setMigratingId] = useState<string | null>(null);
   const isAdmin = user?.email === ADMIN_EMAIL && Platform.OS === 'web';
@@ -68,12 +69,19 @@ export default function ProfileScreen() {
     } catch (e: any) { Alert.alert('Error', e?.message ?? 'Could not update name'); }
   }
 
-  function saveBdayFn() {
+  async function saveBdayFn() {
     if (!user) return;
     const val = editBday.trim();
     saveBirthday(user.id, val);
     setDisplayBday(val);
     setEditingBday(false);
+    // Cancel the old birthday notification so the next reschedule uses the new date
+    if (Platform.OS !== 'web') {
+      try {
+        const Notifs = await import('expo-notifications');
+        await Notifs.cancelScheduledNotificationAsync('birthday_annual').catch(() => {});
+      } catch {}
+    }
   }
 
   async function changePassword() {
@@ -123,6 +131,7 @@ export default function ProfileScreen() {
     ]).then(async ([gardenList, shareList, plantList]) => {
       const archivedIds = await getArchivedGardenIds();
       const all = gardenList as any as Garden[];
+      allGardensRef.current = all;
       // Check both AsyncStorage IDs (new system) and PocketBase archived field (old system)
       const isArchived = (g: Garden) => archivedIds.has(g.id) || !!(g as any).archived;
       // Migrate any PocketBase-archived gardens into AsyncStorage so future loads are consistent
@@ -142,6 +151,18 @@ export default function ProfileScreen() {
     if (!user) return;
     loadBirthdayAsync(user.id).then(b => setDisplayBday(b ?? ''));
   }, [user]);
+
+  // Refresh archive list whenever this screen is focused so changes made
+  // on the Garden tab (archive/unarchive) show up immediately.
+  useFocusEffect(useCallback(() => {
+    const all = allGardensRef.current;
+    if (!all.length) return;
+    getArchivedGardenIds().then(ids => {
+      const isArch = (g: Garden) => ids.has(g.id) || !!(g as any).archived;
+      setGardens(all.filter(g => !isArch(g)));
+      setArchivedGardens(all.filter(g => isArch(g)));
+    });
+  }, []));
 
   async function shareGarden() {
     if (!user || !shareEmail.trim() || !shareGardenId) return;

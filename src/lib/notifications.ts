@@ -103,11 +103,32 @@ async function scheduleWateringReminders(plants: Plant[]) {
   const byDay: Record<string, { remindAt: Date; names: string[] }> = {};
   const now = new Date();
 
+  // Pre-fetch weather per garden so we can skip notifications when rain is expected
+  const gardenIds = [...new Set(plants.map((p: any) => p.garden_id).filter(Boolean))] as string[];
+  const weatherByGarden: Record<string, any> = {};
+  try {
+    const { fetchWeather, loadGardenLocation } = await import('./weather');
+    await Promise.all(gardenIds.map(async gid => {
+      const loc = await loadGardenLocation({ id: gid } as any).catch(() => null);
+      weatherByGarden[gid] = loc ? await fetchWeather(loc).catch(() => null) : null;
+    }));
+  } catch {}
+
   for (const plant of plants) {
     if (!plant.last_watered || !plant.water_interval_days) continue;
 
     const due = new Date(plant.last_watered);
     due.setDate(due.getDate() + plant.water_interval_days);
+
+    // Skip if ≥10 mm of rain is forecast on the due day
+    const gid = (plant as any).garden_id as string | undefined;
+    if (gid) {
+      const wx = weatherByGarden[gid];
+      if (wx?.days) {
+        const dueDateStr = due.toISOString().slice(0, 10);
+        if (wx.days.find((day: any) => day.date === dueDateStr && day.precipMm >= 10)) continue;
+      }
+    }
 
     const remindAt = new Date(due.getTime() - settings.watering.hoursBefore * 3_600_000);
     // hoursBefore can push the reminder into the middle of the night — fall back
@@ -232,26 +253,28 @@ export async function scheduleDailyCheckIn() {
       return;
     }
 
-    // Skip cancel+reschedule if already set to the same time — avoids spurious
-    // immediate delivery on Android when the trigger is rebuilt unnecessarily.
+    const h = settings.dailyCheckIn.hour;
+    const greeting = h >= 5 && h < 12 ? 'Good morning' : h >= 12 && h < 17 ? 'Good afternoon' : 'Good evening';
+    const firstName = ((pb.authStore.model as any)?.name as string | undefined)?.split(' ')[0]?.trim() || 'gardener';
+    const expectedTitle = `🌱 ${greeting}, ${firstName}!`;
+
+    // Skip only when time AND greeting already match — avoids spurious immediate
+    // delivery on Android and ensures the greeting stays correct for the hour.
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     const existing = scheduled.find(n => n.identifier === id);
     if (existing) {
       const t = existing.trigger as any;
-      if (t?.hour === settings.dailyCheckIn.hour && t?.minute === settings.dailyCheckIn.minute) {
+      const existingTitle = (existing.content as any)?.title ?? '';
+      if (t?.hour === h && t?.minute === settings.dailyCheckIn.minute && existingTitle === expectedTitle) {
         return;
       }
     }
 
-    const h = settings.dailyCheckIn.hour;
-    const greeting = h >= 5 && h < 12 ? 'Good morning' : h >= 12 && h < 17 ? 'Good afternoon' : 'Good evening';
-    const firstName = ((pb.authStore.model as any)?.name as string | undefined)?.split(' ')[0]?.trim() || 'gardener';
-
     await scheduleLocal(
       id,
-      `🌱 ${greeting}, ${firstName}!`,
+      expectedTitle,
       'Time to check on your garden. Anything thirsty today?',
-      { hour: settings.dailyCheckIn.hour, minute: settings.dailyCheckIn.minute, repeats: true },
+      { hour: h, minute: settings.dailyCheckIn.minute, repeats: true },
     );
   } catch {}
 }
