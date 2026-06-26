@@ -364,6 +364,28 @@ export default function PlantDetailScreen() {
         );
       })()}
 
+      {/* ── Climbing plant alert ────────────────────────────────────────── */}
+      {catalogInfo?.isClimbing && (
+        <View style={[styles.alertCard, styles.climbingCard]}>
+          <Text style={styles.alertEmoji}>🧗</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.alertTitle}>Climbing Plant — Needs Support</Text>
+            <Text style={styles.alertBody}>{catalogInfo.climbingNote ?? 'This plant climbs and needs a trellis, fence, or stake to grow properly.'}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* ── Invasive plant alert ─────────────────────────────────────────── */}
+      {catalogInfo?.isInvasive && (
+        <View style={[styles.alertCard, styles.invasiveCard]}>
+          <Text style={styles.alertEmoji}>⚠️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.alertTitle, { color: '#a05000' }]}>Invasive — Isolate This Plant</Text>
+            <Text style={[styles.alertBody, { color: '#7a3d00' }]}>{catalogInfo.invasiveNote ?? 'This plant spreads aggressively. Keep it isolated from the rest of your garden.'}</Text>
+          </View>
+        </View>
+      )}
+
       {/* ── Info card ───────────────────────────────────────────────────── */}
       <View style={[styles.infoCard, { backgroundColor: cardBg }]}>
         {plant.variety && <InfoRow label="Variety" value={plant.variety} tc={textSec} vc={textPrim} />}
@@ -921,6 +943,12 @@ const styles = StyleSheet.create({
   tagChipText: { fontSize: 12 },
   notesBox: { borderRadius: R.md, borderWidth: 1, padding: 12, marginTop: 10 },
   notesText: { fontSize: 13, lineHeight: 19 },
+  alertCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginHorizontal: 16, marginTop: 12, borderRadius: R.lg, borderWidth: 1.5, padding: 14 },
+  climbingCard: { backgroundColor: '#e7f5ff', borderColor: '#74c0fc' },
+  invasiveCard: { backgroundColor: '#fff4e6', borderColor: '#ffa94d' },
+  alertEmoji: { fontSize: 26, marginTop: 1 },
+  alertTitle: { fontSize: 14, fontWeight: '700', color: '#1971c2', marginBottom: 4 },
+  alertBody: { fontSize: 13, lineHeight: 18, color: '#1864ab' },
   fillerSubtitle: { fontSize: 13, marginBottom: 12 },
   fillerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 10, borderTopWidth: 1 },
   fillerEmoji: { fontSize: 22, width: 28, textAlign: 'center', marginTop: 1 },

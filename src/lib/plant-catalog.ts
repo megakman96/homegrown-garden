@@ -22,6 +22,11 @@ export interface CatalogEntry {
   spacingCm?: number;
   depthCm?: number;
   varieties?: PlantVariety[];
+  isClimbing?: boolean;
+  climbingNote?: string;
+  isInvasive?: boolean;
+  invasiveNote?: string;
+  attractsPollinators?: boolean;
 }
 
 // Keys are canonical IDs; aliases allow flexible lookup
@@ -185,6 +190,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['bean', 'pea', 'lettuce', 'radish', 'sunflower', 'marigold', 'dill', 'nasturtium'],
     badCompanions: ['sage', 'potato', 'fennel', 'rosemary', 'aromatic_herbs'],
     notes: '95% water — never let soil dry out. Mulch heavily.',
+    isClimbing: true, climbingNote: 'Vining cucumbers thrive on a trellis — keeps fruit straight, improves airflow, and saves ground space.',
     daysToMaturity: { min: 50, max: 70 }, spacingCm: 45,
     varieties: [
       { name: 'Slicing', notes: 'Standard; 55–65 days' },
@@ -202,6 +208,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['carrot', 'cucumber', 'pea', 'radish', 'strawberry', 'corn', 'squash', 'potato', 'celery', 'summer_savory'],
     badCompanions: ['onion', 'garlic', 'leek', 'fennel', 'shallot'],
     notes: 'Nitrogen fixer — improves soil for neighbors.',
+    isClimbing: true, climbingNote: 'Pole bean varieties need a trellis, teepee, or fence — they climb 6–8 ft. Bush beans are self-supporting.',
     daysToMaturity: { min: 50, max: 65 }, spacingCm: 15,
     varieties: [
       { name: 'Bush', notes: 'No support needed; 50–55 days' },
@@ -219,6 +226,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['carrot', 'cucumber', 'bean', 'radish', 'spinach', 'mint', 'turnip', 'lettuce', 'corn'],
     badCompanions: ['onion', 'garlic', 'leek', 'fennel', 'shallot'],
     notes: 'Cool-season crop. Nitrogen fixer. Plant early spring or fall.',
+    isClimbing: true, climbingNote: 'Most peas send out tendrils and need netting, twine, or a pea fence to climb — even dwarf types benefit from a short support.',
     daysToMaturity: { min: 55, max: 70 }, spacingCm: 8,
     varieties: [
       { name: 'Snow', notes: 'Flat pods eaten whole; 60–65 days' },
@@ -621,6 +629,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['potato', 'fruit_trees', 'rhubarb'],
     badCompanions: ['fennel'],
     notes: 'Perennial; spreads vigorously. Best grown in containers. Roots harvested in fall.',
+    isInvasive: true, invasiveNote: 'Horseradish spreads vigorously from root fragments. Grow in a raised bed or buried container — any root piece left in the soil will re-sprout.',
     daysToMaturity: { min: 150, max: 200 }, spacingCm: 60,
   },
   ginger: {
@@ -694,6 +703,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['corn', 'bean', 'squash'],
     badCompanions: ['potato', 'sunflower'],
     notes: 'Spreads aggressively — contain with barriers. Nutty, sweet tubers. Very hardy.',
+    isInvasive: true, invasiveNote: 'Jerusalem artichoke spreads aggressively by underground tubers. Plant inside a buried barrier or dedicate an isolated bed — removing it completely is very difficult.',
     daysToMaturity: { min: 120, max: 150 }, spacingCm: 45,
   },
   collard_greens: {
@@ -754,6 +764,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['hyssop', 'basil', 'rosemary', 'oregano', 'geranium', 'blackberry'],
     badCompanions: ['cabbage', 'radish', 'fennel'],
     notes: 'Needs sturdy trellis. Annual pruning essential. Table vs wine varieties differ.',
+    isClimbing: true, climbingNote: 'Grapevines need a sturdy trellis, arbor, or fence — they\'ll grow 15–20 ft. Prune hard every winter to control size and maximize fruit.',
     daysToMaturity: { min: 1095, max: 1460 }, spacingCm: 250,
     varieties: [
       { name: 'Concord', notes: 'American; blue-black; jam and juice' },
@@ -924,6 +935,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['cabbage', 'pea', 'tomato', 'brassicas', 'carrot'],
     badCompanions: ['parsley'],
     notes: 'Spreads invasively — grow in buried containers. Repels pests.',
+    isInvasive: true, invasiveNote: 'Mint spreads aggressively by underground runners. Plant in a buried pot or bottomless container to stop it taking over your garden.',
     daysToMaturity: { min: 60, max: 90 }, spacingCm: 30,
     varieties: [
       { name: 'Spearmint', notes: 'Milder; cooking and tea' },
@@ -1005,6 +1017,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['rose', 'brassicas', 'apple', 'thyme', 'sage'],
     badCompanions: ['dill'],
     notes: 'Attracts pollinators. Repels deer and rabbits. Excellent near fruit trees.',
+    attractsPollinators: true,
     daysToMaturity: { min: 90, max: 200 }, spacingCm: 45,
   },
   lemon_balm: {
@@ -1014,6 +1027,8 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['tomato', 'squash', 'pumpkin', 'all vegetables'],
     badCompanions: [],
     notes: 'Attracts bees and pollinators. Can spread — best in a container.',
+    isInvasive: true, invasiveNote: 'Lemon balm self-seeds prolifically and spreads via underground runners. Deadhead flowers before seeds set and plant in a container to keep it contained.',
+    attractsPollinators: true,
     daysToMaturity: { min: 70, max: 100 }, spacingCm: 45,
   },
   chamomile: {
@@ -1032,6 +1047,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['tomato', 'strawberry', 'squash', 'cucumber', 'brassicas'],
     badCompanions: [],
     notes: 'Deters tomato hornworm. Edible blue flowers. Self-seeds prolifically.',
+    attractsPollinators: true,
     daysToMaturity: { min: 50, max: 70 }, spacingCm: 30,
   },
   hyssop: {
@@ -1078,6 +1094,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['tomato', 'pepper', 'cucumber', 'squash', 'rose', 'basil', 'eggplant'],
     badCompanions: ['bean', 'cabbage'],
     notes: 'Nematode repellent in soil. Universal pest deterrent. Plant everywhere.',
+    attractsPollinators: true,
     daysToMaturity: { min: 45, max: 70 }, spacingCm: 20,
     varieties: [
       { name: 'French', notes: 'Compact; best nematode control' },
@@ -1092,6 +1109,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['tomato', 'squash', 'cucumber', 'brassicas', 'fruit_trees', 'bean'],
     badCompanions: ['fennel'],
     notes: 'Edible leaves and flowers. Trap crop for aphids. Poor soil = more flowers.',
+    attractsPollinators: true,
     daysToMaturity: { min: 35, max: 55 }, spacingCm: 30,
   },
   sunflower: {
@@ -1101,6 +1119,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['cucumber', 'corn', 'squash', 'tomato', 'lettuce'],
     badCompanions: ['potato', 'bean', 'pole_bean'],
     notes: 'Provides shade for lettuce. Birds eat seeds — plant away from strawberries.',
+    attractsPollinators: true,
     daysToMaturity: { min: 60, max: 90 }, spacingCm: 45,
     varieties: [
       { name: 'Giant', notes: 'Tall; 1.8–3m; large seed heads' },
@@ -1115,6 +1134,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['tomato', 'asparagus', 'carrot', 'pea', 'all vegetables'],
     badCompanions: [],
     notes: 'Edible flowers. Medicinal. Attracts aphids away from vegetables (trap crop).',
+    attractsPollinators: true,
     daysToMaturity: { min: 45, max: 60 }, spacingCm: 25,
   },
   cosmos: {
@@ -1124,6 +1144,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['vegetable garden', 'all vegetables'],
     badCompanions: [],
     notes: 'Attracts beneficial insects. Thrives on neglect — poor soil, no fertilizer.',
+    attractsPollinators: true,
     daysToMaturity: { min: 55, max: 70 }, spacingCm: 30,
   },
   zinnia: {
@@ -1133,6 +1154,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['tomato', 'pepper', 'cucumber', 'squash'],
     badCompanions: [],
     notes: 'Attracts butterflies and beneficial insects. Great cut flower.',
+    attractsPollinators: true,
     daysToMaturity: { min: 55, max: 70 }, spacingCm: 25,
   },
   sweet_alyssum: {
@@ -1142,6 +1164,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['all vegetables', 'tomato', 'brassicas', 'strawberry'],
     badCompanions: [],
     notes: 'Attracts hoverflies (aphid predators). Honey scent. Living mulch.',
+    attractsPollinators: true,
     daysToMaturity: { min: 45, max: 60 }, spacingCm: 15,
   },
   // ─── FRUITS ──────────────────────────────────────────────────────────────────
@@ -1428,6 +1451,8 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['echinacea', 'lavender', 'yarrow', 'salvia', 'black_eyed_susan', 'tomato', 'pepper', 'eggplant', 'thyme'],
     badCompanions: [],
     notes: 'Top pollinator plant — irresistible to hummingbirds, bumblebees, and butterflies. Edible; leaves make earl grey-flavored tea. Divide every 3 years to prevent powdery mildew. Spreads vigorously.',
+    attractsPollinators: true,
+    isInvasive: true, invasiveNote: 'Bee balm spreads vigorously by underground rhizomes. Divide every 2–3 years in spring to keep it from crowding out neighbors.',
     daysToMaturity: { min: 80, max: 100 }, spacingCm: 45,
     varieties: [
       { name: 'Jacob Cline', notes: 'Deep red; mildew-resistant; tall' },
@@ -1700,6 +1725,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['lavender', 'salvia', 'black_eyed_susan', 'yarrow', 'bee_balm'],
     badCompanions: [],
     notes: 'Native perennial; drought-tolerant. Medicinal. Goldfinches eat seeds in fall. Long-lived.',
+    attractsPollinators: true,
     daysToMaturity: { min: 80, max: 100 }, spacingCm: 45,
   },
   yarrow: {
@@ -1736,6 +1762,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['echinacea', 'yarrow', 'lavender', 'salvia', 'marigold'],
     badCompanions: [],
     notes: 'Native wildflower; attracts pollinators and birds. Very drought-tolerant. Self-sows freely.',
+    attractsPollinators: true,
     daysToMaturity: { min: 60, max: 80 }, spacingCm: 30,
   },
   verbena: {
@@ -1745,6 +1772,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['marigold', 'petunia', 'zinnia', 'salvia'],
     badCompanions: [],
     notes: 'Long-blooming; heat and drought tolerant. Attracts butterflies. Good for edges and containers.',
+    attractsPollinators: true,
     daysToMaturity: { min: 70, max: 90 }, spacingCm: 25,
   },
   agastache: {
@@ -1754,6 +1782,7 @@ export const PLANT_CATALOG: Record<string, CatalogEntry> = {
     goodCompanions: ['lavender', 'echinacea', 'salvia', 'yarrow', 'bee_balm'],
     badCompanions: [],
     notes: 'Extremely attractive to hummingbirds, bees, and butterflies. Licorice-scented. Drought-tolerant once established. Long bloom season.',
+    attractsPollinators: true,
     daysToMaturity: { min: 80, max: 110 }, spacingCm: 45,
   },
   liatris: {

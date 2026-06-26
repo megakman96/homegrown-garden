@@ -263,6 +263,33 @@ export default function PlanScreen() {
 
   // ── Picker modal ──────────────────────────────────────────────────────────
 
+  const GARDEN_GOALS = [
+    {
+      id: 'butterfly',
+      emoji: '🦋',
+      label: 'Butterfly Garden',
+      keys: ['zinnia', 'echinacea', 'black_eyed_susan', 'lavender', 'bee_balm', 'agastache', 'cosmos', 'marigold', 'verbena', 'parsley', 'dill'],
+    },
+    {
+      id: 'pollinator',
+      emoji: '🐝',
+      label: 'Pollinator Garden',
+      keys: ['lavender', 'borage', 'nasturtium', 'calendula', 'sweet_alyssum', 'sunflower', 'marigold', 'cosmos', 'bee_balm', 'agastache', 'echinacea'],
+    },
+    {
+      id: 'salad',
+      emoji: '🥗',
+      label: 'Salad Garden',
+      keys: ['lettuce', 'spinach', 'arugula', 'radish', 'cucumber', 'tomato', 'carrot', 'chive', 'parsley'],
+    },
+    {
+      id: 'herbs',
+      emoji: '🌿',
+      label: 'Herb Garden',
+      keys: ['basil', 'parsley', 'cilantro', 'dill', 'thyme', 'rosemary', 'sage', 'chive', 'mint', 'lavender', 'oregano'],
+    },
+  ];
+
   const pickerModal = (
     <Modal visible={showPicker} transparent animationType="slide">
       <View style={[styles.modalBackdrop, isDesktop && styles.modalBackdropCenter]}>
@@ -270,9 +297,25 @@ export default function PlanScreen() {
         <View style={[styles.modal, { backgroundColor: cardBg }, isDesktop && styles.modalCenter]}>
           {!isDesktop && <View style={styles.modalHandle} />}
           <Text style={[styles.modalTitle, { color: textPrim }]}>Choose Plants</Text>
+
+          {/* Garden Goals quick-start */}
+          <Text style={[styles.goalLabel, { color: textSec }]}>START WITH A GOAL</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.goalRow} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+            {GARDEN_GOALS.map(goal => (
+              <TouchableOpacity
+                key={goal.id}
+                style={[styles.goalChip, { backgroundColor: isDark ? colors.bgElement : '#e8f5e9', borderColor: isDark ? colors.border : '#a5d6a7' }]}
+                onPress={() => setSelectedKeys(prev => [...new Set([...prev, ...goal.keys])])}
+              >
+                <Text style={styles.goalEmoji}>{goal.emoji}</Text>
+                <Text style={[styles.goalChipText, { color: textPrim }]}>{goal.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
           <TextInput
             style={[styles.input, { backgroundColor: inputBg, borderColor: border, color: textPrim }]}
-            placeholder="Search..."
+            placeholder="Search plants..."
             placeholderTextColor={textSec}
             value={pickerSearch}
             onChangeText={setPickerSearch}
@@ -925,6 +968,13 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 52, marginBottom: 14 },
   emptyTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
   emptyText:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+
+  // Garden Goals
+  goalLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 6, marginTop: 2 },
+  goalRow:      { marginBottom: 10, flexGrow: 0 },
+  goalChip:     { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: R.full, borderWidth: 1.5, paddingHorizontal: 12, paddingVertical: 7 },
+  goalEmoji:    { fontSize: 16 },
+  goalChipText: { fontSize: 13, fontWeight: '600' },
 
   // Modals (picker)
   modalBackdrop:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
