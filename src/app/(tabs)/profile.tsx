@@ -17,7 +17,7 @@ import { yearFromGarden, serializeLayout, layoutFromGarden, makeLayout } from '@
 import { getArchivedGardenIds, unarchiveGarden } from '@/lib/garden-archive';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
-const VENMO_USER  = 'sasquatchio';
+const VENMO_USER  = 'wardsolutions';
 
 function openVenmo() {
   const deepLink = `venmo://paycharge?txn=pay&recipients=${VENMO_USER}&note=GardenGrid%20Support`;
@@ -615,7 +615,7 @@ export default function ProfileScreen() {
               )}
               <TouchableOpacity style={styles.desktopVenmoBtn} onPress={openVenmo}>
                 <Text style={styles.desktopVenmoText}>☕ Buy Me a Coffee</Text>
-                <Text style={styles.venmoSub}>Venmo @sasquatchio</Text>
+                <Text style={styles.venmoSub}>Venmo @wardsolutions</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.desktopVenmoBtn, { marginTop: 6, backgroundColor: '#f0f7ff', borderColor: '#a5c6e8' }]}
@@ -789,7 +789,7 @@ export default function ProfileScreen() {
       )}
       <TouchableOpacity style={styles.venmoButton} onPress={openVenmo}>
         <Text style={styles.venmoText}>☕ Buy Me a Coffee</Text>
-        <Text style={styles.venmoSub}>Support GardenGrid via Venmo @sasquatchio</Text>
+        <Text style={styles.venmoSub}>Support GardenGrid via Venmo @wardsolutions</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.venmoButton, { backgroundColor: '#f0f7ff', borderColor: '#a5c6e8', marginTop: 0 }]}
