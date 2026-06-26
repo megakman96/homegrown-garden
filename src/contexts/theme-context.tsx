@@ -168,6 +168,15 @@ export function loadBirthday(userId: string): string | null {
   try { return localStorage.getItem(`hg_bday_${userId}`); } catch { return null; }
 }
 
+export async function loadBirthdayAsync(userId: string): Promise<string | null> {
+  try {
+    const { getItemAsync } = await import('expo-secure-store');
+    const val = await getItemAsync(`hg_bday_${userId}`);
+    if (val) return val;
+  } catch {}
+  try { return localStorage.getItem(`hg_bday_${userId}`); } catch { return null; }
+}
+
 export function isBirthdayToday(mmdd: string | null): boolean {
   if (!mmdd) return false;
   const [m, d] = mmdd.split('/').map(Number);

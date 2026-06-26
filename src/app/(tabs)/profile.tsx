@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { pb } from '@/lib/pb';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useAppTheme, saveBirthday, loadBirthday, type ThemeMode, type TempUnit, type MeasureUnit, type WaterTime } from '@/contexts/theme-context';
+import { useAppTheme, saveBirthday, loadBirthdayAsync, type ThemeMode, type TempUnit, type MeasureUnit, type WaterTime } from '@/contexts/theme-context';
 import { clearActivityLogAsync } from '@/lib/activity-log';
 import { usePremium } from '@/hooks/use-premium';
 import NotificationSettingsUI from '@/components/ui/NotificationSettings';
@@ -50,7 +50,7 @@ export default function ProfileScreen() {
 
   // Settings edit state
   const displayName = (pb.authStore.model as any)?.name ?? user?.email?.split('@')[0] ?? '';
-  const displayBday = user ? loadBirthday(user.id) ?? '' : '';
+  const [displayBday, setDisplayBday] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState('');
   const [editingBday, setEditingBday] = useState(false);
@@ -72,7 +72,9 @@ export default function ProfileScreen() {
 
   function saveBdayFn() {
     if (!user) return;
-    saveBirthday(user.id, editBday.trim());
+    const val = editBday.trim();
+    saveBirthday(user.id, val);
+    setDisplayBday(val);
     setEditingBday(false);
   }
 
@@ -130,6 +132,11 @@ export default function ProfileScreen() {
       setPlants(plantList as any);
       if (active.length) setShareGardenId(active[0].id);
     });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadBirthdayAsync(user.id).then(b => setDisplayBday(b ?? ''));
   }, [user]);
 
   async function shareGarden() {
@@ -571,6 +578,63 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const archiveSection = (
+    <>
+      <TouchableOpacity
+        style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
+        onPress={() => setShowArchive(v => !v)}
+      >
+        <Text style={styles.collapsibleEmoji}>📦</Text>
+        <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>
+          Archived Gardens{archivedGardens.length > 0 ? ` (${archivedGardens.length})` : ''}
+        </Text>
+        <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
+          {showArchive ? '▲' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {showArchive && (
+        <View style={[styles.archiveSection, { backgroundColor: cardBg, borderColor: borderCol }]}>
+          {archivedGardens.length === 0 ? (
+            <Text style={[styles.archiveMeta, { color: textSecondary, padding: 16 }]}>No archived gardens yet.</Text>
+          ) : archivedGardens.map(g => {
+              const yr = yearFromGarden(g);
+              const currentYear = new Date().getFullYear();
+              const isMigrating = migratingId === g.id;
+              return (
+                <View key={g.id} style={[styles.archiveRow, { borderBottomColor: borderCol }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.archiveName, { color: textPrimary }]} numberOfLines={1}>{g.name}</Text>
+                    <Text style={[styles.archiveMeta, { color: textSecondary }]}>
+                      {yr ? `${yr} season` : 'No year'} · {g.rows}×{g.cols}
+                    </Text>
+                  </View>
+                  <View style={styles.archiveBtns}>
+                    <TouchableOpacity
+                      style={[styles.archiveBtn, { borderColor: borderCol }]}
+                      onPress={() => restoreGarden(g)}
+                    >
+                      <Text style={[styles.archiveBtnText, { color: textPrimary }]}>Restore</Text>
+                    </TouchableOpacity>
+                    {yr !== currentYear && (
+                      <TouchableOpacity
+                        style={[styles.archiveBtn, styles.archiveBtnPrimary]}
+                        onPress={() => migrateGarden(g)}
+                        disabled={isMigrating}
+                      >
+                        <Text style={styles.archiveBtnPrimaryText}>
+                          {isMigrating ? '…' : `Copy to ${currentYear}`}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+        </View>
+      )}
+    </>
+  );
+
   if (isDesktop) {
     return (
       <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.desktopContent}>
@@ -638,6 +702,7 @@ export default function ProfileScreen() {
             {tempSection}
             {measureSection}
             {waterTimeSection}
+            {archiveSection}
           </View>
         </View>
       </ScrollView>
@@ -687,60 +752,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       {/* Archived Gardens */}
-      <>
-        <TouchableOpacity
-          style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
-          onPress={() => setShowArchive(v => !v)}
-        >
-          <Text style={styles.collapsibleEmoji}>📦</Text>
-          <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>
-            Archived Gardens{archivedGardens.length > 0 ? ` (${archivedGardens.length})` : ''}
-          </Text>
-          <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
-            {showArchive ? '▲' : '▼'}
-          </Text>
-        </TouchableOpacity>
-        {showArchive && (
-          <View style={[styles.archiveSection, { backgroundColor: cardBg, borderColor: borderCol }]}>
-            {archivedGardens.length === 0 ? (
-              <Text style={[styles.archiveMeta, { color: textSecondary, padding: 16 }]}>No archived gardens yet.</Text>
-            ) : archivedGardens.map(g => {
-                const yr = yearFromGarden(g);
-                const currentYear = new Date().getFullYear();
-                const isMigrating = migratingId === g.id;
-                return (
-                  <View key={g.id} style={[styles.archiveRow, { borderBottomColor: borderCol }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.archiveName, { color: textPrimary }]} numberOfLines={1}>{g.name}</Text>
-                      <Text style={[styles.archiveMeta, { color: textSecondary }]}>
-                        {yr ? `${yr} season` : 'No year'} · {g.rows}×{g.cols}
-                      </Text>
-                    </View>
-                    <View style={styles.archiveBtns}>
-                      <TouchableOpacity
-                        style={[styles.archiveBtn, { borderColor: borderCol }]}
-                        onPress={() => restoreGarden(g)}
-                      >
-                        <Text style={[styles.archiveBtnText, { color: textPrimary }]}>Restore</Text>
-                      </TouchableOpacity>
-                      {yr !== currentYear && (
-                        <TouchableOpacity
-                          style={[styles.archiveBtn, styles.archiveBtnPrimary]}
-                          onPress={() => migrateGarden(g)}
-                          disabled={isMigrating}
-                        >
-                          <Text style={styles.archiveBtnPrimaryText}>
-                            {isMigrating ? '…' : `Copy to ${currentYear}`}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-      </>
+      {archiveSection}
 
       {/* Notifications — collapsed behind a button */}
       <TouchableOpacity
