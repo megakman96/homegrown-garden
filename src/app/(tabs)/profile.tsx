@@ -13,6 +13,7 @@ import { usePremium } from '@/hooks/use-premium';
 import NotificationSettingsUI from '@/components/ui/NotificationSettings';
 import UpgradePrompt from '@/components/ui/UpgradePrompt';
 import type { Garden, GardenShare, Plant } from '@/lib/types';
+import { yearFromGarden, serializeLayout, layoutFromGarden, makeLayout } from '@/lib/garden-layout';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const VENMO_USER  = 'kaleb-ward-8';
@@ -41,6 +42,9 @@ export default function ProfileScreen() {
   const { isPremium } = usePremium();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [archivedGardens, setArchivedGardens] = useState<Garden[]>([]);
+  const [showArchive, setShowArchive] = useState(false);
+  const [migratingId, setMigratingId] = useState<string | null>(null);
   const isAdmin = user?.email === ADMIN_EMAIL && Platform.OS === 'web';
 
   // Settings edit state
@@ -116,10 +120,13 @@ export default function ProfileScreen() {
       pb.collection('garden_shares').getFullList({ filter: `owner_id = "${user.id}"` }),
       pb.collection('plants').getFullList({ filter: `user_id = "${user.id}"` }),
     ]).then(([gardenList, shareList, plantList]) => {
-      setGardens(gardenList as any);
+      const all = gardenList as any as Garden[];
+      setGardens(all.filter(g => !(g as any).archived));
+      setArchivedGardens(all.filter(g => !!(g as any).archived));
       setShares(shareList as any);
       setPlants(plantList as any);
-      if (gardenList.length) setShareGardenId(gardenList[0].id);
+      const active = all.filter(g => !(g as any).archived);
+      if (active.length) setShareGardenId(active[0].id);
     });
   }, [user]);
 
@@ -139,6 +146,56 @@ export default function ProfileScreen() {
     }
     setShowShare(false);
     setShareEmail('');
+  }
+
+  async function restoreGarden(garden: Garden) {
+    try {
+      await pb.collection('gardens').update(garden.id, { archived: false });
+      setArchivedGardens(prev => prev.filter(g => g.id !== garden.id));
+      setGardens(prev => [...prev, { ...garden, archived: false } as any]);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not restore garden');
+    }
+  }
+
+  async function migrateGarden(garden: Garden) {
+    if (!user) return;
+    setMigratingId(garden.id);
+    try {
+      const currentYear = new Date().getFullYear();
+      const layout = layoutFromGarden(garden);
+      const tileSizeCm = (() => {
+        try { return JSON.parse((garden as any).layout ?? '{}').tile_size_cm ?? 60; } catch { return 60; }
+      })();
+      const newGarden = await pb.collection('gardens').create({
+        user_id:      user.id,
+        name:         garden.name,
+        rows:         garden.rows,
+        cols:         garden.cols,
+        sun_exposure: garden.sun_exposure,
+        layout:       serializeLayout(layout, tileSizeCm, currentYear),
+        year:         currentYear,
+      });
+      // Copy plants without last_watered / water_interval_days (not yet planted)
+      const oldPlants = await pb.collection('plants').getFullList({ filter: `garden_id = "${garden.id}"` });
+      await Promise.all(oldPlants.map((p: any) =>
+        pb.collection('plants').create({
+          garden_id:     newGarden.id,
+          user_id:       user.id,
+          name:          p.name,
+          row:           p.row,
+          col:           p.col,
+          health_status: 'healthy',
+          total_yield_grams: 0,
+        }).catch(() => {})
+      ));
+      setGardens(prev => [...prev, newGarden as any]);
+      Alert.alert('Migrated!', `"${garden.name}" has been copied to ${currentYear}. The archived version is still available here.`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not migrate garden');
+    } finally {
+      setMigratingId(null);
+    }
   }
 
   async function removeShare(id: string) {
@@ -630,6 +687,62 @@ export default function ProfileScreen() {
         <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>›</Text>
       </TouchableOpacity>
 
+      {/* Archived Gardens */}
+      {archivedGardens.length > 0 && (
+        <>
+          <TouchableOpacity
+            style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
+            onPress={() => setShowArchive(v => !v)}
+          >
+            <Text style={styles.collapsibleEmoji}>📦</Text>
+            <Text style={[styles.collapsibleLabel, { color: textPrimary }]}>
+              Archived Gardens ({archivedGardens.length})
+            </Text>
+            <Text style={[styles.collapsibleChevron, { color: textSecondary }]}>
+              {showArchive ? '▲' : '▼'}
+            </Text>
+          </TouchableOpacity>
+          {showArchive && (
+            <View style={[styles.archiveSection, { backgroundColor: cardBg, borderColor: borderCol }]}>
+              {archivedGardens.map(g => {
+                const yr = yearFromGarden(g);
+                const currentYear = new Date().getFullYear();
+                const isMigrating = migratingId === g.id;
+                return (
+                  <View key={g.id} style={[styles.archiveRow, { borderBottomColor: borderCol }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.archiveName, { color: textPrimary }]} numberOfLines={1}>{g.name}</Text>
+                      <Text style={[styles.archiveMeta, { color: textSecondary }]}>
+                        {yr ? `${yr} season` : 'No year'} · {g.rows}×{g.cols}
+                      </Text>
+                    </View>
+                    <View style={styles.archiveBtns}>
+                      <TouchableOpacity
+                        style={[styles.archiveBtn, { borderColor: borderCol }]}
+                        onPress={() => restoreGarden(g)}
+                      >
+                        <Text style={[styles.archiveBtnText, { color: textPrimary }]}>Restore</Text>
+                      </TouchableOpacity>
+                      {yr !== currentYear && (
+                        <TouchableOpacity
+                          style={[styles.archiveBtn, styles.archiveBtnPrimary]}
+                          onPress={() => migrateGarden(g)}
+                          disabled={isMigrating}
+                        >
+                          <Text style={styles.archiveBtnPrimaryText}>
+                            {isMigrating ? '…' : `Copy to ${currentYear}`}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </>
+      )}
+
       {/* Notifications — collapsed behind a button */}
       <TouchableOpacity
         style={[styles.collapsibleBtn, { backgroundColor: cardBg, borderColor: borderCol }]}
@@ -828,6 +941,17 @@ const styles = StyleSheet.create({
   wipeButtonText: { color: '#e65100', fontWeight: '600', fontSize: 14 },
   adminButton: { backgroundColor: '#e8f5e9', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#a5d6a7', marginBottom: 10 },
   adminButtonText: { color: '#2d6a4f', fontWeight: '700', fontSize: 14 },
+
+  // Archive
+  archiveSection:      { borderRadius: 14, borderWidth: 1, marginBottom: 8, overflow: 'hidden' },
+  archiveRow:          { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, gap: 8 },
+  archiveName:         { fontSize: 14, fontWeight: '600' },
+  archiveMeta:         { fontSize: 12, marginTop: 2 },
+  archiveBtns:         { flexDirection: 'row', gap: 6 },
+  archiveBtn:          { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
+  archiveBtnText:      { fontSize: 12, fontWeight: '600' },
+  archiveBtnPrimary:   { borderRadius: 8, backgroundColor: '#2d6a4f', borderWidth: 0, paddingHorizontal: 10, paddingVertical: 6 },
+  archiveBtnPrimaryText: { fontSize: 12, fontWeight: '600', color: '#fff' },
 
   // Modal
   modalBackdrop:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },

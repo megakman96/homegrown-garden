@@ -70,11 +70,15 @@ export default function ScheduleScreen() {
 
     const currentYear = new Date().getFullYear();
 
-    // Own gardens
+    // Own gardens — exclude archived and any year that isn't the current one
     const gardensData = await offlineList('gardens', user.id, `user_id = "${user.id}"`);
     const gl = gardensData as Garden[];
     const validGardenIds = new Set(
-      gl.filter(g => { const y = yearFromGarden(g); return y == null || y === currentYear; }).map(g => g.id)
+      gl.filter(g => {
+        if ((g as any).archived === true) return false;
+        const y = yearFromGarden(g);
+        return y == null || y === currentYear;
+      }).map(g => g.id)
     );
 
     const plantsData = await offlineList('plants', user.id, `user_id = "${user.id}" && health_status != "dead" && health_status != "harvested"`);
@@ -90,6 +94,7 @@ export default function ScheduleScreen() {
         const garden = await pb.collection('gardens').getOne(share.garden_id).catch(() => null);
         if (!garden) return;
         const g = garden as any as Garden;
+        if ((g as any).archived === true) return;
         const y = yearFromGarden(g);
         if (y != null && y !== currentYear) return;
         sharedIds.add(g.id);
@@ -102,7 +107,11 @@ export default function ScheduleScreen() {
 
     setSharedGardenIds(sharedIds);
     setPlants(pl);
-    const currentYearGardens = sortGardens(gl.filter(g => { const y = yearFromGarden(g); return y == null || y === currentYear; }));
+    const currentYearGardens = sortGardens(gl.filter(g => {
+      if ((g as any).archived === true) return false;
+      const y = yearFromGarden(g);
+      return y == null || y === currentYear;
+    }));
     setGardens(currentYearGardens);
 
     // Load location + weather for all gardens with a location

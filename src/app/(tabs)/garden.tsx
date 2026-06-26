@@ -267,7 +267,7 @@ export default function GardenScreen() {
 
     const ownPromise = offlineList('gardens', user.id, `user_id = "${user.id}"`)
       .then((list) => {
-        setGardens(sortGardens(list as any));
+        setGardens(sortGardens((list as any[]).filter(g => !(g as any).archived)));
         // Preload plants for every garden so icons are ready immediately when switching
         for (const garden of list) {
           offlineList('plants', user.id, `garden_id = "${(garden as any).id}"`)
@@ -685,6 +685,28 @@ export default function GardenScreen() {
     );
   }
 
+  // ── Archive garden ────────────────────────────────────────────────────────
+
+  function confirmArchiveGarden() {
+    const garden = getActiveGarden();
+    if (!garden) return;
+    Alert.alert(
+      'Archive Garden',
+      `Archive "${garden.name}"? It will be hidden from your active gardens and schedule. You can restore it or migrate it to a new year from your Profile.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Archive', onPress: async () => {
+          const gardenId = garden.id;
+          await offlineUpdate('gardens', user?.id ?? '', gardenId, { archived: true }).catch(() => {});
+          activeGardenRef.current = null;
+          setPlantsMap(prev => { const n = { ...prev }; delete n[gardenId]; return n; });
+          setGardens(prev => prev.filter(g => g.id !== gardenId));
+          setCurrentIndex(i => Math.max(0, i - 1));
+        }},
+      ],
+    );
+  }
+
   // ── History ───────────────────────────────────────────────────────────────
 
   async function openHistory() {
@@ -788,6 +810,7 @@ export default function GardenScreen() {
                   {isPremium && (
                     <GardenBtn emoji="🤝" label="Share" onPress={() => { setShareEmail(''); setShowShareGarden(true); }} />
                   )}
+                  <GardenBtn emoji="📦" label="Archive" onPress={confirmArchiveGarden} />
                   <GardenBtn emoji="🗑" label="Delete" danger onPress={confirmDeleteGarden} />
                 </>
               )}
