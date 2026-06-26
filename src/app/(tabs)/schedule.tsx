@@ -545,13 +545,19 @@ function ScheduleCard({ item, onWater, onPress }: {
           </Text>
         )}
       </View>
-      {isWater && !advice?.skipReason && (
-        <TouchableOpacity
-          style={[styles.doneButton, item.overdue && styles.doneButtonOverdue]}
-          onPress={e => { e.stopPropagation(); onWater(item.plant); }}
-        >
-          <Text style={styles.doneText}>Done ✓</Text>
-        </TouchableOpacity>
+      {isWater && (
+        advice?.skipReason ? (
+          <View style={styles.rainDoneButton}>
+            <Text style={styles.rainDoneText}>Rain ✓</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.doneButton, item.overdue && styles.doneButtonOverdue]}
+            onPress={e => { e.stopPropagation(); onWater(item.plant); }}
+          >
+            <Text style={styles.doneText}>Done ✓</Text>
+          </TouchableOpacity>
+        )
       )}
     </TouchableOpacity>
   );
@@ -685,6 +691,8 @@ const styles = StyleSheet.create({
   doneButton: { backgroundColor: '#d8f3dc', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   doneButtonOverdue: { backgroundColor: '#ffe3e3' },
   doneText: { color: '#2d6a4f', fontWeight: '600', fontSize: 12 },
+  rainDoneButton: { backgroundColor: '#e7f5ff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  rainDoneText: { color: '#1971c2', fontWeight: '600', fontSize: 12 },
 
   empty: { paddingTop: 64, alignItems: 'center' },
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
