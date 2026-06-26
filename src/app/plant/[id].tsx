@@ -4,6 +4,7 @@ import {
   TextInput, Modal, Alert, Image, Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { pb } from '@/lib/pb';
 import { offlineList, offlineOne, offlineUpdate, offlineCreate } from '@/lib/offline-db';
@@ -47,6 +48,7 @@ export default function PlantDetailScreen() {
   const { isDark, colors, tempUnit, measureUnit } = useAppTheme();
   const { isPremium } = usePremium();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const bg      = isDark ? colors.bg        : G.foam;
   const cardBg  = isDark ? colors.bgCard    : G.cloud;
   const textPrim= isDark ? colors.text      : G.forest;
@@ -257,6 +259,7 @@ export default function PlantDetailScreen() {
   const window = frostInfo ? calcPlantingWindow(frostInfo, isWarmSeason, catalogInfo?.daysToMaturity) : null;
 
   return (
+    <View style={{ flex: 1, backgroundColor: bg }}>
     <ScrollView style={[styles.container, { backgroundColor: bg }]} contentContainerStyle={styles.content}>
 
       {/* ── Hero: Wikipedia reference image ────────────────────────────── */}
@@ -289,9 +292,6 @@ export default function PlantDetailScreen() {
           </View>
         )}
 
-        <TouchableOpacity style={styles.heroBackBtn} onPress={() => router.back()}>
-          <Text style={styles.heroBackText}>‹</Text>
-        </TouchableOpacity>
       </View>
 
       {/* ── Quick actions — right at top so no scrolling needed ─────────── */}
@@ -834,6 +834,15 @@ export default function PlantDetailScreen() {
         </View>
       </Modal>
     </ScrollView>
+    {/* Back button outside the ScrollView so iOS scroll gestures can't steal the tap */}
+    <TouchableOpacity
+      style={[styles.heroBackBtn, { top: insets.top + 8 }]}
+      onPress={() => router.back()}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Text style={styles.heroBackText}>‹</Text>
+    </TouchableOpacity>
+    </View>
   );
 }
 

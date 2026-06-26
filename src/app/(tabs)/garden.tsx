@@ -25,7 +25,7 @@ import {
   DEFAULT_TILE_SIZE_IN, TILE_SIZE_STEP_IN, TILE_SIZE_MIN_IN, TILE_SIZE_MAX_IN,
   formatTileSize, formatTotalSize, sortGardens,
 } from '@/lib/garden-layout';
-import { emit } from '@/lib/events';
+import { emit, subscribe } from '@/lib/events';
 import type { TileState, GardenLayout } from '@/lib/garden-layout';
 import type { Garden, Plant } from '@/lib/types';
 import type { SunRequirement } from '@/lib/plant-catalog';
@@ -128,6 +128,9 @@ export default function GardenScreen() {
   );
   const selectedGarden = allGardens[currentIndex] ?? null;
   const plants = plantsMap[selectedGarden?.id ?? ''] ?? [];
+
+  // All own gardens (including archived) — used to re-filter when archive state changes
+  const allOwnGardensRef = useRef<Garden[]>([]);
 
   // Ref for synchronous garden context — set before any modal/handler runs on desktop
   const activeGardenRef = useRef<Garden | null>(null);
@@ -312,6 +315,7 @@ export default function GardenScreen() {
     const ownPromise = getArchivedGardenIds()
       .then(archivedIds => offlineList('gardens', user.id, `user_id = "${user.id}"`).then(list => ({ list, archivedIds })))
       .then(({ list, archivedIds }) => {
+        allOwnGardensRef.current = list as Garden[];
         setGardens(sortGardens((list as any[]).filter(g => !archivedIds.has((g as any).id) && !(g as any).archived)));
         // Preload plants for every garden so icons are ready immediately when switching
         for (const garden of list) {
@@ -354,6 +358,17 @@ export default function GardenScreen() {
 
     Promise.all([ownPromise, sharesPromise]).then(() => setGardensLoaded(true));
   }, [user]);
+
+  // When an archived garden is restored from the Profile tab, re-filter immediately
+  useEffect(() => {
+    return subscribe('garden:restored', () => {
+      getArchivedGardenIds().then(archivedIds => {
+        setGardens(sortGardens(allOwnGardensRef.current.filter(
+          g => !archivedIds.has((g as any).id) && !(g as any).archived
+        )));
+      });
+    });
+  }, []);
 
   // Load plants for a garden the first time it's visited
   const loadPlantsForGarden = useCallback((garden: Garden) => {

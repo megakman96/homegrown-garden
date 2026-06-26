@@ -9,12 +9,13 @@ import { useAuth } from '@/hooks/use-auth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useAppTheme, saveBirthday, loadBirthdayAsync, type ThemeMode, type TempUnit, type MeasureUnit, type WaterTime } from '@/contexts/theme-context';
 import { clearActivityLogAsync } from '@/lib/activity-log';
-import { usePremium } from '@/hooks/use-premium';
+import { usePremium, FREE_LIMITS } from '@/hooks/use-premium';
 import NotificationSettingsUI from '@/components/ui/NotificationSettings';
 import UpgradePrompt from '@/components/ui/UpgradePrompt';
 import type { Garden, GardenShare, Plant } from '@/lib/types';
 import { yearFromGarden, serializeLayout, layoutFromGarden, makeLayout } from '@/lib/garden-layout';
 import { getArchivedGardenIds, archiveGarden, unarchiveGarden } from '@/lib/garden-archive';
+import { emit } from '@/lib/events';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const VENMO_USER  = 'wardsolutions';
@@ -183,9 +184,22 @@ export default function ProfileScreen() {
   }
 
   async function restoreGarden(garden: Garden) {
+    if (!isPremium && gardens.length >= FREE_LIMITS.gardens) {
+      Alert.alert(
+        'Pro required',
+        `Free accounts can only have ${FREE_LIMITS.gardens} active garden. Archive or delete your current garden first, or upgrade to GreenPlot Pro to restore without limits.`,
+        [
+          { text: 'Upgrade', onPress: () => router.push('/subscription' as any) },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+      );
+      return;
+    }
     await unarchiveGarden(garden.id);
     setArchivedGardens(prev => prev.filter(g => g.id !== garden.id));
     setGardens(prev => [...prev, garden]);
+    allGardensRef.current = [...allGardensRef.current]; // keep ref in sync
+    emit('garden:restored');
   }
 
   async function migrateGarden(garden: Garden) {
