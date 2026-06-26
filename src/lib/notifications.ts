@@ -58,6 +58,12 @@ export async function setupNotificationChannel() {
   } catch {}
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ── Schedule / cancel helpers ─────────────────────────────────────────────────
 
 async function cancelByPrefix(prefix: string) {
@@ -119,13 +125,17 @@ async function scheduleWateringReminders(plants: Plant[]) {
 
     const due = new Date(plant.last_watered);
     due.setDate(due.getDate() + plant.water_interval_days);
+    // Treat water_interval_days as a calendar-day count, not an exact hour offset.
+    // Without this, the time-of-day from last_watered carries into remindAt and can
+    // produce unexpected fire times (e.g. watered at 9 AM → reminder at 7 AM).
+    due.setHours(0, 0, 0, 0);
 
     // Skip if ≥10 mm of rain is forecast on the due day
     const gid = (plant as any).garden_id as string | undefined;
     if (gid) {
       const wx = weatherByGarden[gid];
       if (wx?.days) {
-        const dueDateStr = due.toISOString().slice(0, 10);
+        const dueDateStr = localDateKey(due);
         if (wx.days.find((day: any) => day.date === dueDateStr && day.precipMm >= 10)) continue;
       }
     }
@@ -136,11 +146,10 @@ async function scheduleWateringReminders(plants: Plant[]) {
     if (remindAt.getHours() < 6 || remindAt.getHours() >= 22) {
       remindAt.setHours(settings.watering.hour, settings.watering.minute, 0, 0);
     }
-    // Skip anything due now or within the next hour — prevents blasting the user
-    // immediately when notifications are toggled back on.
-    if (remindAt.getTime() - now.getTime() < 3_600_000) continue;
+    // Skip if the reminder time has already passed or is less than 5 minutes away.
+    if (remindAt.getTime() - now.getTime() < 5 * 60_000) continue;
 
-    const dayKey = remindAt.toISOString().slice(0, 10); // YYYY-MM-DD
+    const dayKey = localDateKey(remindAt);
     if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [] };
     byDay[dayKey].names.push(plant.name);
   }
@@ -176,9 +185,9 @@ async function scheduleHarvestAlerts(plants: Plant[]) {
     const remindAt = new Date(harvestDate.getTime() - settings.harvest.daysBefore * 86_400_000);
     remindAt.setHours(settings.harvest.hour, settings.harvest.minute, 0, 0);
 
-    if (remindAt.getTime() - now.getTime() < 3_600_000) continue;
+    if (remindAt.getTime() - now.getTime() < 5 * 60_000) continue;
 
-    const dayKey = remindAt.toISOString().slice(0, 10);
+    const dayKey = localDateKey(remindAt);
     if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [], harvestDate };
     byDay[dayKey].names.push(plant.name);
   }
@@ -217,9 +226,9 @@ async function scheduleSowingReminders() {
       const sowDate = entry.seedStartDate ?? entry.directSowDate;
       const remindAt = new Date(sowDate.getTime() - settings.sowing.weeksBefore * 7 * 86_400_000);
       remindAt.setHours(8, 0, 0, 0);
-      if (remindAt.getTime() - now.getTime() < 3_600_000) continue;
+      if (remindAt.getTime() - now.getTime() < 5 * 60_000) continue;
 
-      const dayKey = remindAt.toISOString().slice(0, 10);
+      const dayKey = localDateKey(remindAt);
       if (!byDay[dayKey]) byDay[dayKey] = { remindAt, names: [] };
       byDay[dayKey].names.push(entry.entry.name);
     }
@@ -311,9 +320,9 @@ async function scheduleBirthdayNotification() {
 
     const now = new Date();
     let bday = new Date(now.getFullYear(), m - 1, d, 9, 0, 0, 0);
-    // Require at least 1 hour in the future so toggling notifications on never
-    // fires the birthday notification immediately.
-    if (bday.getTime() - now.getTime() < 3_600_000) {
+    // Advance to next year if the birthday is in the past or within 5 minutes
+    // (scheduling a past date on Android fires immediately).
+    if (bday.getTime() - now.getTime() < 5 * 60_000) {
       bday = new Date(now.getFullYear() + 1, m - 1, d, 9, 0, 0, 0);
     }
 
