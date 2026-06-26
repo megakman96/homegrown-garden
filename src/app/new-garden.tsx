@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import {
   View, Text, StyleSheet, TextInput, ScrollView,
   useWindowDimensions, Alert, ActivityIndicator, Platform,
-  TouchableOpacity, KeyboardAvoidingView,
+  TouchableOpacity, KeyboardAvoidingView, Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,12 +18,14 @@ import { PressableScale } from '@/components/ui/PressableScale';
 import { G, Shadow, R, Spring } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import {
-  makeLayout, resizeLayout, TILE_COLORS, TILE_EMOJIS, TILE_LABELS,
+  makeLayout, resizeLayout, layoutFromGarden, TILE_COLORS, TILE_EMOJIS, TILE_LABELS,
   SUN_CYCLE, activeCount, serializeLayout,
   DEFAULT_TILE_SIZE_IN, TILE_SIZE_STEP_IN, TILE_SIZE_MIN_IN, TILE_SIZE_MAX_IN,
   formatTileSize, formatTotalSize,
   type TileState, type GardenLayout,
 } from '@/lib/garden-layout';
+import { getPlantIcon } from '@/lib/plant-icons';
+import type { Garden, Plant } from '@/lib/types';
 import {
   searchCity, saveLocation, saveGardenLocation,
   type Location, type GeoResult,
@@ -57,6 +59,39 @@ const STEP_EMOJIS: Record<Step, string> = {
   location: '📍',
 };
 
+const HEALTH_COLORS: Record<string, string> = {
+  healthy: '#52b788', needs_water: '#339af0',
+  sick: '#f03e3e', harvested: '#a9e34b', dead: '#adb5bd',
+};
+
+function MiniGridPreview({ garden, plants }: { garden: Garden; plants: Plant[] }) {
+  const PREVIEW_W = 256;
+  const cellSize = Math.max(8, Math.min(22, Math.floor(PREVIEW_W / Math.max(garden.cols, 1))));
+  const lyt = layoutFromGarden(garden);
+  return (
+    <View style={{ borderRadius: 8, overflow: 'hidden', alignSelf: 'center' }}>
+      {Array.from({ length: garden.rows }).map((_, row) => (
+        <View key={row} style={{ flexDirection: 'row' }}>
+          {Array.from({ length: garden.cols }).map((_, col) => {
+            const plant = plants.find(p => p.row === row && p.col === col);
+            const tileState = lyt?.[row]?.[col] ?? 'inactive';
+            const isInactive = tileState === 'inactive';
+            const tileBg = plant
+              ? HEALTH_COLORS[plant.health_status ?? 'healthy']
+              : isInactive ? '#e0e6e3' : TILE_COLORS[tileState];
+            const icon = plant ? getPlantIcon(plant.name).emoji : null;
+            return (
+              <View key={col} style={{ width: cellSize, height: cellSize, backgroundColor: tileBg, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.35)', justifyContent: 'center', alignItems: 'center' }}>
+                {icon ? <Text style={{ fontSize: cellSize * 0.65, lineHeight: cellSize }}>{icon}</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const MIN_SIZE = 3;
 const MAX_ROWS = 14;
 const MAX_COLS = 14;
@@ -84,6 +119,14 @@ export default function NewGardenScreen() {
   const [layout, setLayout] = useState<GardenLayout>(() => makeLayout(6, 8));
   const [saving, setSaving] = useState(false);
   const [location, setLocation] = useState<Location | null>(null);
+  // Template picker
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [templatePickerGardens, setTemplatePickerGardens] = useState<{ garden: Garden; plants: Plant[] }[]>([]);
+  const [templatePickerLoading, setTemplatePickerLoading] = useState(false);
+  const [templatePickerIdx, setTemplatePickerIdx] = useState(0);
+  const templateScrollRef = useRef<ScrollView>(null);
+  const [templateGarden, setTemplateGarden] = useState<Garden | null>(null);
+  const [templatePlants, setTemplatePlants] = useState<Plant[]>([]);
   const [locationQuery, setLocationQuery] = useState('');
   const [locationResults, setLocationResults] = useState<GeoResult[]>([]);
   const [locationSearching, setLocationSearching] = useState(false);
@@ -182,12 +225,51 @@ export default function NewGardenScreen() {
         await saveGardenLocation(garden.id, location).catch(() => {});
         await saveLocation(location).catch(() => {});
       }
+      if (templateGarden && templatePlants.length > 0) {
+        const fitted = templatePlants.filter(p => p.row != null && p.col != null && p.row < rows && p.col < cols);
+        const dropped = templatePlants.filter(p => p.row != null && p.col != null && (p.row! >= rows || p.col! >= cols)).length;
+        await Promise.all(fitted.map(p => pb.collection('plants').create({
+          user_id: user.id, garden_id: garden.id,
+          name: p.name, row: p.row, col: p.col,
+          sun_requirement: (p as any).sun_requirement,
+          water_interval_days: p.water_interval_days,
+          quantity: p.quantity ?? 1, notes: p.notes, health_status: 'healthy',
+        }).catch(() => {})));
+        if (dropped > 0) Alert.alert('Some plants skipped', `${dropped} plant${dropped > 1 ? 's were' : ' was'} outside the new grid and not copied.`);
+      }
       router.replace('/(tabs)/garden');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save garden');
     } finally {
       setSaving(false);
     }
+  }
+
+  async function openTemplatePicker() {
+    if (!user) return;
+    setTemplatePickerLoading(true);
+    setTemplatePickerIdx(0);
+    setShowTemplatePicker(true);
+    try {
+      const gardenList = await pb.collection('gardens').getFullList({ filter: `user_id = "${user.id}"` });
+      const entries = await Promise.all((gardenList as any[]).map(async g => {
+        const plants = await pb.collection('plants').getFullList({ filter: `garden_id = "${g.id}"` }).catch(() => []);
+        return { garden: g as any as Garden, plants: plants as any as Plant[] };
+      }));
+      setTemplatePickerGardens(entries);
+    } finally {
+      setTemplatePickerLoading(false);
+    }
+  }
+
+  function applyTemplate(garden: Garden, plants: Plant[]) {
+    setTemplateGarden(garden);
+    setTemplatePlants(plants);
+    setName(`${garden.name} (Copy)`);
+    setRows(garden.rows);
+    setCols(garden.cols);
+    setLayout(layoutFromGarden(garden) ?? makeLayout(garden.rows, garden.cols));
+    setShowTemplatePicker(false);
   }
 
   const gridPadding = 32;
@@ -278,6 +360,24 @@ export default function NewGardenScreen() {
                 returnKeyType="next"
                 onSubmitEditing={() => transitionTo('year')}
               />
+              {templateGarden ? (
+                <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: '#e8f5e9', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}>
+                  <Text style={{ flex: 1, color: G.forest, fontSize: 13 }}>
+                    📋 Template: <Text style={{ fontWeight: '700' }}>{templateGarden.name}</Text>{' '}
+                    ({templateGarden.rows}×{templateGarden.cols})
+                  </Text>
+                  <TouchableOpacity onPress={() => { setTemplateGarden(null); setTemplatePlants([]); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={{ color: G.stone, fontSize: 18 }}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={{ marginTop: 12, paddingVertical: 13, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1.5, borderColor: G.mist, backgroundColor: G.dew, alignItems: 'center' }}
+                  onPress={openTemplatePicker}
+                >
+                  <Text style={{ color: G.hunter, fontSize: 14, fontWeight: '600' }}>📋 Start from a template</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -458,6 +558,89 @@ export default function NewGardenScreen() {
           </PressableScale>
         </View>
       )}
+      {/* Template Picker Modal */}
+      <Modal visible={showTemplatePicker} transparent animationType="slide">
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <View style={{ backgroundColor: cardBg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20, maxHeight: '82%' }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: G.mist, alignSelf: 'center', marginBottom: 16 }} />
+            <Text style={{ fontSize: 18, fontWeight: '800', color: textPrim, textAlign: 'center', marginBottom: 16 }}>Choose a Template</Text>
+            {templatePickerLoading ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={G.sage} />
+                <Text style={{ color: textSec, marginTop: 8, fontSize: 13 }}>Loading gardens…</Text>
+              </View>
+            ) : templatePickerGardens.length === 0 ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <Text style={{ color: textSec }}>No gardens yet.</Text>
+              </View>
+            ) : (() => {
+              const CARD_W = Math.min(width - 80, 300);
+              return (
+                <>
+                  <View style={{ position: 'relative', marginBottom: 8 }}>
+                    <ScrollView
+                      ref={templateScrollRef}
+                      horizontal
+                      snapToInterval={CARD_W}
+                      decelerationRate="fast"
+                      showsHorizontalScrollIndicator={false}
+                      onMomentumScrollEnd={e => {
+                        const idx = Math.round(e.nativeEvent.contentOffset.x / CARD_W);
+                        setTemplatePickerIdx(Math.max(0, Math.min(idx, templatePickerGardens.length - 1)));
+                      }}
+                    >
+                      {templatePickerGardens.map(item => {
+                        const placedCount = item.plants.filter(p => p.row != null).length;
+                        return (
+                          <View key={item.garden.id} style={{ width: CARD_W, alignItems: 'center', paddingHorizontal: 4 }}>
+                            <Text style={{ color: textPrim, fontWeight: '700', fontSize: 15, marginBottom: 2, textAlign: 'center' }} numberOfLines={1}>{item.garden.name}</Text>
+                            <Text style={{ color: textSec, fontSize: 12, marginBottom: 10 }}>{item.garden.rows}×{item.garden.cols} · {placedCount} plant{placedCount !== 1 ? 's' : ''}</Text>
+                            <MiniGridPreview garden={item.garden} plants={item.plants} />
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                    {templatePickerIdx > 0 && (
+                      <TouchableOpacity
+                        style={{ position: 'absolute', left: -4, top: '50%', transform: [{ translateY: -20 }], padding: 8, backgroundColor: G.dew, borderRadius: 20 }}
+                        onPress={() => { const n = templatePickerIdx - 1; templateScrollRef.current?.scrollTo({ x: n * CARD_W, animated: true }); setTemplatePickerIdx(n); }}
+                      >
+                        <Text style={{ fontSize: 20, color: textPrim, lineHeight: 22 }}>‹</Text>
+                      </TouchableOpacity>
+                    )}
+                    {templatePickerIdx < templatePickerGardens.length - 1 && (
+                      <TouchableOpacity
+                        style={{ position: 'absolute', right: -4, top: '50%', transform: [{ translateY: -20 }], padding: 8, backgroundColor: G.dew, borderRadius: 20 }}
+                        onPress={() => { const n = templatePickerIdx + 1; templateScrollRef.current?.scrollTo({ x: n * CARD_W, animated: true }); setTemplatePickerIdx(n); }}
+                      >
+                        <Text style={{ fontSize: 20, color: textPrim, lineHeight: 22 }}>›</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {templatePickerGardens.length > 1 && (
+                    <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 5, marginBottom: 12 }}>
+                      {templatePickerGardens.map((_, i) => (
+                        <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i === templatePickerIdx ? G.sage : G.mist }} />
+                      ))}
+                    </View>
+                  )}
+                  <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                    <TouchableOpacity style={{ flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 12, borderWidth: 1.5, borderColor: G.mist, backgroundColor: cardBg }} onPress={() => setShowTemplatePicker(false)}>
+                      <Text style={{ color: textSec, fontWeight: '700' }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 12, backgroundColor: G.hunter }}
+                      onPress={() => { const item = templatePickerGardens[templatePickerIdx]; if (item) applyTemplate(item.garden, item.plants); }}
+                    >
+                      <Text style={{ color: G.cloud, fontWeight: '800' }}>Use Template</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
