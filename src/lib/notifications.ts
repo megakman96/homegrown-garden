@@ -69,11 +69,20 @@ function localDateKey(d: Date): string {
 async function cancelByPrefix(prefix: string) {
   try {
     const Notifications = await import('expo-notifications');
+    // Cancel pending (not-yet-delivered) notifications
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     await Promise.all(
       scheduled
         .filter(n => n.identifier.startsWith(prefix))
         .map(n => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {}))
+    );
+    // Also dismiss already-delivered notifications with this prefix so stale
+    // ones don't accumulate in the notification tray across days.
+    const presented = await Notifications.getPresentedNotificationsAsync().catch(() => [] as any[]);
+    await Promise.all(
+      (presented as any[])
+        .filter((n: any) => (n.request?.identifier ?? '').startsWith(prefix))
+        .map((n: any) => Notifications.dismissNotificationAsync(n.request.identifier).catch(() => {}))
     );
   } catch {}
 }
@@ -307,25 +316,41 @@ export async function scheduleBirthdayNotification() {
     if (!mmdd) { await Notifications.cancelScheduledNotificationAsync(id).catch(() => {}); return; }
 
     const [m, d] = mmdd.split('/').map(Number);
-    if (!m || !d) { await Notifications.cancelScheduledNotificationAsync(id).catch(() => {}); return; }
-
-    // If already scheduled, leave it — repeated cancel+reschedule is what causes
-    // immediate delivery on Android when notifications are toggled.
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    if (scheduled.find(n => n.identifier === id)) return;
-
-    const now = new Date();
-    let bday = new Date(now.getFullYear(), m - 1, d, 9, 0, 0, 0);
-    // Advance to next year if the birthday is in the past or within 5 minutes
-    // (scheduling a past date on Android fires immediately).
-    if (bday.getTime() - now.getTime() < 5 * 60_000) {
-      bday = new Date(now.getFullYear() + 1, m - 1, d, 9, 0, 0, 0);
+    if (!m || !d || m < 1 || m > 12 || d < 1 || d > 31) {
+      await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+      return;
     }
 
     const firstName = ((pb.authStore.model as any)?.name as string | undefined)?.split(' ')[0]?.trim() || null;
     const title = firstName ? `🎂 Happy Birthday, ${firstName}!` : '🎂 Happy Birthday!';
+    const body = "Hope your garden grows as beautifully as you do. Have a wonderful day! 🌸";
 
-    await scheduleLocal(id, title, "Hope your garden grows as beautifully as you do. Have a wonderful day! 🌸", { date: bday });
+    // Check if already scheduled for the correct month/day — leave it alone if so.
+    // This avoids the cancel+reschedule cycle that causes immediate delivery on Android.
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const existing = scheduled.find(n => n.identifier === id);
+    if (existing) {
+      const t = existing.trigger as any;
+      // Yearly trigger (Android): { type: 'yearly', month, day, ... }
+      // Calendar trigger (iOS):   dateComponents.month / dateComponents.day
+      const tMonth = t?.month ?? t?.dateComponents?.month;
+      const tDay   = t?.day   ?? t?.dateComponents?.day;
+      if (tMonth === m && tDay === d) return; // already correct — do nothing
+      // Otherwise fall through: the stored month/day is wrong, reschedule.
+    }
+
+    // Use a platform-specific yearly repeating trigger so the notification fires
+    // automatically every year on the birthday — no rescheduling loop needed.
+    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+    const trigger: Record<string, unknown> = Platform.OS === 'ios'
+      ? { type: 'calendar', month: m, day: d, hour: 9, minute: 0, repeats: true, channelId: 'garden' }
+      : { type: 'yearly',   month: m, day: d, hour: 9, minute: 0, channelId: 'garden' };
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: id,
+      content: { title, body, sound: true, data: {} },
+      trigger: trigger as any,
+    });
   } catch {}
 }
 
