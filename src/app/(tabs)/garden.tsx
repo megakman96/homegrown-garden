@@ -359,9 +359,12 @@ export default function GardenScreen() {
     Promise.all([ownPromise, sharesPromise]).then(() => setGardensLoaded(true));
   }, [user]);
 
-  // When an archived garden is restored from the Profile tab, re-filter immediately
+  // When an archived garden is restored from the Profile tab, re-filter immediately.
+  // Guard: only run if allOwnGardensRef is populated to avoid wiping gardens on
+  // early mounts before the load useEffect has completed.
   useEffect(() => {
     return subscribe('garden:restored', () => {
+      if (!allOwnGardensRef.current.length) return;
       getArchivedGardenIds().then(archivedIds => {
         setGardens(sortGardens(allOwnGardensRef.current.filter(
           g => !archivedIds.has((g as any).id) && !(g as any).archived
@@ -1766,7 +1769,7 @@ export default function GardenScreen() {
               </View>
             ) : (
               <TouchableOpacity
-                style={{ marginBottom: 12, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: border, alignItems: 'center' }}
+                style={{ marginBottom: 12, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: border, alignItems: 'center', backgroundColor: isDark ? colors.bgElement : '#f0f7ee' }}
                 onPress={openTemplatePicker}
               >
                 <Text style={{ color: textSec, fontSize: 13 }}>📋 Start from a template</Text>
