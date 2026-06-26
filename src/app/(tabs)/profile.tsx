@@ -17,7 +17,7 @@ import { yearFromGarden, serializeLayout, layoutFromGarden, makeLayout } from '@
 import { getArchivedGardenIds, unarchiveGarden } from '@/lib/garden-archive';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
-const VENMO_USER  = 'kaleb-ward-8';
+const VENMO_USER  = 'sasquatchio';
 
 function openVenmo() {
   const deepLink = `venmo://paycharge?txn=pay&recipients=${VENMO_USER}&note=GardenGrid%20Support`;
@@ -614,7 +614,8 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.desktopVenmoBtn} onPress={openVenmo}>
-                <Text style={styles.desktopVenmoText}>💚 Support on Venmo</Text>
+                <Text style={styles.desktopVenmoText}>☕ Buy Me a Coffee</Text>
+                <Text style={styles.venmoSub}>Venmo @sasquatchio</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.desktopVenmoBtn, { marginTop: 6, backgroundColor: '#f0f7ff', borderColor: '#a5c6e8' }]}
@@ -787,7 +788,8 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       )}
       <TouchableOpacity style={styles.venmoButton} onPress={openVenmo}>
-        <Text style={styles.venmoText}>💚 Support GardenGrid on Venmo</Text>
+        <Text style={styles.venmoText}>☕ Buy Me a Coffee</Text>
+        <Text style={styles.venmoSub}>Support GardenGrid via Venmo @sasquatchio</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.venmoButton, { backgroundColor: '#f0f7ff', borderColor: '#a5c6e8', marginTop: 0 }]}
@@ -921,6 +923,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e8f5e9', borderWidth: 1.5, borderColor: '#a5d6a7',
   },
   venmoText:    { color: '#2d6a4f', fontWeight: '700', fontSize: 15 },
+  venmoSub:     { color: '#52796f', fontSize: 12, marginTop: 2 },
   collapsibleBtn:     { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 8 },
   collapsibleEmoji:   { fontSize: 18 },
   collapsibleLabel:   { flex: 1, fontSize: 15, fontWeight: '600' },
