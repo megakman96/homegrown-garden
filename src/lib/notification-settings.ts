@@ -2,8 +2,7 @@ import { Platform } from 'react-native';
 
 export interface WateringReminderSettings {
   enabled: boolean;
-  hoursBefore: number;   // remind X hours before plant is due
-  hour: number;          // fallback time of day, used when hoursBefore would land overnight
+  hour: number;
   minute: number;
 }
 
@@ -40,7 +39,7 @@ export interface NotificationSettings {
 
 export const DEFAULT_SETTINGS: NotificationSettings = {
   masterEnabled: true,
-  watering: { enabled: true,  hoursBefore: 2,  hour: 8,  minute: 0 },
+  watering: { enabled: true,  hour: 8,  minute: 0 },
   harvest:  { enabled: false, daysBefore: 3,  hour: 8,  minute: 0 },
   dailyCheckIn: { enabled: false, hour: 8, minute: 0 },
   sowing:   { enabled: true,  weeksBefore: 2 },

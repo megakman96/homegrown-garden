@@ -197,10 +197,7 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
         checked={settings.watering.enabled}
         onToggle={v => update({ watering: { ...settings.watering, enabled: v } })}
       >
-        <Stepper label="Remind" value={settings.watering.hoursBefore} min={0} max={24} unit="hrs before due"
-          onChange={v => update({ watering: { ...settings.watering, hoursBefore: v } }, true)}
-          textSec={textSec} textPrim={textPrim} inputBg={inputBg} border={border} />
-        <TimePicker label="Fallback time (if reminder would land overnight)" hour={settings.watering.hour} minute={settings.watering.minute}
+        <TimePicker label="Remind me at" hour={settings.watering.hour} minute={settings.watering.minute}
           onChange={(h, m) => update({ watering: { ...settings.watering, hour: h, minute: m } }, true)}
           textSec={textSec} textPrim={textPrim} border={border} inputBg={inputBg} />
       </Row>

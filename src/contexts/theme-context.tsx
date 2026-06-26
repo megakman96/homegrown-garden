@@ -160,8 +160,8 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
 export const useAppTheme = () => useContext(AppThemeContext);
 
 // Birthday helpers
-export function saveBirthday(userId: string, mmdd: string) {
-  savePref(`hg_bday_${userId}`, mmdd);
+export async function saveBirthday(userId: string, mmdd: string): Promise<void> {
+  await savePref(`hg_bday_${userId}`, mmdd);
 }
 
 export function loadBirthday(userId: string): string | null {

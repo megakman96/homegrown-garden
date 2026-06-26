@@ -16,6 +16,7 @@ import type { Garden, GardenShare, Plant } from '@/lib/types';
 import { yearFromGarden, serializeLayout, layoutFromGarden, makeLayout } from '@/lib/garden-layout';
 import { getArchivedGardenIds, archiveGarden, unarchiveGarden } from '@/lib/garden-archive';
 import { emit } from '@/lib/events';
+import { scheduleBirthdayNotification } from '@/lib/notifications';
 
 const ADMIN_EMAIL = 'kwardthyfault@gmail.com';
 const VENMO_USER  = 'wardsolutions';
@@ -73,15 +74,16 @@ export default function ProfileScreen() {
   async function saveBdayFn() {
     if (!user) return;
     const val = editBday.trim();
-    saveBirthday(user.id, val);
+    await saveBirthday(user.id, val);
     setDisplayBday(val);
     setEditingBday(false);
-    // Cancel the old birthday notification so the next reschedule uses the new date
     if (Platform.OS !== 'web') {
       try {
         const Notifs = await import('expo-notifications');
         await Notifs.cancelScheduledNotificationAsync('birthday_annual').catch(() => {});
       } catch {}
+      // Reschedule immediately so the new (or cleared) birthday takes effect now.
+      scheduleBirthdayNotification().catch(() => {});
     }
   }
 

@@ -140,12 +140,8 @@ async function scheduleWateringReminders(plants: Plant[]) {
       }
     }
 
-    const remindAt = new Date(due.getTime() - settings.watering.hoursBefore * 3_600_000);
-    // hoursBefore can push the reminder into the middle of the night — fall back
-    // to the user's chosen time of day (same calendar day) when that happens.
-    if (remindAt.getHours() < 6 || remindAt.getHours() >= 22) {
-      remindAt.setHours(settings.watering.hour, settings.watering.minute, 0, 0);
-    }
+    const remindAt = new Date(due);
+    remindAt.setHours(settings.watering.hour, settings.watering.minute, 0, 0);
     // Skip if the reminder time has already passed or is less than 5 minutes away.
     if (remindAt.getTime() - now.getTime() < 5 * 60_000) continue;
 
@@ -290,7 +286,7 @@ export async function scheduleDailyCheckIn() {
 
 // ── Birthday notification ─────────────────────────────────────────────────────
 
-async function scheduleBirthdayNotification() {
+export async function scheduleBirthdayNotification() {
   if (Platform.OS === 'web') return;
   const id = 'birthday_annual';
 
