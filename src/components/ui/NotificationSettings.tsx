@@ -125,7 +125,7 @@ export default function NotificationSettingsUI({ plants = [] }: Props) {
     if ('masterEnabled' in patch || andReschedule) {
       if (next.masterEnabled) {
         const granted = await requestNotificationPermission();
-        if (granted) await rescheduleAllNotifications(plants);
+        if (granted) await rescheduleAllNotifications(plants, true);
       } else {
         await cancelAllNotifications();
       }

@@ -64,28 +64,10 @@ function localDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// ── Schedule / cancel helpers ─────────────────────────────────────────────────
-
-async function cancelByPrefix(prefix: string) {
-  try {
-    const Notifications = await import('expo-notifications');
-    // Cancel pending (not-yet-delivered) notifications
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    await Promise.all(
-      scheduled
-        .filter(n => n.identifier.startsWith(prefix))
-        .map(n => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {}))
-    );
-    // Also dismiss already-delivered notifications with this prefix so stale
-    // ones don't accumulate in the notification tray across days.
-    const presented = await Notifications.getPresentedNotificationsAsync().catch(() => [] as any[]);
-    await Promise.all(
-      (presented as any[])
-        .filter((n: any) => (n.request?.identifier ?? '').startsWith(prefix))
-        .map((n: any) => Notifications.dismissNotificationAsync(n.request.identifier).catch(() => {}))
-    );
-  } catch {}
-}
+// ── Schedule helper ───────────────────────────────────────────────────────────
+// Does NOT cancel the existing notification before scheduling — Expo replaces
+// same-identifier notifications atomically. Pre-cancelling then immediately
+// rescheduling the same alarm causes immediate delivery on certain Android OEMs.
 
 async function scheduleLocal(
   id: string,
@@ -95,7 +77,6 @@ async function scheduleLocal(
 ) {
   try {
     const Notifications = await import('expo-notifications');
-    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
     await Notifications.scheduleNotificationAsync({
       identifier: id,
       content: { title, body, sound: true, data: {} },
@@ -106,15 +87,31 @@ async function scheduleLocal(
   }
 }
 
+// Returns the scheduled trigger timestamp (ms) for a notification whose trigger
+// is a date-type alarm, or 0 if it can't be determined.
+function scheduledTriggerMs(trigger: unknown): number {
+  const t = trigger as any;
+  // Android returns { type: 'date', value: <ms> } or { type: 'date', timestamp: <ms> }
+  // iOS may use { type: 'date', value: <ms> } as well.
+  return t?.value ?? t?.timestamp ?? 0;
+}
+
 // ── Watering reminders — one grouped notification per due date ────────────────
 
 async function scheduleWateringReminders(plants: Plant[]) {
-  await cancelByPrefix('water_day_');
-
+  const Notifications = await import('expo-notifications');
   const settings = await loadNotificationSettings();
-  if (!settings.masterEnabled || !settings.watering.enabled) return;
 
-  // Group plants by the calendar day their reminder fires
+  // Get the existing scheduled water notifications so we can diff.
+  const allScheduled = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  const scheduledWater = allScheduled.filter(n => n.identifier.startsWith('water_day_'));
+
+  if (!settings.masterEnabled || !settings.watering.enabled) {
+    await Promise.all(scheduledWater.map(n =>
+      Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {})));
+    return;
+  }
+
   const byDay: Record<string, { remindAt: Date; names: string[] }> = {};
   const now = new Date();
 
@@ -135,8 +132,6 @@ async function scheduleWateringReminders(plants: Plant[]) {
     const due = new Date(plant.last_watered);
     due.setDate(due.getDate() + plant.water_interval_days);
     // Treat water_interval_days as a calendar-day count, not an exact hour offset.
-    // Without this, the time-of-day from last_watered carries into remindAt and can
-    // produce unexpected fire times (e.g. watered at 9 AM → reminder at 7 AM).
     due.setHours(0, 0, 0, 0);
 
     // Skip if ≥10 mm of rain is forecast on the due day
@@ -151,7 +146,6 @@ async function scheduleWateringReminders(plants: Plant[]) {
 
     const remindAt = new Date(due);
     remindAt.setHours(settings.watering.hour, settings.watering.minute, 0, 0);
-    // Skip if the reminder time has already passed or is less than 5 minutes away.
     if (remindAt.getTime() - now.getTime() < 5 * 60_000) continue;
 
     const dayKey = localDateKey(remindAt);
@@ -159,7 +153,26 @@ async function scheduleWateringReminders(plants: Plant[]) {
     byDay[dayKey].names.push(plant.name);
   }
 
+  const targetIds = new Set(Object.keys(byDay).map(k => `water_day_${k}`));
+  const scheduledMap = new Map(scheduledWater.map(n => [n.identifier, n]));
+
+  // Cancel stale notifications (no longer needed)
+  await Promise.all(
+    scheduledWater
+      .filter(n => !targetIds.has(n.identifier))
+      .map(n => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {}))
+  );
+
+  // Schedule only notifications that aren't already set for the right time.
+  // Skipping the cancel+reschedule cycle prevents immediate delivery on Android OEMs.
   for (const [dayKey, { remindAt, names }] of Object.entries(byDay)) {
+    const id = `water_day_${dayKey}`;
+    const existing = scheduledMap.get(id);
+    if (existing) {
+      const existingMs = scheduledTriggerMs(existing.trigger);
+      if (existingMs > 0 && Math.abs(existingMs - remindAt.getTime()) < 60_000) continue;
+    }
+
     const count = names.length;
     const title = count === 1
       ? `💧 Time to water ${names[0]}`
@@ -168,17 +181,24 @@ async function scheduleWateringReminders(plants: Plant[]) {
       ? `${names[0]} is due for water today. Don't let it get thirsty!`
       : names.join(', ');
 
-    await scheduleLocal(`water_day_${dayKey}`, title, body, { date: remindAt });
+    await scheduleLocal(id, title, body, { date: remindAt });
   }
 }
 
 // ── Harvest alerts — one grouped notification per reminder date ───────────────
 
 async function scheduleHarvestAlerts(plants: Plant[]) {
-  await cancelByPrefix('harvest_day_');
-
+  const Notifications = await import('expo-notifications');
   const settings = await loadNotificationSettings();
-  if (!settings.masterEnabled || !settings.harvest.enabled) return;
+
+  const allScheduled = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  const scheduledHarvest = allScheduled.filter(n => n.identifier.startsWith('harvest_day_'));
+
+  if (!settings.masterEnabled || !settings.harvest.enabled) {
+    await Promise.all(scheduledHarvest.map(n =>
+      Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {})));
+    return;
+  }
 
   const byDay: Record<string, { remindAt: Date; names: string[]; harvestDate: Date }> = {};
   const now = new Date();
@@ -197,7 +217,23 @@ async function scheduleHarvestAlerts(plants: Plant[]) {
     byDay[dayKey].names.push(plant.name);
   }
 
+  const targetIds = new Set(Object.keys(byDay).map(k => `harvest_day_${k}`));
+  const scheduledMap = new Map(scheduledHarvest.map(n => [n.identifier, n]));
+
+  await Promise.all(
+    scheduledHarvest
+      .filter(n => !targetIds.has(n.identifier))
+      .map(n => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {}))
+  );
+
   for (const [dayKey, { remindAt, names, harvestDate }] of Object.entries(byDay)) {
+    const id = `harvest_day_${dayKey}`;
+    const existing = scheduledMap.get(id);
+    if (existing) {
+      const existingMs = scheduledTriggerMs(existing.trigger);
+      if (existingMs > 0 && Math.abs(existingMs - remindAt.getTime()) < 60_000) continue;
+    }
+
     const count = names.length;
     const daysText = settings.harvest.daysBefore === 1 ? 'tomorrow' : `in ${settings.harvest.daysBefore} days`;
     const dateStr = harvestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -209,17 +245,24 @@ async function scheduleHarvestAlerts(plants: Plant[]) {
       ? `Your ${names[0]} is almost ready. Prepare for harvest on ${dateStr}.`
       : names.join(', ');
 
-    await scheduleLocal(`harvest_day_${dayKey}`, title, body, { date: remindAt });
+    await scheduleLocal(id, title, body, { date: remindAt });
   }
 }
 
 // ── Sowing reminders — for saved "Plan a Future Garden" entries ───────────────
 
 async function scheduleSowingReminders() {
-  await cancelByPrefix('sow_day_');
-
+  const Notifications = await import('expo-notifications');
   const settings = await loadNotificationSettings();
-  if (!settings.masterEnabled || !settings.sowing.enabled) return;
+
+  const allScheduled = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  const scheduledSow = allScheduled.filter(n => n.identifier.startsWith('sow_day_'));
+
+  if (!settings.masterEnabled || !settings.sowing.enabled) {
+    await Promise.all(scheduledSow.map(n =>
+      Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {})));
+    return;
+  }
 
   const byDay: Record<string, { remindAt: Date; names: string[] }> = {};
   const now = new Date();
@@ -239,16 +282,30 @@ async function scheduleSowingReminders() {
     }
   }
 
+  const targetIds = new Set(Object.keys(byDay).map(k => `sow_day_${k}`));
+  const scheduledMap = new Map(scheduledSow.map(n => [n.identifier, n]));
+
+  await Promise.all(
+    scheduledSow
+      .filter(n => !targetIds.has(n.identifier))
+      .map(n => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {}))
+  );
+
   for (const [dayKey, { remindAt, names }] of Object.entries(byDay)) {
+    const id = `sow_day_${dayKey}`;
+    const existing = scheduledMap.get(id);
+    if (existing) {
+      const existingMs = scheduledTriggerMs(existing.trigger);
+      if (existingMs > 0 && Math.abs(existingMs - remindAt.getTime()) < 60_000) continue;
+    }
+
     const count = names.length;
-    const title = count === 1
-      ? `📅 Time to sow ${names[0]}`
-      : `📅 ${count} plants ready to sow`;
+    const title = count === 1 ? `📅 Time to sow ${names[0]}` : `📅 ${count} plants ready to sow`;
     const body = count === 1
       ? `Your plan has ${names[0]} starting around now.`
       : names.join(', ');
 
-    await scheduleLocal(`sow_day_${dayKey}`, title, body, { date: remindAt });
+    await scheduleLocal(id, title, body, { date: remindAt });
   }
 }
 
@@ -355,14 +412,42 @@ export async function scheduleBirthdayNotification() {
 }
 
 // ── Reschedule all notifications ──────────────────────────────────────────────
+// force=false (default): throttled to once per hour — used by on-open sync.
+// force=true: always runs — used by plants:changed, settings changes, and toggle.
 
-export async function rescheduleAllNotifications(plants: Plant[]) {
+const RESCHEDULE_THROTTLE_KEY = 'gg_last_notify_reschedule';
+const RESCHEDULE_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
+
+export async function rescheduleAllNotifications(plants: Plant[], force = false) {
   if (Platform.OS === 'web') return;
+
+  try {
+    const Notifications = await import('expo-notifications');
+    // Always clear delivered notifications from the tray so stale ones don't
+    // accumulate and appear as a "blast" after an OTA update or notification toggle.
+    await Notifications.dismissAllNotificationsAsync().catch(() => {});
+  } catch {}
+
+  if (!force) {
+    // Throttle on-open calls to prevent the scheduling cycle from running on
+    // every single app open. plants:changed and settings changes pass force=true.
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const last = await AsyncStorage.getItem(RESCHEDULE_THROTTLE_KEY).catch(() => null);
+      if (last && Date.now() - Number(last) < RESCHEDULE_THROTTLE_MS) return;
+    } catch {}
+  }
+
   await scheduleWateringReminders(plants);
   await scheduleHarvestAlerts(plants);
   await scheduleSowingReminders();
   await scheduleDailyCheckIn();
   await scheduleBirthdayNotification();
+
+  try {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    await AsyncStorage.setItem(RESCHEDULE_THROTTLE_KEY, String(Date.now()));
+  } catch {}
 }
 
 // ── Cancel all ────────────────────────────────────────────────────────────────
@@ -372,5 +457,6 @@ export async function cancelAllNotifications() {
   try {
     const Notifications = await import('expo-notifications');
     await Notifications.cancelAllScheduledNotificationsAsync();
+    await Notifications.dismissAllNotificationsAsync().catch(() => {});
   } catch {}
 }

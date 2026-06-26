@@ -76,18 +76,19 @@ function ThemedApp() {
     if (Platform.OS === 'web' || !user?.id || !isPremium) return;
     let cancelled = false;
 
-    async function syncNotifications() {
+    async function syncNotifications(force: boolean) {
       const settings = await loadNotificationSettings();
       if (!settings.masterEnabled || cancelled) return;
       const granted = await requestNotificationPermission();
       if (!granted || cancelled) return;
       const plants = await offlineList('plants', user!.id, `user_id = "${user!.id}"`).catch(() => []);
-      if (!cancelled) await rescheduleAllNotifications(plants as any);
+      if (!cancelled) await rescheduleAllNotifications(plants as any, force);
     }
 
-    syncNotifications();
-    const unsubPlants = subscribe('plants:changed', syncNotifications);
-    const unsubPlans = subscribe('plans:changed', syncNotifications);
+    // On-open: throttled (force=false). plants/plans changes: always run (force=true).
+    syncNotifications(false);
+    const unsubPlants = subscribe('plants:changed', () => syncNotifications(true));
+    const unsubPlans = subscribe('plans:changed', () => syncNotifications(true));
     return () => { cancelled = true; unsubPlants(); unsubPlans(); };
   }, [user?.id, isPremium]);
 
