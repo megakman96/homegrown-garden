@@ -2,11 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pb } from './pb';
 import * as cache from './offline-cache';
 
-// PocketBase ClientResponseError has status=0 when the fetch itself failed (no network).
-// Any other error (400/404/500) means we reached the server.
+// PocketBase ClientResponseError has status=0 when the fetch itself failed.
+// Cloudflare gateway/tunnel errors come back as 5xx with non-JSON bodies —
+// treat those as network errors too so they queue offline instead of failing.
 export function isNetworkError(e: any): boolean {
   const status = e?.status ?? e?.response?.status;
-  return status === 0 || status === undefined && e?.name !== 'ClientResponseError';
+  if (status === 0 || status === undefined && e?.name !== 'ClientResponseError') return true;
+  if (typeof status === 'number' && status >= 500) return true;
+  return false;
 }
 
 // Local-only IDs so we can detect unsynced records throughout the app
