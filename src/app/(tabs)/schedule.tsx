@@ -18,6 +18,7 @@ import {
   type WeatherData, type WateringAdvice, type Location,
 } from '@/lib/weather';
 import { addActivityEntryAsync } from '@/lib/activity-log';
+import { emit } from '@/lib/events';
 import { yearFromGarden, sortGardens } from '@/lib/garden-layout';
 import { getArchivedGardenIds } from '@/lib/garden-archive';
 
@@ -199,6 +200,7 @@ export default function ScheduleScreen() {
     const now = new Date().toISOString();
     await offlineUpdate('plants', user.id, plant.id, { last_watered: now });
     addActivityEntryAsync(user.id, { type: 'water', plantId: plant.id, plantName: plant.name, gardenId: plant.garden_id });
+    emit('plants:changed');
     const updated = plants.map(p => p.id === plant.id ? { ...p, last_watered: now } : p);
     setPlants(updated);
     buildSchedule(updated, gardenWeather, sharedGardenIds, isPremium);

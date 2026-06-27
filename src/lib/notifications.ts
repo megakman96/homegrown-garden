@@ -421,13 +421,6 @@ const RESCHEDULE_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
 export async function rescheduleAllNotifications(plants: Plant[], force = false) {
   if (Platform.OS === 'web') return;
 
-  try {
-    const Notifications = await import('expo-notifications');
-    // Always clear delivered notifications from the tray so stale ones don't
-    // accumulate and appear as a "blast" after an OTA update or notification toggle.
-    await Notifications.dismissAllNotificationsAsync().catch(() => {});
-  } catch {}
-
   if (!force) {
     // Throttle on-open calls to prevent the scheduling cycle from running on
     // every single app open. plants:changed and settings changes pass force=true.

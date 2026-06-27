@@ -20,6 +20,7 @@ import { findPlantKey, PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS, FILLER_PLANTS, get
 import { HEALTH_ISSUES, encodeSickReason, stripSickReason, parseSickReason, type HealthIssue } from '@/lib/plant-health';
 import { fetchZoneForCoords, getFrostInfo, calcPlantingWindow, fmtDate, getZoneWaterAdjustment, getZoneViability, type FrostInfo, type PlantingWindow, type ZoneViability } from '@/lib/frost-dates';
 import { loadGardenLocation } from '@/lib/weather';
+import { emit } from '@/lib/events';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const HERO_HEIGHT = 260;
@@ -150,6 +151,7 @@ export default function PlantDetailScreen() {
     const now = new Date().toISOString();
     await offlineUpdate('plants', user.id, plant.id, { last_watered: now });
     setPlant((p) => p ? { ...p, last_watered: now } : p);
+    emit('plants:changed');
     Alert.alert('Watered! 💧', `${plant.name} marked as watered.`);
   }
 
@@ -164,6 +166,7 @@ export default function PlantDetailScreen() {
         plant_id: plant.id,
         user_id: user.id,
         yield_grams: harvestCount, // satisfies required field; represents piece count
+        harvested_at: new Date().toISOString(),
         notes,
       };
 
@@ -173,6 +176,7 @@ export default function PlantDetailScreen() {
         type: 'harvest', plantId: plant.id, plantName: plant.name,
         gardenId: plant.garden_id, grams: harvestCount, notes,
       });
+      emit('plants:changed');
       setShowHarvest(false);
       setHarvestCount(1);
       setHarvestNotes('');

@@ -584,6 +584,7 @@ export default function NewGardenScreen() {
                       snapToInterval={CARD_W}
                       decelerationRate="fast"
                       showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={templatePickerGardens.length === 1 ? { flex: 1, justifyContent: 'center' } : undefined}
                       onMomentumScrollEnd={e => {
                         const idx = Math.round(e.nativeEvent.contentOffset.x / CARD_W);
                         setTemplatePickerIdx(Math.max(0, Math.min(idx, templatePickerGardens.length - 1)));
