@@ -21,6 +21,7 @@ import { HEALTH_ISSUES, encodeSickReason, stripSickReason, parseSickReason, type
 import { fetchZoneForCoords, getFrostInfo, calcPlantingWindow, fmtDate, getZoneWaterAdjustment, getZoneViability, type FrostInfo, type PlantingWindow, type ZoneViability } from '@/lib/frost-dates';
 import { loadGardenLocation } from '@/lib/weather';
 import { emit } from '@/lib/events';
+import { logError } from '@/lib/error-log';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const HERO_HEIGHT = 260;
@@ -181,6 +182,7 @@ export default function PlantDetailScreen() {
       setHarvestCount(1);
       setHarvestNotes('');
     } catch (e: any) {
+      logError(e, 'harvest:create');
       const pbFields = e?.data?.data ?? e?.data;
       const fieldErrors = pbFields && typeof pbFields === 'object'
         ? Object.entries(pbFields as Record<string, any>)
