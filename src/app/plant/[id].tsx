@@ -76,6 +76,19 @@ export default function PlantDetailScreen() {
   const [showSickPicker, setShowSickPicker] = useState(false);
 
   useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)' as any)}
+          style={{ paddingRight: 16, paddingVertical: 8 }}
+        >
+          <Text style={{ color: '#007AFF', fontSize: 17 }}>‹ Back</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, []);
+
+  useEffect(() => {
     if (!id) return;
     offlineOne('plants', id as string)
       .then((p) => {

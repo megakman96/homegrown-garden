@@ -993,6 +993,11 @@ export default function GardenScreen() {
                             <Text style={styles.sickBadgeText}>!</Text>
                           </View>
                         )}
+                        {plant.health_status === 'dead' && (
+                          <View style={styles.deadBadge}>
+                            <Text style={styles.deadBadgeText}>✕</Text>
+                          </View>
+                        )}
                       </>
                     ) : !isInactive ? (
                       <Text style={[styles.cellPlus, { fontSize: tileSize * 0.35 }]}>+</Text>
@@ -1142,6 +1147,11 @@ export default function GardenScreen() {
                                   {plant.health_status === 'sick' && (
                                     <View style={styles.sickBadge}>
                                       <Text style={styles.sickBadgeText}>!</Text>
+                                    </View>
+                                  )}
+                                  {plant.health_status === 'dead' && (
+                                    <View style={styles.deadBadge}>
+                                      <Text style={styles.deadBadgeText}>✕</Text>
                                     </View>
                                   )}
                                 </>
@@ -2389,6 +2399,8 @@ const styles = StyleSheet.create({
   quantityBadgeText: { color: '#fff', fontSize: 9, fontWeight: '700', lineHeight: 12 },
   sickBadge: { position: 'absolute', top: 2, left: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#f03e3e', justifyContent: 'center', alignItems: 'center' },
   sickBadgeText: { color: '#f03e3e', fontSize: 9, fontWeight: '900', lineHeight: 11 },
+  deadBadge: { position: 'absolute', top: 2, left: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#6c757d', justifyContent: 'center', alignItems: 'center' },
+  deadBadgeText: { color: '#6c757d', fontSize: 9, fontWeight: '900', lineHeight: 11 },
 
   // Plant action sheet
   actionRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: G.foam },

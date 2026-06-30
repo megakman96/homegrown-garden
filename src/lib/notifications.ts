@@ -174,9 +174,9 @@ async function scheduleDailyDigest(plants: Plant[]) {
   }
 
   await scheduleLocal(id, title, body, {
+    type: 'daily',
     hour: h,
     minute: settings.dailyCheckIn.minute,
-    repeats: true,
   });
 }
 
