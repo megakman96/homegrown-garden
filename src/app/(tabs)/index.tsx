@@ -69,6 +69,7 @@ export default function DashboardScreen() {
   const now = new Date();
 
   const needsWater = plants.filter(p => {
+    if (p.health_status === 'dead' || p.health_status === 'harvested') return false;
     if (!p.last_watered || !p.water_interval_days) return false;
     const due = new Date(p.last_watered);
     due.setDate(due.getDate() + p.water_interval_days);
