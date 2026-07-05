@@ -115,8 +115,9 @@ async function scheduleDailyDigest(plants: Plant[]) {
   const now = new Date();
   const todayStr = localDateKey(now);
 
-  // Plants that need water today or are overdue
+  // Plants that need water today or are overdue (exclude dead/harvested)
   const needsWater = plants.filter(p => {
+    if (p.health_status === 'dead' || p.health_status === 'harvested') return false;
     if (!p.last_watered || !p.water_interval_days) return false;
     const due = new Date(p.last_watered);
     due.setDate(due.getDate() + p.water_interval_days);
@@ -124,8 +125,9 @@ async function scheduleDailyDigest(plants: Plant[]) {
     return localDateKey(due) <= todayStr;
   });
 
-  // Plants approaching or ready for harvest (within 3 days)
+  // Plants approaching or ready for harvest (within 3 days, exclude dead)
   const harvestSoon = plants.filter(p => {
+    if (p.health_status === 'dead') return false;
     if (!p.expected_harvest_date) return false;
     const harvestDate = new Date(p.expected_harvest_date);
     harvestDate.setHours(0, 0, 0, 0);

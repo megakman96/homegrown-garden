@@ -206,6 +206,24 @@ export default function ScheduleScreen() {
     buildSchedule(updated, gardenWeather, sharedGardenIds, isPremium);
   }
 
+  async function markAllWatered(gardenId: string) {
+    if (!user) return;
+    const now = new Date().toISOString();
+    const gardenWaterPlants = items
+      .filter(i => i.type === 'water' && i.plant.garden_id === gardenId && !i.advice?.skipReason)
+      .map(i => i.plant);
+    if (gardenWaterPlants.length === 0) return;
+    await Promise.all(gardenWaterPlants.map(p =>
+      offlineUpdate('plants', user!.id, p.id, { last_watered: now })
+        .then(() => addActivityEntryAsync(user!.id, { type: 'water', plantId: p.id, plantName: p.name, gardenId }))
+    ));
+    emit('plants:changed');
+    const updatedIds = new Set(gardenWaterPlants.map(p => p.id));
+    const updated = plants.map(p => updatedIds.has(p.id) ? { ...p, last_watered: now } : p);
+    setPlants(updated);
+    buildSchedule(updated, gardenWeather, sharedGardenIds, isPremium);
+  }
+
   // ── Build schedule map ────────────────────────────────────────────────────
 
   const itemsByGarden: Record<string, PlantWithAdvice[]> = {};
@@ -267,12 +285,20 @@ export default function ScheduleScreen() {
     const gItems = itemsByGarden[garden.id] ?? [];
     const overdue = gItems.filter(i => i.overdue);
     const upcoming = gItems.filter(i => !i.overdue);
+    const waterableCount = gItems.filter(i => i.type === 'water' && !i.advice?.skipReason).length;
 
     return (
       <View key={garden.id}>
-        <Text style={[styles.gardenName, { color: textPrim, marginTop: 10, marginBottom: 6 }]}>
-          🌻 {garden.name}{yearFromGarden(garden) ? ` · ${yearFromGarden(garden)}` : ''}
-        </Text>
+        <View style={styles.gardenRowHeader}>
+          <Text style={[styles.gardenName, { color: textPrim, marginTop: 10, marginBottom: 6, flex: 1 }]}>
+            🌻 {garden.name}{yearFromGarden(garden) ? ` · ${yearFromGarden(garden)}` : ''}
+          </Text>
+          {waterableCount > 0 && (
+            <TouchableOpacity style={styles.waterAllBtn} onPress={() => markAllWatered(garden.id)}>
+              <Text style={styles.waterAllText}>💧 Water All ({waterableCount})</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         {overdue.length > 0 && (
           <Section title={`🔴 Overdue (${overdue.length})`}>
             {overdue.map((item, i) => (
@@ -324,6 +350,7 @@ export default function ScheduleScreen() {
     const overdue = gItems.filter(i => i.overdue);
     const upcoming = gItems.filter(i => !i.overdue);
     const showWeather = isPremium || sharedGardenIds.has(garden.id);
+    const waterableCount = gItems.filter(i => i.type === 'water' && !i.advice?.skipReason).length;
 
     return (
       <View key={garden.id} style={isDesktopLayout ? styles.desktopGardenSection : styles.gardenSection}>
@@ -331,6 +358,11 @@ export default function ScheduleScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.gardenName, { color: textPrim }]}>🌻 {garden.name}{yearFromGarden(garden) ? ` · ${yearFromGarden(garden)}` : ''}</Text>
           </View>
+          {waterableCount > 0 && (
+            <TouchableOpacity style={styles.waterAllBtn} onPress={() => markAllWatered(garden.id)}>
+              <Text style={styles.waterAllText}>💧 Water All ({waterableCount})</Text>
+            </TouchableOpacity>
+          )}
         </View>
         {showWeather
           ? <WeatherWidget weather={null} loading={false} tempUnit={tempUnit} measureUnit={measureUnit} />
@@ -619,6 +651,9 @@ const styles = StyleSheet.create({
   setLocText: { fontSize: 12, color: '#2d6a4f', fontWeight: '600' },
   gardenEmpty: { paddingVertical: 16, alignItems: 'center' },
   gardenEmptyText: { fontSize: 13, color: '#74c69d', fontStyle: 'italic' },
+  gardenRowHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 6 },
+  waterAllBtn: { backgroundColor: '#d8f3dc', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, marginLeft: 8 },
+  waterAllText: { color: '#2d6a4f', fontWeight: '700', fontSize: 12 },
 
   // Weather widget
   weatherCard: {
