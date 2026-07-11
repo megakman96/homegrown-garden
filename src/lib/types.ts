@@ -51,6 +51,7 @@ export interface Database {
           notes: string | null;
           created_at: string;
           quantity: number | null;
+          is_filler: boolean;
         };
         Insert: {
           garden_id: string;
@@ -68,6 +69,7 @@ export interface Database {
           total_yield_grams?: number;
           notes?: string | null;
           quantity?: number | null;
+          is_filler?: boolean;
         };
         Update: {
           name?: string;
@@ -83,6 +85,7 @@ export interface Database {
           total_yield_grams?: number;
           notes?: string | null;
           quantity?: number | null;
+          is_filler?: boolean;
         };
         Relationships: [];
       };

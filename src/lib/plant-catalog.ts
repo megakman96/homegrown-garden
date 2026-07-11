@@ -3110,3 +3110,19 @@ export function getFillerSuggestions(catalogInfo: CatalogEntry | null, max = 5):
   candidates.sort((a, b) => (goodSet.has(a) ? 0 : 1) - (goodSet.has(b) ? 0 : 1));
   return candidates.slice(0, max);
 }
+
+// Rough guide for how many filler plants of a given kind fit around a
+// primary plant in one tile — advisory only, never a hard limit.
+export function suggestFillerCount(
+  primary: CatalogEntry | null,
+  filler: CatalogEntry | null,
+  tileSizeCm: number,
+): number {
+  const fillerSpacing = filler?.spacingCm ?? 20;
+  const primarySpacing = primary?.spacingCm ?? tileSizeCm;
+  const claimedFraction = Math.min(1, (primarySpacing * primarySpacing) / (tileSizeCm * tileSizeCm));
+  const openFraction = Math.max(0.15, 1 - claimedFraction);
+  const openAreaCm2 = tileSizeCm * tileSizeCm * openFraction;
+  const perPlantAreaCm2 = fillerSpacing * fillerSpacing;
+  return Math.max(1, Math.min(3, Math.round(openAreaCm2 / perPlantAreaCm2)));
+}

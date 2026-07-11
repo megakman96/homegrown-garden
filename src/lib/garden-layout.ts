@@ -1,3 +1,5 @@
+import type { Plant } from './types';
+
 export type TileState = 'inactive' | 'full_sun' | 'partial_sun' | 'shade';
 export type GardenLayout = TileState[][];
 
@@ -128,4 +130,17 @@ export function serializeLayout(layout: GardenLayout, tileSizeCm: number, year?:
 
 export function cmToIn(cm: number): string {
   return `${(cm / 2.54).toFixed(1)}"`;
+}
+
+// Multiple plants can share a tile: one primary plant plus optional filler
+// plants (e.g. basil at the base of a tomato). Both are just `plants` rows
+// with matching row/col; `is_filler` distinguishes the role.
+export function findPrimaryPlant(plants: Plant[], row: number, col: number): Plant | undefined {
+  const matches = plants.filter(p => p.row === row && p.col === col);
+  return matches.find(p => !p.is_filler) ?? matches[0];
+}
+
+export function findFillerPlants(plants: Plant[], row: number, col: number): Plant[] {
+  const primary = findPrimaryPlant(plants, row, col);
+  return plants.filter(p => p.row === row && p.col === col && p.id !== primary?.id);
 }

@@ -21,9 +21,10 @@ import PlantAvatar from '@/components/PlantAvatar';
 import {
   layoutFromGarden, makeLayout, resizeLayout,
   TILE_COLORS, TILE_LABELS, TILE_EMOJIS, SUN_CYCLE, activeCount,
-  tileSizeInFromGarden, yearFromGarden, serializeLayout,
+  tileSizeInFromGarden, tileSizeFromGarden, yearFromGarden, serializeLayout,
   DEFAULT_TILE_SIZE_IN, TILE_SIZE_STEP_IN, TILE_SIZE_MIN_IN, TILE_SIZE_MAX_IN,
   formatTileSize, formatTotalSize, sortGardens,
+  findPrimaryPlant, findFillerPlants,
 } from '@/lib/garden-layout';
 import { emit, subscribe } from '@/lib/events';
 import type { TileState, GardenLayout } from '@/lib/garden-layout';
@@ -32,6 +33,7 @@ import type { SunRequirement } from '@/lib/plant-catalog';
 import {
   findPlantKey, getCompatibility, getSunCompatibility,
   PLANT_CATALOG, SUN_LABELS, SUN_EMOJIS, searchPlants,
+  FILLER_PLANTS, getFillerSuggestions, suggestFillerCount,
 } from '@/lib/plant-catalog';
 import type { CatalogEntry } from '@/lib/plant-catalog';
 import { getActivityLogAsync, addActivityEntryAsync, type ActivityEntry } from '@/lib/activity-log';
@@ -60,7 +62,12 @@ type PlacementInfo = {
   col: number;
   neighbors: Plant[];
   tileSun: TileState;
+  // Set when placing a filler plant at the base of an existing plant,
+  // instead of placing a new plant on an empty tile.
+  hostPlant?: Plant;
 };
+
+const MAX_FILLERS_PER_TILE = 3;
 
 type SharedEntry = { garden: Garden; ownerEmail: string };
 
@@ -453,7 +460,11 @@ export default function GardenScreen() {
   }
 
   function getPlantAt(row: number, col: number) {
-    return getActivePlants().find((p) => p.row === row && p.col === col);
+    return findPrimaryPlant(getActivePlants(), row, col);
+  }
+
+  function getFillersAt(row: number, col: number) {
+    return findFillerPlants(getActivePlants(), row, col);
   }
 
   function getNeighbors(row: number, col: number): Plant[] {
@@ -480,6 +491,23 @@ export default function GardenScreen() {
     setPlaceQuantity(1);
   }
 
+  function handleAddFiller(host: Plant) {
+    if (host.row == null || host.col == null) return;
+    if (getFillersAt(host.row, host.col).length >= MAX_FILLERS_PER_TILE) {
+      Alert.alert('Tile is full', `This tile already has the max of ${MAX_FILLERS_PER_TILE} filler plants.`);
+      return;
+    }
+    const tileSun = (getActiveLayout()?.[host.row]?.[host.col] ?? 'full_sun') as TileState;
+    setPlantAction(null);
+    setPlacement({ row: host.row, col: host.col, neighbors: [host], tileSun, hostPlant: host });
+    setPlaceName('');
+    setPlaceSelected(false);
+    setCatalogueSearch('');
+    setPlaceSun(tileSun === 'inactive' ? 'full_sun' : tileSun as SunRequirement);
+    setPlaceWaterDays(3);
+    setPlaceQuantity(1);
+  }
+
   function selectCatalogueItem(entry: CatalogEntry) {
     setPlaceName(entry.name);
     setPlaceSun(entry.sunRequirement);
@@ -488,7 +516,7 @@ export default function GardenScreen() {
     setCatalogueSearch('');
   }
 
-  function getNeighborSuggestions(): Array<{ key: string; entry: CatalogEntry }> {
+  function getNeighborSuggestions(): Array<{ key: string; entry: CatalogEntry; why?: string }> {
     if (!placement?.neighbors.length) return [];
     const neighborKeys = placement.neighbors
       .map(n => findPlantKey(n.name))
@@ -509,6 +537,18 @@ export default function GardenScreen() {
         });
       })
       .slice(0, 8);
+  }
+
+  // Suggestions when adding a filler plant — biased toward known low-growing
+  // companions (FILLER_PLANTS) that go well with the host, but the full
+  // catalogue below remains open to any plant.
+  function getFillerPlantSuggestions(): Array<{ key: string; entry: CatalogEntry; why?: string }> {
+    if (!placement?.hostPlant) return [];
+    const hostKey = findPlantKey(placement.hostPlant.name);
+    const hostEntry = hostKey ? PLANT_CATALOG[hostKey] : null;
+    return getFillerSuggestions(hostEntry, 8)
+      .map(key => ({ key, entry: PLANT_CATALOG[key], why: FILLER_PLANTS[key]?.why }))
+      .filter((s) => !!s.entry);
   }
 
   function getCatalogueList(): Array<{ key: string; entry: CatalogEntry }> {
@@ -532,6 +572,7 @@ export default function GardenScreen() {
       water_interval_days: placeWaterDays,
       quantity: placeQuantity > 1 ? placeQuantity : null,
       total_yield_grams: 0,
+      ...(placement.hostPlant ? { is_filler: true } : {}),
     });
     setPlantsMap(prev => ({
       ...prev,
@@ -876,7 +917,11 @@ export default function GardenScreen() {
     const tileSize = Math.max(30, Math.min(56, Math.floor((availableWidth - 48) / garden.cols)));
 
     function getPagePlantAt(row: number, col: number) {
-      return pagePlants.find(p => p.row === row && p.col === col);
+      return findPrimaryPlant(pagePlants, row, col);
+    }
+
+    function getPageFillersAt(row: number, col: number) {
+      return findFillerPlants(pagePlants, row, col);
     }
 
     return (
@@ -965,6 +1010,7 @@ export default function GardenScreen() {
             <View key={row} style={styles.gridRow}>
               {Array.from({ length: garden.cols }).map((_, col) => {
                 const plant = getPagePlantAt(row, col);
+                const fillers = plant ? getPageFillersAt(row, col) : [];
                 const tileState = pageGardenLayout?.[row]?.[col] ?? 'inactive';
                 const isInactive = tileState === 'inactive';
                 const tileBg = plant
@@ -996,6 +1042,19 @@ export default function GardenScreen() {
                         {plant.health_status === 'dead' && (
                           <View style={styles.deadBadge}>
                             <Text style={styles.deadBadgeText}>✕</Text>
+                          </View>
+                        )}
+                        {fillers.length > 0 && (
+                          <View style={styles.fillerChipRow}>
+                            {fillers.slice(0, MAX_FILLERS_PER_TILE).map(filler => (
+                              <TouchableOpacity
+                                key={filler.id}
+                                style={styles.fillerChip}
+                                onPress={() => setPlantAction(filler)}
+                              >
+                                <Text style={styles.fillerChipEmoji}>{getPlantIcon(filler.name).emoji}</Text>
+                              </TouchableOpacity>
+                            ))}
                           </View>
                         )}
                       </>
@@ -1127,7 +1186,8 @@ export default function GardenScreen() {
                     {Array.from({ length: garden.rows }).map((_, row) => (
                       <View key={row} style={styles.gridRow}>
                         {Array.from({ length: garden.cols }).map((_, col) => {
-                          const plant = pagePlants.find(p => p.row === row && p.col === col);
+                          const plant = findPrimaryPlant(pagePlants, row, col);
+                          const fillers = plant ? findFillerPlants(pagePlants, row, col) : [];
                           const tileState = pageLayout?.[row]?.[col] ?? 'inactive';
                           const isInactive = tileState === 'inactive';
                           const tileBg = plant
@@ -1152,6 +1212,19 @@ export default function GardenScreen() {
                                   {plant.health_status === 'dead' && (
                                     <View style={styles.deadBadge}>
                                       <Text style={styles.deadBadgeText}>✕</Text>
+                                    </View>
+                                  )}
+                                  {fillers.length > 0 && (
+                                    <View style={styles.fillerChipRow}>
+                                      {fillers.slice(0, MAX_FILLERS_PER_TILE).map(filler => (
+                                        <TouchableOpacity
+                                          key={filler.id}
+                                          style={styles.fillerChip}
+                                          onPress={() => { activate(); setPlantAction(filler); }}
+                                        >
+                                          <Text style={styles.fillerChipEmoji}>{getPlantIcon(filler.name).emoji}</Text>
+                                        </TouchableOpacity>
+                                      ))}
                                     </View>
                                   )}
                                 </>
@@ -1427,6 +1500,19 @@ export default function GardenScreen() {
             }}>
               <Text style={[styles.actionRowText, { color: textPrim }]}>✏️  Edit Plant</Text>
             </TouchableOpacity>
+
+            {plantAction?.row != null && plantAction?.col != null && (() => {
+              const fillerCount = getFillersAt(plantAction.row, plantAction.col).length;
+              return (
+                <TouchableOpacity
+                  style={[styles.actionRow, { borderBottomColor: isDark ? colors.border : undefined }]}
+                  onPress={() => handleAddFiller(plantAction)}
+                >
+                  <Text style={[styles.actionRowText, { color: textPrim }]}>🌿  Add Filler Plant</Text>
+                  <Text style={[styles.actionRowSub, { color: textSec }]}>{fillerCount} of {MAX_FILLERS_PER_TILE} added</Text>
+                </TouchableOpacity>
+              );
+            })()}
 
             <TouchableOpacity style={[styles.actionRow, { borderBottomWidth: 0 }]} onPress={unplantPlant}>
               <Text style={[styles.actionRowText, { color: textPrim }]}>⬜  Remove from this square</Text>
@@ -1920,9 +2006,13 @@ export default function GardenScreen() {
             {!isDesktop && <View style={styles.modalHandle} />}
 
             <View style={styles.modalTitleRow}>
-              <Text style={[styles.modalTitle, { color: textPrim }]}>Plant Here</Text>
+              <Text style={[styles.modalTitle, { color: textPrim }]}>
+                {placement?.hostPlant ? 'Add Filler Plant' : 'Plant Here'}
+              </Text>
               <Text style={[styles.modalTileSun, { color: textSec }]}>
-                {placement?.tileSun && placement.tileSun !== 'inactive'
+                {placement?.hostPlant
+                  ? `at the base of ${placement.hostPlant.name}`
+                  : placement?.tileSun && placement.tileSun !== 'inactive'
                   ? `${SUN_EMOJIS[placement.tileSun as SunRequirement]} ${SUN_LABELS[placement.tileSun as SunRequirement]}`
                   : ''}
               </Text>
@@ -1947,12 +2037,14 @@ export default function GardenScreen() {
 
                   {/* Companion suggestions — hidden while searching so results appear at top */}
                   {!catalogueSearch.trim() && (() => {
-                    const suggestions = getNeighborSuggestions();
+                    const suggestions = placement?.hostPlant ? getFillerPlantSuggestions() : getNeighborSuggestions();
                     if (!suggestions.length) return null;
                     return (
                       <>
-                        <Text style={[styles.catSectionLabel, { color: textSec }]}>✅ Goes well here</Text>
-                        {suggestions.map(({ key, entry }) => {
+                        <Text style={[styles.catSectionLabel, { color: textSec }]}>
+                          {placement?.hostPlant ? `🌱 Good filler plants for ${placement.hostPlant.name}` : '✅ Goes well here'}
+                        </Text>
+                        {suggestions.map(({ key, entry, why }) => {
                           const tileSun = placement?.tileSun && placement.tileSun !== 'inactive'
                             ? placement.tileSun as SunRequirement
                             : null;
@@ -1964,7 +2056,7 @@ export default function GardenScreen() {
                               <View style={styles.catItemContent}>
                                 <Text style={[styles.catItemName, { color: textPrim }]}>{entry.name}</Text>
                                 <Text style={[styles.catItemMeta, { color: textSec }]}>
-                                  {SUN_EMOJIS[entry.sunRequirement]} needs {entry.sunRequirement.replace('_', ' ')} · 💧 every {entry.waterIntervalDays}d
+                                  {why ?? `${SUN_EMOJIS[entry.sunRequirement]} needs ${entry.sunRequirement.replace('_', ' ')} · 💧 every ${entry.waterIntervalDays}d`}
                                 </Text>
                               </View>
                               {sunBadge && <Text style={{ fontSize: 16 }}>{sunBadge}</Text>}
@@ -2066,6 +2158,27 @@ export default function GardenScreen() {
                     </View>
                   </View>
 
+                  {/* Suggested filler count — advisory only */}
+                  {placement?.hostPlant && (() => {
+                    const garden = getActiveGarden();
+                    if (!garden) return null;
+                    const hostKey = findPlantKey(placement.hostPlant.name);
+                    const fillerKey = findPlantKey(placeName);
+                    const suggested = suggestFillerCount(
+                      hostKey ? PLANT_CATALOG[hostKey] : null,
+                      fillerKey ? PLANT_CATALOG[fillerKey] : null,
+                      tileSizeFromGarden(garden),
+                    );
+                    const currentCount = getFillersAt(placement.row, placement.col).length;
+                    return (
+                      <Text style={[styles.analysisSub, { marginBottom: 12 }]}>
+                        💡 A tile this size usually fits about {suggested} {placeName.toLowerCase()}
+                        {suggested !== 1 ? 's' : ''} around {placement.hostPlant.name}. You have {currentCount} filler
+                        {currentCount !== 1 ? 's' : ''} here already.
+                      </Text>
+                    );
+                  })()}
+
                   {/* Compatibility analysis */}
                   <View style={styles.analysisBox}>
                     <Text style={styles.analysisTitle}>Planting Analysis</Text>
@@ -2094,7 +2207,7 @@ export default function GardenScreen() {
 
                     {placement?.neighbors && placement.neighbors.length > 0 ? (
                       <>
-                        <Text style={styles.neighborHeader}>Neighbors</Text>
+                        <Text style={styles.neighborHeader}>{placement?.hostPlant ? 'Host plant' : 'Neighbors'}</Text>
                         {compatSummary?.neighborResults.map(({ neighbor, compat }) => (
                           <View key={neighbor.id} style={styles.neighborRow}>
                             <Text style={[styles.compatBadge, { backgroundColor: COMPAT_COLOR[compat] }]}>
@@ -2401,6 +2514,9 @@ const styles = StyleSheet.create({
   sickBadgeText: { color: '#f03e3e', fontSize: 9, fontWeight: '900', lineHeight: 11 },
   deadBadge: { position: 'absolute', top: 2, left: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#6c757d', justifyContent: 'center', alignItems: 'center' },
   deadBadgeText: { color: '#6c757d', fontSize: 9, fontWeight: '900', lineHeight: 11 },
+  fillerChipRow: { position: 'absolute', bottom: 1, left: 2, flexDirection: 'row', gap: 1 },
+  fillerChip: { width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center' },
+  fillerChipEmoji: { fontSize: 8, lineHeight: 10 },
 
   // Plant action sheet
   actionRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: G.foam },
