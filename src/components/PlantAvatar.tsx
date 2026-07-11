@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Image, StyleSheet, Platform } from 'react-native';
 import { getPlantIcon } from '@/lib/plant-icons';
+import { findPlantKey } from '@/lib/plant-catalog';
 import { loadPlantIconOverrides, getCustomIconUrl, isIconCacheStale } from '@/lib/plant-icon-overrides';
 
 interface Props {
@@ -27,7 +28,10 @@ function localIconUrl(key: string): string {
 
 export default function PlantAvatar({ name, category, size = 48 }: Props) {
   const { emoji } = getPlantIcon(name, category);
-  const plantKey = name.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
+  // Prefer the catalog's canonical key (handles accents/hyphens like Jalapeño,
+  // Black-Eyed Susan) so it matches how admin-uploaded icons are keyed;
+  // fall back to a naive slug for custom names not in the catalog.
+  const plantKey = findPlantKey(name) ?? name.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
 
   const [imageUrl, setImageUrl] = useState<string | null>(() => getCustomIconUrl(plantKey));
   // Try the bundled local PNG if no PocketBase override exists
