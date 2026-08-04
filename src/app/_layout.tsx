@@ -40,7 +40,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (loading) return;
     const inAuthGroup = segments[0] === '(auth)';
 
-    const inPublicRoute = inAuthGroup || segments[0] === 'reset-password';
+    const inPublicRoute = inAuthGroup || segments[0] === 'reset-password' || segments[0] === 'privacy' || segments[0] === 'support';
     if (!session) {
       if (!inPublicRoute) router.replace('/(auth)/login');
       return;
@@ -154,6 +154,8 @@ function ThemedApp() {
           <Stack.Screen name="subscription" options={{ headerShown: false, animation: 'slide_from_bottom', animationDuration: 300 }} />
           <Stack.Screen name="statistics" options={{ headerShown: true, title: 'Harvest Statistics', headerBackTitle: 'Back', animation: 'slide_from_right', animationDuration: 220 }} />
           <Stack.Screen name="reset-password" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen name="privacy" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen name="support" options={{ headerShown: false, animation: 'fade' }} />
         </Stack>
       </AuthGuard>
     </ThemeProvider>
