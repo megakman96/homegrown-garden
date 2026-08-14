@@ -718,12 +718,18 @@ export default function ProfileScreen() {
                   <Text style={styles.desktopAdminText}>⚙️ Admin Panel</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={styles.desktopVenmoBtn} onPress={openVenmo}>
-                <Text style={styles.desktopVenmoText}>☕ Buy Me a Coffee</Text>
-                <Text style={styles.venmoSub}>Venmo @wardsolutions</Text>
-              </TouchableOpacity>
+              {Platform.OS === 'web' && (
+                <TouchableOpacity style={styles.desktopVenmoBtn} onPress={openVenmo}>
+                  <Text style={styles.desktopVenmoText}>☕ Buy Me a Coffee</Text>
+                  <Text style={styles.venmoSub}>Venmo @wardsolutions</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={[styles.desktopVenmoBtn, { marginTop: 6, backgroundColor: '#f0f7ff', borderColor: '#a5c6e8' }]}
+                style={[
+                  styles.desktopVenmoBtn,
+                  { backgroundColor: '#f0f7ff', borderColor: '#a5c6e8' },
+                  Platform.OS === 'web' && { marginTop: 6 },
+                ]}
                 onPress={() => Linking.openURL('mailto:support@greenplot.us?subject=GreenPlot%20Support')}
               >
                 <Text style={[styles.desktopVenmoText, { color: '#1a5c99' }]}>✉️ Contact Support</Text>
@@ -840,12 +846,18 @@ export default function ProfileScreen() {
           <Text style={styles.adminButtonText}>⚙️ Admin: Plant Catalogue</Text>
         </TouchableOpacity>
       )}
-      <TouchableOpacity style={styles.venmoButton} onPress={openVenmo}>
-        <Text style={styles.venmoText}>☕ Buy Me a Coffee</Text>
-        <Text style={styles.venmoSub}>Support GreenPlot via Venmo @wardsolutions</Text>
-      </TouchableOpacity>
+      {Platform.OS === 'web' && (
+        <TouchableOpacity style={styles.venmoButton} onPress={openVenmo}>
+          <Text style={styles.venmoText}>☕ Buy Me a Coffee</Text>
+          <Text style={styles.venmoSub}>Support GreenPlot via Venmo @wardsolutions</Text>
+        </TouchableOpacity>
+      )}
       <TouchableOpacity
-        style={[styles.venmoButton, { backgroundColor: '#f0f7ff', borderColor: '#a5c6e8', marginTop: 0 }]}
+        style={[
+          styles.venmoButton,
+          { backgroundColor: '#f0f7ff', borderColor: '#a5c6e8' },
+          Platform.OS === 'web' && { marginTop: 0 },
+        ]}
         onPress={() => Linking.openURL('mailto:support@greenplot.us?subject=GreenPlot%20Support')}
       >
         <Text style={[styles.venmoText, { color: '#1a5c99' }]}>✉️ Contact Support</Text>
