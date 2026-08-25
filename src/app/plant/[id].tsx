@@ -150,6 +150,7 @@ export default function PlantDetailScreen() {
     }
     await offlineUpdate('plants', user.id, plant.id, { health_status: status });
     setPlant((p) => p ? { ...p, health_status: status } : p);
+    emit('plants:changed');
   }
 
   async function confirmSickWithIssue(issue: HealthIssue) {
@@ -158,6 +159,7 @@ export default function PlantDetailScreen() {
     const newNotes = encodeSickReason(issue, plant.notes ?? null);
     await offlineUpdate('plants', user.id, plant.id, { health_status: 'sick', notes: newNotes });
     setPlant((p) => p ? { ...p, health_status: 'sick', notes: newNotes } : p);
+    emit('plants:changed');
   }
 
   async function markWatered() {

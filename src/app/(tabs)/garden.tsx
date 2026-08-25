@@ -380,6 +380,23 @@ export default function GardenScreen() {
     });
   }, []);
 
+  // A plant's health status (e.g. marked dead), watering, or harvest may have
+  // changed on another screen (plant detail, schedule). Re-fetch any garden
+  // whose plants are already cached here so the grid reflects it.
+  useEffect(() => {
+    if (!user) return;
+    return subscribe('plants:changed', () => {
+      setPlantsMap(prev => {
+        Object.keys(prev).forEach(gardenId => {
+          offlineList('plants', `${user.id}:${gardenId}`, `garden_id = "${gardenId}"`)
+            .then(data => setPlantsMap(p => ({ ...p, [gardenId]: data as any })))
+            .catch(() => {});
+        });
+        return prev;
+      });
+    });
+  }, [user]);
+
   // Load plants for a garden the first time it's visited
   const loadPlantsForGarden = useCallback((garden: Garden) => {
     if (plantsMap[garden.id]) return; // already cached
