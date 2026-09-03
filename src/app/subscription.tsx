@@ -126,6 +126,19 @@ export default function SubscriptionScreen() {
   const annualPkg  = offerings?.current?.availablePackages?.find((p: any) => p.packageType === 'ANNUAL');
   const monthlyPrice = monthlyPkg?.product?.priceString ?? '$1.99';
   const annualPrice  = annualPkg?.product?.priceString  ?? '$19.99';
+  // Calculated per-month equivalent for the annual plan — shown as a small,
+  // subordinate note only. The billed total (annualPrice) is always the
+  // dominant pricing element in the layout below.
+  const annualMonthlyEq = (() => {
+    const price = annualPkg?.product?.price;
+    if (typeof price === 'number' && price > 0) {
+      const symbol = (annualPrice.match(/^[^\d]*/) ?? ['$'])[0] || '$';
+      return `${symbol}${(price / 12).toFixed(2)}`;
+    }
+    return annualPrice === '$19.99' ? '$1.67' : annualPrice;
+  })();
+  const selectedPrice  = selectedPkg === 'annual' ? annualPrice : monthlyPrice;
+  const selectedPeriod = selectedPkg === 'annual' ? 'year' : 'month';
 
   return (
     <KeyboardAvoidingView
@@ -139,7 +152,7 @@ export default function SubscriptionScreen() {
         <View style={styles.headerContent}>
           <Text style={styles.headerEmoji}>🌱</Text>
           <Text style={styles.headerTitle}>GreenPlot Pro</Text>
-          <Text style={styles.headerSub}>Try free for 14 days, then choose a plan</Text>
+          <Text style={styles.headerSub}>Includes a 14-day free trial</Text>
         </View>
       </LinearGradient>
 
@@ -169,11 +182,14 @@ export default function SubscriptionScreen() {
               <Text style={[styles.planName, { color: textPrim }]}>Annual</Text>
               <View style={styles.saveBadge}><Text style={styles.saveBadgeText}>SAVE 16%</Text></View>
             </View>
-            <Text style={[styles.planPrice, { color: textSec }]}>{annualPrice}/year · after 14-day free trial</Text>
+            <Text style={[styles.planSub, { color: textSec }]}>
+              14-day free trial, then billed annually{'\n'}(≈ {annualMonthlyEq}/mo)
+            </Text>
           </View>
-          <Text style={[styles.planPriceRight, { color: G.hunter }]}>
-            {annualPrice === '$19.99' ? '$1.67' : annualPrice}/mo
-          </Text>
+          <View style={styles.planPriceCol}>
+            <Text style={[styles.planPriceMain, { color: textPrim }]}>{annualPrice}</Text>
+            <Text style={[styles.planPricePeriod, { color: textSec }]}>per year</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -183,10 +199,17 @@ export default function SubscriptionScreen() {
           <View style={[styles.planRadio, selectedPkg === 'monthly' && styles.planRadioActive]} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.planName, { color: textPrim }]}>Monthly</Text>
-            <Text style={[styles.planPrice, { color: textSec }]}>{monthlyPrice}/month · after 14-day free trial</Text>
+            <Text style={[styles.planSub, { color: textSec }]}>14-day free trial, then billed monthly</Text>
           </View>
-          <Text style={[styles.planPriceRight, { color: textSec }]}>{monthlyPrice}/mo</Text>
+          <View style={styles.planPriceCol}>
+            <Text style={[styles.planPriceMain, { color: textPrim }]}>{monthlyPrice}</Text>
+            <Text style={[styles.planPricePeriod, { color: textSec }]}>per month</Text>
+          </View>
         </TouchableOpacity>
+
+        <Text style={[styles.billingNote, { color: textSec }]}>
+          You'll be charged {selectedPrice} per {selectedPeriod} after the trial, unless you cancel first.
+        </Text>
 
         {/* CTA */}
         <PressableScale
@@ -197,7 +220,7 @@ export default function SubscriptionScreen() {
           <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBtnGrad}>
             {purchasing
               ? <ActivityIndicator color={G.cloud} />
-              : <Text style={styles.ctaBtnText}>Start Free 14-Day Trial</Text>}
+              : <Text style={styles.ctaBtnText}>Try Free, Then {selectedPrice}/{selectedPeriod}</Text>}
           </LinearGradient>
         </PressableScale>
         <Text style={[styles.ctaNote, { color: textSec }]}>
@@ -246,13 +269,16 @@ const styles = StyleSheet.create({
   planRadio:     { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: G.mist },
   planRadioActive:{ borderColor: G.hunter, backgroundColor: G.hunter },
   planName:      { fontSize: 16, fontWeight: '700' },
-  planPrice:     { fontSize: 12, marginTop: 2 },
-  planPriceRight:{ fontSize: 15, fontWeight: '700' },
+  planSub:       { fontSize: 12, marginTop: 3, lineHeight: 16 },
+  planPriceCol:  { alignItems: 'flex-end' },
+  planPriceMain: { fontSize: 21, fontWeight: '800' },
+  planPricePeriod:{ fontSize: 11, marginTop: 1 },
+  billingNote:   { fontSize: 12, marginTop: 4, marginBottom: 4, lineHeight: 17 },
   saveBadge:     { backgroundColor: G.sage, borderRadius: R.full, paddingHorizontal: 8, paddingVertical: 3 },
   saveBadgeText: { fontSize: 10, color: G.cloud, fontWeight: '800', letterSpacing: 0.5 },
   ctaBtn:        { marginTop: 8, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   ctaBtnGrad:    { paddingVertical: 16, alignItems: 'center' },
-  ctaBtnText:    { color: G.cloud, fontWeight: '800', fontSize: 17 },
+  ctaBtnText:    { color: G.cloud, fontWeight: '800', fontSize: 16 },
   ctaNote:       { fontSize: 12, textAlign: 'center', marginTop: 8, lineHeight: 18 },
   promoToggle:    { alignItems: 'center', marginTop: 20 },
   promoToggleText:{ fontSize: 13 },
