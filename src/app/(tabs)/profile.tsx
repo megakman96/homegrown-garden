@@ -782,7 +782,7 @@ export default function ProfileScreen() {
             {isPremium ? 'GreenPlot Pro — Active' : 'Upgrade to Pro'}
           </Text>
           <Text style={[styles.subCardSub, { color: isPremium ? '#52796f' : '#9c6f00' }]}>
-            {isPremium ? 'Tap to manage or cancel subscription' : '14-day free trial · Unlimited gardens & more'}
+            {isPremium ? 'Tap to manage or cancel subscription' : 'Unlimited gardens, weather & more'}
           </Text>
         </View>
         <Text style={{ fontSize: 18, color: isPremium ? '#52b788' : '#e67700' }}>›</Text>

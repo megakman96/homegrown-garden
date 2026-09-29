@@ -38,7 +38,7 @@ export default function UpgradePrompt({ title = 'Pro Feature', message, compact 
         style={styles.btn}
         onPress={() => router.push('/subscription' as any)}
       >
-        <Text style={styles.btnText}>Start Free 14-Day Trial</Text>
+        <Text style={styles.btnText}>See Pro Plans</Text>
       </TouchableOpacity>
     </View>
   );

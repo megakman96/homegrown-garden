@@ -14,6 +14,26 @@ import {
 } from '@/lib/subscription';
 import { notifyPremiumChanged } from '@/hooks/use-premium';
 
+// RevenueCat offerings can arrive with `current` unset (e.g. the "default"
+// offering isn't marked current for a storefront/segment) even though the
+// packages themselves loaded fine. Falling back to the first available
+// offering — instead of treating that as "no offerings" — avoids a false
+// "Package not found" / paywall dead-end for anyone who hits that case.
+function activeOffering(offerings: any) {
+  return offerings?.current ?? Object.values(offerings?.all ?? {})[0] ?? null;
+}
+
+// Packages are matched by `packageType` (ANNUAL/MONTHLY), which is only set
+// automatically when the RevenueCat package uses the standard `$rc_annual` /
+// `$rc_monthly` identifiers. Fall back to matching on the package identifier
+// so a differently-configured offering still resolves instead of erroring.
+function findPackage(offering: any, kind: 'annual' | 'monthly') {
+  const packages = offering?.availablePackages ?? [];
+  const typeMatch = packages.find((p: any) => p.packageType === kind.toUpperCase());
+  if (typeMatch) return typeMatch;
+  return packages.find((p: any) => p.identifier?.toLowerCase().includes(kind));
+}
+
 const FEATURES = [
   { emoji: '🌻', label: 'Unlimited gardens', sub: 'Plan as many seasons as you want' },
   { emoji: '📄', label: 'Print garden plans', sub: 'Printable grid layout + per-plant cards' },
@@ -53,9 +73,7 @@ export default function SubscriptionScreen() {
         : 'Subscriptions require a full app build (not Expo Go). Use the admin panel to grant yourself access during testing.');
       return;
     }
-    const pkg = selectedPkg === 'annual'
-      ? offerings.current?.availablePackages.find((p: any) => p.packageType === 'ANNUAL')
-      : offerings.current?.availablePackages.find((p: any) => p.packageType === 'MONTHLY');
+    const pkg = findPackage(activeOffering(offerings), selectedPkg);
     if (!pkg) { Alert.alert('Package not found', 'Please try again.'); return; }
 
     setPurchasing(true);
@@ -122,21 +140,11 @@ export default function SubscriptionScreen() {
   }
 
   // Monthly / annual package details from RevenueCat, or fallback display prices
-  const monthlyPkg = offerings?.current?.availablePackages?.find((p: any) => p.packageType === 'MONTHLY');
-  const annualPkg  = offerings?.current?.availablePackages?.find((p: any) => p.packageType === 'ANNUAL');
+  const offering  = activeOffering(offerings);
+  const monthlyPkg = findPackage(offering, 'monthly');
+  const annualPkg  = findPackage(offering, 'annual');
   const monthlyPrice = monthlyPkg?.product?.priceString ?? '$1.99';
   const annualPrice  = annualPkg?.product?.priceString  ?? '$19.99';
-  // Calculated per-month equivalent for the annual plan — shown as a small,
-  // subordinate note only. The billed total (annualPrice) is always the
-  // dominant pricing element in the layout below.
-  const annualMonthlyEq = (() => {
-    const price = annualPkg?.product?.price;
-    if (typeof price === 'number' && price > 0) {
-      const symbol = (annualPrice.match(/^[^\d]*/) ?? ['$'])[0] || '$';
-      return `${symbol}${(price / 12).toFixed(2)}`;
-    }
-    return annualPrice === '$19.99' ? '$1.67' : annualPrice;
-  })();
   const selectedPrice  = selectedPkg === 'annual' ? annualPrice : monthlyPrice;
   const selectedPeriod = selectedPkg === 'annual' ? 'year' : 'month';
 
@@ -152,7 +160,7 @@ export default function SubscriptionScreen() {
         <View style={styles.headerContent}>
           <Text style={styles.headerEmoji}>🌱</Text>
           <Text style={styles.headerTitle}>GreenPlot Pro</Text>
-          <Text style={styles.headerSub}>Includes a 14-day free trial</Text>
+          <Text style={styles.headerSub}>{monthlyPrice}/month or {annualPrice}/year</Text>
         </View>
       </LinearGradient>
 
@@ -183,7 +191,7 @@ export default function SubscriptionScreen() {
               <View style={styles.saveBadge}><Text style={styles.saveBadgeText}>SAVE 16%</Text></View>
             </View>
             <Text style={[styles.planSub, { color: textSec }]}>
-              14-day free trial, then billed annually{'\n'}(≈ {annualMonthlyEq}/mo)
+              Billed {annualPrice} every year
             </Text>
           </View>
           <View style={styles.planPriceCol}>
@@ -199,7 +207,7 @@ export default function SubscriptionScreen() {
           <View style={[styles.planRadio, selectedPkg === 'monthly' && styles.planRadioActive]} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.planName, { color: textPrim }]}>Monthly</Text>
-            <Text style={[styles.planSub, { color: textSec }]}>14-day free trial, then billed monthly</Text>
+            <Text style={[styles.planSub, { color: textSec }]}>Billed {monthlyPrice} every month</Text>
           </View>
           <View style={styles.planPriceCol}>
             <Text style={[styles.planPriceMain, { color: textPrim }]}>{monthlyPrice}</Text>
@@ -207,8 +215,11 @@ export default function SubscriptionScreen() {
           </View>
         </TouchableOpacity>
 
-        <Text style={[styles.billingNote, { color: textSec }]}>
-          You'll be charged {selectedPrice} per {selectedPeriod} after the trial, unless you cancel first.
+        <Text style={[styles.billingNote, { color: textPrim }]}>
+          {selectedPrice}/{selectedPeriod}, auto-renews until cancelled.
+        </Text>
+        <Text style={[styles.trialNote, { color: textSec }]}>
+          Includes a 14-day free trial. You'll be charged {selectedPrice} when the trial ends unless you cancel at least 24 hours before.
         </Text>
 
         {/* CTA */}
@@ -220,12 +231,9 @@ export default function SubscriptionScreen() {
           <LinearGradient colors={[G.sage, G.hunter]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBtnGrad}>
             {purchasing
               ? <ActivityIndicator color={G.cloud} />
-              : <Text style={styles.ctaBtnText}>Try Free, Then {selectedPrice}/{selectedPeriod}</Text>}
+              : <Text style={styles.ctaBtnText}>Subscribe for {selectedPrice}/{selectedPeriod}</Text>}
           </LinearGradient>
         </PressableScale>
-        <Text style={[styles.ctaNote, { color: textSec }]}>
-          Cancel anytime before trial ends and you won't be charged.
-        </Text>
 
         {/* Apple Offer Code */}
         {Platform.OS === 'ios' && (
@@ -243,6 +251,15 @@ export default function SubscriptionScreen() {
           Payment charged to your App Store / Google Play account after the 14-day trial.
           Subscription auto-renews unless cancelled 24h before renewal.
         </Text>
+        <View style={styles.legalLinks}>
+          <TouchableOpacity onPress={() => router.push('/terms')}>
+            <Text style={[styles.legalLink, { color: textSec }]}>Terms of Use</Text>
+          </TouchableOpacity>
+          <Text style={[styles.legalLinkDivider, { color: textSec }]}>·</Text>
+          <TouchableOpacity onPress={() => router.push('/privacy')}>
+            <Text style={[styles.legalLink, { color: textSec }]}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -273,18 +290,21 @@ const styles = StyleSheet.create({
   planPriceCol:  { alignItems: 'flex-end' },
   planPriceMain: { fontSize: 21, fontWeight: '800' },
   planPricePeriod:{ fontSize: 11, marginTop: 1 },
-  billingNote:   { fontSize: 12, marginTop: 4, marginBottom: 4, lineHeight: 17 },
+  billingNote:   { fontSize: 15, fontWeight: '700', marginTop: 4, lineHeight: 20 },
+  trialNote:     { fontSize: 12, marginTop: 2, marginBottom: 4, lineHeight: 17 },
   saveBadge:     { backgroundColor: G.sage, borderRadius: R.full, paddingHorizontal: 8, paddingVertical: 3 },
   saveBadgeText: { fontSize: 10, color: G.cloud, fontWeight: '800', letterSpacing: 0.5 },
   ctaBtn:        { marginTop: 8, borderRadius: R.lg, overflow: 'hidden', ...Shadow.card },
   ctaBtnGrad:    { paddingVertical: 16, alignItems: 'center' },
   ctaBtnText:    { color: G.cloud, fontWeight: '800', fontSize: 16 },
-  ctaNote:       { fontSize: 12, textAlign: 'center', marginTop: 8, lineHeight: 18 },
   promoToggle:    { alignItems: 'center', marginTop: 20 },
   promoToggleText:{ fontSize: 13 },
   restoreBtn:    { alignItems: 'center', marginTop: 16 },
   restoreText:   { fontSize: 13 },
   legalText:     { fontSize: 11, textAlign: 'center', marginTop: 16, lineHeight: 17 },
+  legalLinks:    { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 10 },
+  legalLink:     { fontSize: 12, textDecorationLine: 'underline' },
+  legalLinkDivider: { fontSize: 12 },
   activeWrap:    { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   activeEmoji:   { fontSize: 64, marginBottom: 16 },
   activeTitle:   { fontSize: 24, fontWeight: '800', marginBottom: 8 },

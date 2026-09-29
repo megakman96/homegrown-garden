@@ -25,23 +25,42 @@ export const REVENUECAT_API_KEY_ANDROID = 'test_nAYeLrnFeNqsVeXKFKcuOFMGbqO';
 export const ENTITLEMENT_ID = 'premium';
 
 let initialized = false;
+let initPromise: Promise<void> | null = null;
 
-export async function initPurchases(userId: string) {
-  if (Platform.OS === 'web') return;
-  const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY_IOS : REVENUECAT_API_KEY_ANDROID;
-  if (apiKey.startsWith('appl_REPLACE') || apiKey.startsWith('goog_REPLACE')) return;
-  try {
-    const Purchases = (await import('react-native-purchases')).default;
-    Purchases.configure({ apiKey, appUserID: userId });
-    initialized = true;
-  } catch (e) {
-    logError(e, 'subscription:initPurchases');
-  }
+// Configuring the RevenueCat SDK is async (dynamic import + native setup), but
+// _layout.tsx fires this off without awaiting it as soon as the user is known.
+// Screens that need purchases (e.g. the subscription paywall) can mount and
+// call getOfferings()/purchasePackage() before that configure() call lands —
+// which previously made them silently see `initialized === false` and fail
+// with "Subscriptions require a full app build" or "Package not found" even
+// on a real device build. Cache the in-flight promise so every caller awaits
+// the same configuration instead of racing it.
+export function initPurchases(userId: string): Promise<void> {
+  if (Platform.OS === 'web') return Promise.resolve();
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY_IOS : REVENUECAT_API_KEY_ANDROID;
+    if (apiKey.startsWith('appl_REPLACE') || apiKey.startsWith('goog_REPLACE')) return;
+    try {
+      const Purchases = (await import('react-native-purchases')).default;
+      Purchases.configure({ apiKey, appUserID: userId });
+      initialized = true;
+    } catch (e) {
+      logError(e, 'subscription:initPurchases');
+    }
+  })();
+  return initPromise;
+}
+
+async function ensureInitialized() {
+  if (initPromise) await initPromise;
 }
 
 export async function checkPremium(): Promise<boolean> {
   if (hasServerPromoGrant()) return true;
-  if (Platform.OS === 'web' || !initialized) return false;
+  if (Platform.OS === 'web') return false;
+  await ensureInitialized();
+  if (!initialized) return false;
   try {
     const Purchases = (await import('react-native-purchases')).default;
     const info = await Purchases.getCustomerInfo();
@@ -53,7 +72,9 @@ export async function checkPremium(): Promise<boolean> {
 }
 
 export async function getOfferings() {
-  if (Platform.OS === 'web' || !initialized) return null;
+  if (Platform.OS === 'web') return null;
+  await ensureInitialized();
+  if (!initialized) return null;
   try {
     const Purchases = (await import('react-native-purchases')).default;
     return await Purchases.getOfferings();
@@ -64,7 +85,9 @@ export async function getOfferings() {
 }
 
 export async function purchasePackage(pkg: any): Promise<boolean> {
-  if (Platform.OS === 'web' || !initialized) return false;
+  if (Platform.OS === 'web') return false;
+  await ensureInitialized();
+  if (!initialized) return false;
   try {
     const Purchases = (await import('react-native-purchases')).default;
     const { customerInfo } = await Purchases.purchasePackage(pkg);
@@ -77,7 +100,9 @@ export async function purchasePackage(pkg: any): Promise<boolean> {
 }
 
 export async function restorePurchases(): Promise<boolean> {
-  if (Platform.OS === 'web' || !initialized) return false;
+  if (Platform.OS === 'web') return false;
+  await ensureInitialized();
+  if (!initialized) return false;
   try {
     const Purchases = (await import('react-native-purchases')).default;
     const info = await Purchases.restorePurchases();
@@ -90,7 +115,9 @@ export async function restorePurchases(): Promise<boolean> {
 
 // iOS Offer Code redemption sheet (opens App Store's promo code UI)
 export async function presentOfferCodeSheet() {
-  if (Platform.OS !== 'ios' || !initialized) return;
+  if (Platform.OS !== 'ios') return;
+  await ensureInitialized();
+  if (!initialized) return;
   try {
     const Purchases = (await import('react-native-purchases')).default;
     await (Purchases as any).presentCodeRedemptionSheet();

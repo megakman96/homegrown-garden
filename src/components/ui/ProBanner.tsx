@@ -71,7 +71,7 @@ export default function ProBanner() {
             <Text style={styles.sub}>Unlimited gardens · Weather · Print garden plans</Text>
           </View>
           <View style={styles.cta}>
-            <Text style={styles.ctaText}>Try free</Text>
+            <Text style={styles.ctaText}>See plans</Text>
             <Text style={styles.ctaArrow}>→</Text>
           </View>
         </LinearGradient>

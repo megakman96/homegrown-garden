@@ -559,7 +559,7 @@ export default function NewGardenScreen() {
         </View>
       )}
       {/* Template Picker Modal */}
-      <Modal visible={showTemplatePicker} transparent animationType="slide">
+      <Modal visible={showTemplatePicker} transparent animationType="slide" onRequestClose={() => setShowTemplatePicker(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <View style={{ backgroundColor: cardBg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20, maxHeight: '82%' }}>
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: G.mist, alignSelf: 'center', marginBottom: 16 }} />
@@ -571,7 +571,10 @@ export default function NewGardenScreen() {
               </View>
             ) : templatePickerGardens.length === 0 ? (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                <Text style={{ color: textSec }}>No gardens yet.</Text>
+                <Text style={{ color: textSec, marginBottom: 20 }}>No gardens yet.</Text>
+                <TouchableOpacity style={{ paddingVertical: 14, paddingHorizontal: 32, alignItems: 'center', borderRadius: 12, borderWidth: 1.5, borderColor: G.mist, backgroundColor: cardBg }} onPress={() => setShowTemplatePicker(false)}>
+                  <Text style={{ color: textSec, fontWeight: '700' }}>Close</Text>
+                </TouchableOpacity>
               </View>
             ) : (() => {
               const CARD_W = Math.min(width - 80, 300);
